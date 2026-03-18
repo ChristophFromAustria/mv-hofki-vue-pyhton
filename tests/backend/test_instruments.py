@@ -63,6 +63,12 @@ async def test_list_instruments_search(client, instrument):
     assert resp.json()["total"] == 1
 
 
+async def test_list_instruments_search_by_type(client, setup_refs, instrument):
+    resp = await client.get("/api/v1/instruments?search=Querfl")
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1
+
+
 async def test_list_instruments_filter_by_type(client, setup_refs, instrument):
     resp = await client.get(
         f"/api/v1/instruments?type_id={setup_refs['instrument_type_id']}"

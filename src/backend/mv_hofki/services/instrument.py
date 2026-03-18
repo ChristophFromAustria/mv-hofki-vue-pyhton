@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from mv_hofki.models.instrument import Instrument
+from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.schemas.instrument import InstrumentCreate, InstrumentUpdate
 
 
@@ -36,9 +37,12 @@ async def get_list(
             Instrument.manufacturer.ilike(pattern),
             Instrument.serial_nr.ilike(pattern),
             Instrument.notes.ilike(pattern),
+            InstrumentType.label.ilike(pattern),
         )
-        query = query.where(search_filter)
-        count_query = count_query.where(search_filter)
+        query = query.join(Instrument.instrument_type).where(search_filter)
+        count_query = count_query.join(
+            InstrumentType, Instrument.instrument_type_id == InstrumentType.id
+        ).where(search_filter)
 
     total = (await session.execute(count_query)).scalar_one()
     query = query.order_by(Instrument.inventory_nr).limit(limit).offset(offset)
