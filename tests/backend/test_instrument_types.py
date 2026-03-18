@@ -42,22 +42,21 @@ async def test_delete_instrument_type(client, instrument_type):
     assert resp.status_code == 204
 
 
-# Uncomment after Task 7 adds the instruments route:
-# async def test_delete_instrument_type_in_use_rejected(client, instrument_type):
-#     """Cannot delete an instrument type that is referenced by an instrument."""
-#     currency = (
-#         await client.post(
-#             "/api/v1/currencies", json={"label": "Euro", "abbreviation": "€"}
-#         )
-#     ).json()
-#     await client.post(
-#         "/api/v1/instruments",
-#         json={
-#             "inventory_nr": 1,
-#             "owner": "Verein",
-#             "currency_id": currency["id"],
-#             "instrument_type_id": instrument_type["id"],
-#         },
-#     )
-#     resp = await client.delete(f"/api/v1/instrument-types/{instrument_type['id']}")
-#     assert resp.status_code == 409
+async def test_delete_instrument_type_in_use_rejected(client, instrument_type):
+    """Cannot delete an instrument type that is referenced by an instrument."""
+    currency = (
+        await client.post(
+            "/api/v1/currencies", json={"label": "Euro", "abbreviation": "€"}
+        )
+    ).json()
+    await client.post(
+        "/api/v1/instruments",
+        json={
+            "inventory_nr": 1,
+            "owner": "Verein",
+            "currency_id": currency["id"],
+            "instrument_type_id": instrument_type["id"],
+        },
+    )
+    resp = await client.delete(f"/api/v1/instrument-types/{instrument_type['id']}")
+    assert resp.status_code == 409

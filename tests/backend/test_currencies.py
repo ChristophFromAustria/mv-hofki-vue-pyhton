@@ -53,23 +53,22 @@ async def test_get_currency_not_found(client):
     assert resp.status_code == 404
 
 
-# Uncomment after Task 7 adds the instruments route:
-# async def test_delete_currency_in_use_rejected(client, currency):
-#     """Cannot delete a currency that is referenced by an instrument."""
-#     itype = (
-#         await client.post(
-#             "/api/v1/instrument-types",
-#             json={"label": "Trompete", "label_short": "TR"},
-#         )
-#     ).json()
-#     await client.post(
-#         "/api/v1/instruments",
-#         json={
-#             "inventory_nr": 1,
-#             "owner": "Verein",
-#             "currency_id": currency["id"],
-#             "instrument_type_id": itype["id"],
-#         },
-#     )
-#     resp = await client.delete(f"/api/v1/currencies/{currency['id']}")
-#     assert resp.status_code == 409
+async def test_delete_currency_in_use_rejected(client, currency):
+    """Cannot delete a currency that is referenced by an instrument."""
+    itype = (
+        await client.post(
+            "/api/v1/instrument-types",
+            json={"label": "Trompete", "label_short": "TR"},
+        )
+    ).json()
+    await client.post(
+        "/api/v1/instruments",
+        json={
+            "inventory_nr": 1,
+            "owner": "Verein",
+            "currency_id": currency["id"],
+            "instrument_type_id": itype["id"],
+        },
+    )
+    resp = await client.delete(f"/api/v1/currencies/{currency['id']}")
+    assert resp.status_code == 409
