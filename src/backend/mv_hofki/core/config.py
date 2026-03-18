@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     PROJECT_ROOT: Path = _find_project_root()
 
+    DATABASE_URL: str = "sqlite+aiosqlite:///data/mv_hofki.db"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

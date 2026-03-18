@@ -19,6 +19,9 @@ src/frontend/dist/
 .vscode/
 .idea/
 
+# Database
+data/*.db
+
 # OS
 .DS_Store
 Thumbs.db

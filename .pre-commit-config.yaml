@@ -10,7 +10,12 @@ repos:
     rev: v1.10.0
     hooks:
       - id: mypy
-        additional_dependencies: [pydantic-settings>=2.0, fastapi>=0.115]
+        additional_dependencies:
+          - pydantic-settings>=2.0
+          - fastapi>=0.115
+          - sqlalchemy[asyncio]>=2.0
+          - aiosqlite>=0.20
+          - pytest>=8.0
         args: [--config-file=pyproject.toml]
 
   - repo: local

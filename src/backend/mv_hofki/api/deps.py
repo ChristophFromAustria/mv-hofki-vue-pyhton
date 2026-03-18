@@ -1,12 +1,14 @@
-"""Shared FastAPI dependencies.
+"""Shared FastAPI dependencies."""
 
-Add dependency injection functions here as the project grows.
-Examples:
-    # def get_current_user(...):
-    #     \"\"\"Validate auth token and return current user.\"\"\"
-    #     ...
-    #
-    # def get_db_session(...):
-    #     \"\"\"Yield a database session.\"\"\"
-    #     ...
-"""
+from __future__ import annotations
+
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from mv_hofki.db.engine import async_session_factory
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with async_session_factory() as session:
+        yield session
