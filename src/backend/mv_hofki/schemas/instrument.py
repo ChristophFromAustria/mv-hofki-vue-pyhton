@@ -10,6 +10,14 @@ from mv_hofki.schemas.currency import CurrencyRead
 from mv_hofki.schemas.instrument_type import InstrumentTypeRead
 
 
+class ActiveLoanInfo(BaseModel):
+    loan_id: int
+    musician_id: int
+    musician_name: str
+    is_extern: bool
+    start_date: date
+
+
 class InstrumentCreate(BaseModel):
     label_addition: str | None = None
     manufacturer: str | None = None
@@ -61,5 +69,7 @@ class InstrumentRead(BaseModel):
     created_at: datetime
     instrument_type: InstrumentTypeRead
     currency: CurrencyRead
+    active_loan: ActiveLoanInfo | None = None
+    profile_image_url: str | None = None
 
     model_config = {"from_attributes": True}
