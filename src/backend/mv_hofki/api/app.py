@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from mv_hofki.api.routes.currencies import router as currencies_router
 from mv_hofki.api.routes.dashboard import router as dashboard_router
 from mv_hofki.api.routes.health import router as health_router
+from mv_hofki.api.routes.instrument_images import router as instrument_images_router
 from mv_hofki.api.routes.instrument_types import router as instrument_types_router
 from mv_hofki.api.routes.instruments import router as instruments_router
 from mv_hofki.api.routes.loans import router as loans_router
@@ -40,9 +41,14 @@ app.include_router(health_router)
 app.include_router(currencies_router)
 app.include_router(instrument_types_router)
 app.include_router(instruments_router)
+app.include_router(instrument_images_router)
 app.include_router(musicians_router)
 app.include_router(loans_router)
 app.include_router(dashboard_router)
+
+_uploads_dir = settings.PROJECT_ROOT / "data" / "uploads"
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 _frontend_dist = settings.PROJECT_ROOT / "src" / "frontend" / "dist"
 if _frontend_dist.exists():
