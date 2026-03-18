@@ -69,12 +69,13 @@ pre-commit run --all-files     # Run all linters
 
 ## Authentication & Authorization
 
-<!-- Fill in: which auth pattern this project uses (role-based / resource-scope) -->
-<!-- Refer to auth-setup skill for company standards -->
+No built-in authentication. Access is secured externally via Cloudflare Tunnel.
 
 ## Infrastructure
 
-<!-- Fill in: database, external services, message broker -->
+- **Database:** SQLite at `data/mv_hofki.db`, managed via SQLAlchemy 2.0 async (aiosqlite) + Alembic
+- **Migrations:** `PYTHONPATH=src/backend alembic upgrade head`
+- **Seed data:** Instrument types (20) and currencies (4) are seeded on app startup if tables are empty
 
 ## API Conventions
 
