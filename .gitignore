@@ -22,6 +22,10 @@ src/frontend/dist/
 # Database
 data/*.db
 
+# Uploads
+data/uploads/*
+!data/uploads/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
