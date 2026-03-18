@@ -44,3 +44,7 @@ packages = ["mv_hofki"]
 strict = false
 warn_return_any = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["alembic.*"]
+ignore_errors = true

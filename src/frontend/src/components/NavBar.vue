@@ -5,9 +5,9 @@ import { RouterLink } from "vue-router";
 <template>
   <nav class="navbar">
     <div class="navbar-inner">
-      <RouterLink to="/" class="brand">mv_hofki</RouterLink>
+      <RouterLink to="/" class="brand"> mv_hofki </RouterLink>
       <div class="links">
-        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/"> Home </RouterLink>
       </div>
     </div>
   </nav>

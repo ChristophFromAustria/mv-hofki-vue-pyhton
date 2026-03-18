@@ -11,5 +11,15 @@ module.exports = {
   },
   rules: {
     "vue/multi-word-component-names": "off",
+    "vue/singleline-html-element-content-newline": "off",
+    "vue/max-attributes-per-line": "off",
   },
+  overrides: [
+    {
+      files: ["vite.config.js", "vitest.config.js"],
+      env: {
+        node: true,
+      },
+    },
+  ],
 };
