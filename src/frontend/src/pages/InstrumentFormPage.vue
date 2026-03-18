@@ -11,7 +11,6 @@ const types = ref([]);
 const currencies = ref([]);
 
 const form = ref({
-  inventory_nr: null,
   label_addition: "",
   manufacturer: "",
   serial_nr: "",
@@ -68,10 +67,6 @@ async function save() {
 
     <form class="card" style="max-width: 700px" @submit.prevent="save">
       <div class="grid grid-2">
-        <div class="form-group">
-          <label>Inventarnummer *</label>
-          <input v-model.number="form.inventory_nr" type="number" required />
-        </div>
         <div class="form-group">
           <label>Instrumententyp *</label>
           <select v-model.number="form.instrument_type_id" required>

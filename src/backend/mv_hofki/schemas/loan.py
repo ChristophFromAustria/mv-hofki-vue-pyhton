@@ -21,6 +21,10 @@ class LoanUpdate(BaseModel):
     end_date: date | None = None
 
 
+class LoanReturn(BaseModel):
+    end_date: date | None = None
+
+
 class LoanRead(BaseModel):
     id: int
     instrument_id: int

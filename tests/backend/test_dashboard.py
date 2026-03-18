@@ -25,7 +25,6 @@ async def test_dashboard_with_data(client):
     await client.post(
         "/api/v1/instruments",
         json={
-            "inventory_nr": 1,
             "owner": "Verein",
             "currency_id": currency["id"],
             "instrument_type_id": itype["id"],

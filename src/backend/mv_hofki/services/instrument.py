@@ -62,7 +62,10 @@ async def get_by_id(session: AsyncSession, instrument_id: int) -> Instrument:
 
 
 async def create(session: AsyncSession, data: InstrumentCreate) -> Instrument:
-    instrument = Instrument(**data.model_dump())
+    # Auto-assign inventory_nr
+    result = await session.execute(select(func.max(Instrument.inventory_nr)))
+    max_nr = result.scalar_one_or_none() or 0
+    instrument = Instrument(**data.model_dump(), inventory_nr=max_nr + 1)
     session.add(instrument)
     await session.commit()
     await session.refresh(instrument, attribute_names=["instrument_type", "currency"])

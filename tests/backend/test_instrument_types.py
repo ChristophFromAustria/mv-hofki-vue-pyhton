@@ -52,7 +52,6 @@ async def test_delete_instrument_type_in_use_rejected(client, instrument_type):
     await client.post(
         "/api/v1/instruments",
         json={
-            "inventory_nr": 1,
             "owner": "Verein",
             "currency_id": currency["id"],
             "instrument_type_id": instrument_type["id"],

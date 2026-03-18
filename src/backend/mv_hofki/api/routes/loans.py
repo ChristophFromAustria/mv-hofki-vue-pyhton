@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
-from mv_hofki.schemas.loan import LoanCreate, LoanRead, LoanUpdate
+from mv_hofki.schemas.loan import LoanCreate, LoanRead, LoanReturn, LoanUpdate
 from mv_hofki.services import loan as loan_service
 
 router = APIRouter(prefix="/api/v1/loans", tags=["loans"])
@@ -42,5 +42,8 @@ async def update_loan(
 
 
 @router.put("/{loan_id}/return", response_model=LoanRead)
-async def return_loan(loan_id: int, db: AsyncSession = Depends(get_db)):
-    return await loan_service.return_instrument(db, loan_id)
+async def return_loan(
+    loan_id: int, data: LoanReturn | None = None, db: AsyncSession = Depends(get_db)
+):
+    end_date = data.end_date if data else None
+    return await loan_service.return_instrument(db, loan_id, end_date=end_date)

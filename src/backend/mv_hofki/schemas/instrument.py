@@ -11,7 +11,6 @@ from mv_hofki.schemas.instrument_type import InstrumentTypeRead
 
 
 class InstrumentCreate(BaseModel):
-    inventory_nr: int
     label_addition: str | None = None
     manufacturer: str | None = None
     serial_nr: str | None = None
@@ -28,7 +27,6 @@ class InstrumentCreate(BaseModel):
 
 
 class InstrumentUpdate(BaseModel):
-    inventory_nr: int | None = None
     label_addition: str | None = None
     manufacturer: str | None = None
     serial_nr: str | None = None

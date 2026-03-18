@@ -77,12 +77,14 @@ async def update(session: AsyncSession, loan_id: int, data: LoanUpdate) -> Loan:
     return await get_by_id(session, loan_id)
 
 
-async def return_instrument(session: AsyncSession, loan_id: int) -> Loan:
+async def return_instrument(
+    session: AsyncSession, loan_id: int, end_date: date | None = None
+) -> Loan:
     loan = await get_by_id(session, loan_id)
     if loan.end_date is not None:
         raise HTTPException(
             status_code=409, detail="Instrument wurde bereits zurückgegeben"
         )
-    loan.end_date = date.today()
+    loan.end_date = end_date or date.today()
     await session.commit()
     return await get_by_id(session, loan_id)

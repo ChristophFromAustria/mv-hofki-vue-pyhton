@@ -20,7 +20,6 @@ async def setup_data(client):
         await client.post(
             "/api/v1/instruments",
             json={
-                "inventory_nr": 1,
                 "owner": "Verein",
                 "currency_id": currency["id"],
                 "instrument_type_id": itype["id"],
@@ -81,6 +80,15 @@ async def test_return_already_returned(client, loan):
     await client.put(f"/api/v1/loans/{loan['id']}/return")
     resp = await client.put(f"/api/v1/loans/{loan['id']}/return")
     assert resp.status_code == 409
+
+
+async def test_return_with_custom_date(client, setup_data, loan):
+    resp = await client.put(
+        f"/api/v1/loans/{loan['id']}/return",
+        json={"end_date": "2026-02-28"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["end_date"] == "2026-02-28"
 
 
 async def test_delete_musician_with_active_loan_rejected(client, setup_data, loan):

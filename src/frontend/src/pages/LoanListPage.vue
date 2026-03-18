@@ -10,6 +10,8 @@ const activeOnly = ref(true);
 const showForm = ref(false);
 
 const form = ref({ instrument_id: null, musician_id: null, start_date: "" });
+const returningLoanId = ref(null);
+const returnDate = ref("");
 
 async function load() {
   loading.value = true;
@@ -40,8 +42,17 @@ async function createLoan() {
   }
 }
 
-async function returnLoan(id) {
+async function returnToday(id) {
   await put(`/loans/${id}/return`);
+  returningLoanId.value = null;
+  await load();
+}
+
+async function returnWithDate(id) {
+  if (!returnDate.value) return;
+  await put(`/loans/${id}/return`, { end_date: returnDate.value });
+  returningLoanId.value = null;
+  returnDate.value = "";
   await load();
 }
 </script>
@@ -128,7 +139,30 @@ async function returnLoan(id) {
             </span>
           </td>
           <td>
-            <button v-if="!l.end_date" class="btn-sm" @click="returnLoan(l.id)">Rückgabe</button>
+            <template v-if="!l.end_date">
+              <div
+                v-if="returningLoanId === l.id"
+                style="display: flex; gap: 0.25rem; align-items: center"
+              >
+                <input
+                  v-model="returnDate"
+                  type="date"
+                  style="width: 140px; padding: 0.2rem 0.4rem; font-size: 0.8rem"
+                />
+                <button
+                  class="btn-sm btn-primary"
+                  :disabled="!returnDate"
+                  @click="returnWithDate(l.id)"
+                >
+                  OK
+                </button>
+                <button class="btn-sm" @click="returningLoanId = null">X</button>
+              </div>
+              <div v-else style="display: flex; gap: 0.25rem">
+                <button class="btn-sm" @click="returnToday(l.id)">Heute</button>
+                <button class="btn-sm" @click="returningLoanId = l.id">Datum</button>
+              </div>
+            </template>
           </td>
         </tr>
       </tbody>

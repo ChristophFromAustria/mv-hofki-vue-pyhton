@@ -24,7 +24,6 @@ async def instrument(client, setup_refs):
     resp = await client.post(
         "/api/v1/instruments",
         json={
-            "inventory_nr": 1,
             "owner": "Musikverein",
             "manufacturer": "Yamaha",
             **setup_refs,
@@ -38,7 +37,6 @@ async def test_create_instrument(client, setup_refs):
     resp = await client.post(
         "/api/v1/instruments",
         json={
-            "inventory_nr": 42,
             "owner": "Musikverein",
             "serial_nr": "YM-12345",
             **setup_refs,
@@ -46,7 +44,7 @@ async def test_create_instrument(client, setup_refs):
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["inventory_nr"] == 42
+    assert data["inventory_nr"] == 1
     assert data["serial_nr"] == "YM-12345"
     assert data["instrument_type"]["label"] == "Querflöte"
 
@@ -92,3 +90,16 @@ async def test_update_instrument(client, instrument):
 async def test_delete_instrument(client, instrument):
     resp = await client.delete(f"/api/v1/instruments/{instrument['id']}")
     assert resp.status_code == 204
+
+
+async def test_inventory_nr_auto_increments(client, setup_refs):
+    resp1 = await client.post(
+        "/api/v1/instruments",
+        json={"owner": "Verein", **setup_refs},
+    )
+    resp2 = await client.post(
+        "/api/v1/instruments",
+        json={"owner": "Verein", **setup_refs},
+    )
+    assert resp1.json()["inventory_nr"] == 1
+    assert resp2.json()["inventory_nr"] == 2
