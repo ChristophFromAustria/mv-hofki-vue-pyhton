@@ -10,6 +10,7 @@ const activeOnly = ref(true);
 const showForm = ref(false);
 
 const form = ref({ instrument_id: null, musician_id: null, start_date: "" });
+const formErrors = ref({});
 const returningLoanId = ref(null);
 const returnDate = ref("");
 
@@ -31,11 +32,21 @@ onMounted(async () => {
 
 watch(activeOnly, load);
 
+function validateForm() {
+  formErrors.value = {};
+  if (!form.value.instrument_id) formErrors.value.instrument_id = "Pflichtfeld";
+  if (!form.value.musician_id) formErrors.value.musician_id = "Pflichtfeld";
+  if (!form.value.start_date) formErrors.value.start_date = "Pflichtfeld";
+  return Object.keys(formErrors.value).length === 0;
+}
+
 async function createLoan() {
+  if (!validateForm()) return;
   try {
     await post("/loans", form.value);
     showForm.value = false;
     form.value = { instrument_id: null, musician_id: null, start_date: "" };
+    formErrors.value = {};
     await load();
   } catch (e) {
     alert("Fehler: " + e.message);
@@ -68,27 +79,34 @@ async function returnWithDate(id) {
       <h3 style="margin-bottom: 1rem">Neue Ausleihe</h3>
       <form @submit.prevent="createLoan">
         <div class="grid grid-3">
-          <div class="form-group">
+          <div class="form-group" :class="{ error: formErrors.instrument_id }">
             <label>Instrument *</label>
-            <select v-model.number="form.instrument_id" required>
+            <select v-model.number="form.instrument_id">
               <option :value="null" disabled>Auswählen...</option>
               <option v-for="i in instruments" :key="i.id" :value="i.id">
                 #{{ i.inventory_nr }} {{ i.instrument_type?.label }}
               </option>
             </select>
+            <span v-if="formErrors.instrument_id" class="form-error">{{
+              formErrors.instrument_id
+            }}</span>
           </div>
-          <div class="form-group">
+          <div class="form-group" :class="{ error: formErrors.musician_id }">
             <label>Musiker *</label>
-            <select v-model.number="form.musician_id" required>
+            <select v-model.number="form.musician_id">
               <option :value="null" disabled>Auswählen...</option>
               <option v-for="m in musicians" :key="m.id" :value="m.id">
                 {{ m.last_name }} {{ m.first_name }}
               </option>
             </select>
+            <span v-if="formErrors.musician_id" class="form-error">{{
+              formErrors.musician_id
+            }}</span>
           </div>
-          <div class="form-group">
+          <div class="form-group" :class="{ error: formErrors.start_date }">
             <label>Datum *</label>
-            <input v-model="form.start_date" type="date" required />
+            <input v-model="form.start_date" type="date" />
+            <span v-if="formErrors.start_date" class="form-error">{{ formErrors.start_date }}</span>
           </div>
         </div>
         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem">

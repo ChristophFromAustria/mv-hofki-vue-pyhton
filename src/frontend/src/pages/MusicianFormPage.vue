@@ -7,6 +7,7 @@ const route = useRoute();
 const router = useRouter();
 const isEdit = computed(() => !!route.params.id);
 const saving = ref(false);
+const errors = ref({});
 
 const form = ref({
   first_name: "",
@@ -29,7 +30,15 @@ onMounted(async () => {
   }
 });
 
+function validate() {
+  errors.value = {};
+  if (!form.value.first_name?.trim()) errors.value.first_name = "Pflichtfeld";
+  if (!form.value.last_name?.trim()) errors.value.last_name = "Pflichtfeld";
+  return Object.keys(errors.value).length === 0;
+}
+
 async function save() {
+  if (!validate()) return;
   saving.value = true;
   try {
     if (isEdit.value) {
@@ -55,13 +64,15 @@ async function save() {
 
     <form class="card" style="max-width: 600px" @submit.prevent="save">
       <div class="grid grid-2">
-        <div class="form-group">
+        <div class="form-group" :class="{ error: errors.first_name }">
           <label>Vorname *</label>
-          <input v-model="form.first_name" required />
+          <input v-model="form.first_name" />
+          <span v-if="errors.first_name" class="form-error">{{ errors.first_name }}</span>
         </div>
-        <div class="form-group">
+        <div class="form-group" :class="{ error: errors.last_name }">
           <label>Nachname *</label>
-          <input v-model="form.last_name" required />
+          <input v-model="form.last_name" />
+          <span v-if="errors.last_name" class="form-error">{{ errors.last_name }}</span>
         </div>
         <div class="form-group">
           <label>Telefon</label>

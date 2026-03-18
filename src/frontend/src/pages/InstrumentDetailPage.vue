@@ -14,6 +14,7 @@ const showDelete = ref(false);
 // Loan form state
 const loanForm = ref({ musician_id: null, start_date: "" });
 const loanSaving = ref(false);
+const loanErrors = ref({});
 
 // Return state
 const showReturnDatePicker = ref(false);
@@ -36,7 +37,15 @@ async function remove() {
   router.push("/instrumente");
 }
 
+function validateLoan() {
+  loanErrors.value = {};
+  if (!loanForm.value.musician_id) loanErrors.value.musician_id = "Pflichtfeld";
+  if (!loanForm.value.start_date) loanErrors.value.start_date = "Pflichtfeld";
+  return Object.keys(loanErrors.value).length === 0;
+}
+
 async function createLoan() {
+  if (!validateLoan()) return;
   loanSaving.value = true;
   try {
     await post("/loans", {
@@ -44,6 +53,7 @@ async function createLoan() {
       ...loanForm.value,
     });
     loanForm.value = { musician_id: null, start_date: "" };
+    loanErrors.value = {};
     await reload();
   } catch (e) {
     alert("Fehler: " + e.message);
@@ -155,18 +165,26 @@ async function returnWithDate() {
           <span class="badge badge-green">Verfügbar</span>
         </p>
         <form style="display: flex; gap: 0.75rem; align-items: end" @submit.prevent="createLoan">
-          <div class="form-group" style="margin: 0; flex: 1">
+          <div
+            class="form-group"
+            style="margin: 0; flex: 1"
+            :class="{ error: loanErrors.musician_id }"
+          >
             <label>Musiker</label>
-            <select v-model.number="loanForm.musician_id" required>
+            <select v-model.number="loanForm.musician_id">
               <option :value="null" disabled>Auswählen...</option>
               <option v-for="m in musicians" :key="m.id" :value="m.id">
                 {{ m.last_name }} {{ m.first_name }}
               </option>
             </select>
+            <span v-if="loanErrors.musician_id" class="form-error">{{
+              loanErrors.musician_id
+            }}</span>
           </div>
-          <div class="form-group" style="margin: 0">
+          <div class="form-group" style="margin: 0" :class="{ error: loanErrors.start_date }">
             <label>Datum</label>
-            <input v-model="loanForm.start_date" type="date" required style="width: 160px" />
+            <input v-model="loanForm.start_date" type="date" style="width: 160px" />
+            <span v-if="loanErrors.start_date" class="form-error">{{ loanErrors.start_date }}</span>
           </div>
           <button type="submit" class="btn-primary" :disabled="loanSaving">Ausleihen</button>
         </form>

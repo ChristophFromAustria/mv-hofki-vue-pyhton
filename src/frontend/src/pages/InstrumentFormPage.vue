@@ -9,6 +9,7 @@ const isEdit = computed(() => !!route.params.id);
 const saving = ref(false);
 const types = ref([]);
 const currencies = ref([]);
+const errors = ref({});
 
 const form = ref({
   label_addition: "",
@@ -37,11 +38,21 @@ onMounted(async () => {
       if (data[key] !== undefined && data[key] !== null) form.value[key] = data[key];
     });
   } else {
-    if (c.length) form.value.currency_id = c[0].id;
+    form.value.owner = "MV Hofkirchen";
+    form.value.currency_id = c.find((x) => x.abbreviation === "€")?.id || c[0]?.id;
   }
 });
 
+function validate() {
+  errors.value = {};
+  if (!form.value.instrument_type_id) errors.value.instrument_type_id = "Pflichtfeld";
+  if (!form.value.owner?.trim()) errors.value.owner = "Pflichtfeld";
+  if (!form.value.currency_id) errors.value.currency_id = "Pflichtfeld";
+  return Object.keys(errors.value).length === 0;
+}
+
 async function save() {
+  if (!validate()) return;
   saving.value = true;
   try {
     if (isEdit.value) {
@@ -67,13 +78,16 @@ async function save() {
 
     <form class="card" style="max-width: 700px" @submit.prevent="save">
       <div class="grid grid-2">
-        <div class="form-group">
+        <div class="form-group" :class="{ error: errors.instrument_type_id }">
           <label>Instrumententyp *</label>
-          <select v-model.number="form.instrument_type_id" required>
+          <select v-model.number="form.instrument_type_id">
             <option v-for="t in types" :key="t.id" :value="t.id">
               {{ t.label }}
             </option>
           </select>
+          <span v-if="errors.instrument_type_id" class="form-error">{{
+            errors.instrument_type_id
+          }}</span>
         </div>
         <div class="form-group">
           <label>Bezeichnungszusatz</label>
@@ -91,9 +105,10 @@ async function save() {
           <label>Baujahr</label>
           <input v-model="form.construction_year" type="date" />
         </div>
-        <div class="form-group">
+        <div class="form-group" :class="{ error: errors.owner }">
           <label>Eigentümer *</label>
-          <input v-model="form.owner" required />
+          <input v-model="form.owner" />
+          <span v-if="errors.owner" class="form-error">{{ errors.owner }}</span>
         </div>
         <div class="form-group">
           <label>Händler</label>
@@ -103,7 +118,7 @@ async function save() {
           <label>Anschaffungsdatum</label>
           <input v-model="form.acquisition_date" type="date" />
         </div>
-        <div class="form-group">
+        <div class="form-group" :class="{ error: errors.currency_id }">
           <label>Anschaffungskosten</label>
           <div style="display: flex; gap: 0.5rem">
             <input
@@ -118,6 +133,7 @@ async function save() {
               </option>
             </select>
           </div>
+          <span v-if="errors.currency_id" class="form-error">{{ errors.currency_id }}</span>
         </div>
         <div class="form-group">
           <label>Behältnis</label>
