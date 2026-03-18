@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { get } from "../lib/api.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
+import InstrumentIcon from "../components/InstrumentIcon.vue";
 
 const router = useRouter();
 const items = ref([]);
@@ -14,6 +15,9 @@ const typeFilter = ref("");
 const types = ref([]);
 const limit = 50;
 const offset = ref(0);
+const viewMode = ref(localStorage.getItem("instrument-view-mode") || "list");
+
+watch(viewMode, (v) => localStorage.setItem("instrument-view-mode", v));
 
 const columns = [
   { key: "inventory_nr", label: "Inv.-Nr." },
@@ -93,9 +97,34 @@ function nextPage() {
           {{ t.label }}
         </option>
       </select>
+      <div class="view-toggle">
+        <button :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">Liste</button>
+        <button :class="{ active: viewMode === 'card' }" @click="viewMode = 'card'">Karten</button>
+      </div>
     </div>
 
-    <DataTable :columns="columns" :rows="items" :loading="loading" @row-click="goTo" />
+    <DataTable
+      v-if="viewMode === 'list'"
+      :columns="columns"
+      :rows="items"
+      :loading="loading"
+      @row-click="goTo"
+    />
+
+    <div v-else class="instrument-grid">
+      <div v-for="item in items" :key="item.id" class="instrument-card" @click="goTo(item)">
+        <div class="instrument-card-img">
+          <InstrumentIcon :label-short="item.instrument_type?.label_short || '?'" :size="100" />
+        </div>
+        <div class="instrument-card-body">
+          <h3>{{ item.instrument_type?.label }}</h3>
+          <p>#{{ item.inventory_nr }} {{ item.manufacturer ? "· " + item.manufacturer : "" }}</p>
+        </div>
+        <div class="instrument-card-footer">
+          <span class="badge badge-gray">{{ item.owner }}</span>
+        </div>
+      </div>
+    </div>
 
     <div v-if="total > limit" class="pagination">
       <span>{{ offset + 1 }}–{{ Math.min(offset + limit, total) }} von {{ total }}</span>

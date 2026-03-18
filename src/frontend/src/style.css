@@ -257,3 +257,81 @@ tr:hover {
   color: var(--color-muted);
   font-weight: 500;
 }
+
+/* Instrument card grid */
+.instrument-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.instrument-card {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+  background: var(--color-bg);
+}
+
+.instrument-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.instrument-card-img {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #f9fafb;
+}
+
+.instrument-card-body {
+  padding: 0.75rem;
+}
+
+.instrument-card-body h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.instrument-card-body p {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.instrument-card-footer {
+  padding: 0 0.75rem 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* View toggle buttons */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-toggle button {
+  border: none;
+  border-radius: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  background: var(--color-bg);
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.view-toggle button + button {
+  border-left: 1px solid var(--color-border);
+}
+
+.view-toggle button.active {
+  background: var(--color-primary);
+  color: white;
+}
