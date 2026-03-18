@@ -22,6 +22,12 @@ cd e2e && npm install && cd ..
 # Install pre-commit hooks
 pre-commit install
 
+# Install ttyd (web terminal)
+if ! command -v ttyd &>/dev/null; then
+  curl -sL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 -o /usr/local/bin/ttyd
+  chmod +x /usr/local/bin/ttyd
+fi
+
 # Superpowers plugin is enabled via .claude/settings.json (extraKnownMarketplaces + enabledPlugins).
 # No CLI install needed — Claude Code picks it up from project settings on session start.
 

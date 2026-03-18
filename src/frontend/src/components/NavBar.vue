@@ -40,6 +40,7 @@ onMounted(() => {
           <div v-show="settingsOpen" class="dropdown-menu">
             <RouterLink to="/einstellungen/instrumententypen">Instrumententypen</RouterLink>
             <RouterLink to="/einstellungen/waehrungen">Währungen</RouterLink>
+            <a href="//localhost:7681" target="_blank" class="terminal-link">Terminal</a>
           </div>
         </div>
         <button
@@ -116,6 +117,12 @@ onMounted(() => {
 
 .dropdown-menu a:hover {
   background: var(--color-bg-soft);
+}
+
+.terminal-link {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.25rem;
+  padding-top: 0.625rem !important;
 }
 
 .theme-toggle {

@@ -11,3 +11,9 @@ tmux new-session -d -s server \
 # Start frontend watcher in tmux
 tmux new-session -d -s frontend \
   "cd $WORKSPACE/src/frontend && VITE_BASE_PATH=${VITE_BASE_PATH:-/} npx vite build --watch"
+
+# Start web terminal (ttyd) in tmux
+if command -v ttyd &>/dev/null; then
+  tmux new-session -d -s terminal \
+    "ttyd --port 7681 --writable bash"
+fi
