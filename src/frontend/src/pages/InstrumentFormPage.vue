@@ -51,15 +51,25 @@ function validate() {
   return Object.keys(errors.value).length === 0;
 }
 
+function cleanPayload() {
+  const data = { ...form.value };
+  // Convert empty strings to null for optional fields
+  for (const key of Object.keys(data)) {
+    if (data[key] === "") data[key] = null;
+  }
+  return data;
+}
+
 async function save() {
   if (!validate()) return;
   saving.value = true;
+  const payload = cleanPayload();
   try {
     if (isEdit.value) {
-      await put(`/instruments/${route.params.id}`, form.value);
+      await put(`/instruments/${route.params.id}`, payload);
       router.push(`/instrumente/${route.params.id}`);
     } else {
-      const created = await post("/instruments", form.value);
+      const created = await post("/instruments", payload);
       router.push(`/instrumente/${created.id}`);
     }
   } catch (e) {

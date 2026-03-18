@@ -37,15 +37,24 @@ function validate() {
   return Object.keys(errors.value).length === 0;
 }
 
+function cleanPayload() {
+  const data = { ...form.value };
+  for (const key of Object.keys(data)) {
+    if (data[key] === "") data[key] = null;
+  }
+  return data;
+}
+
 async function save() {
   if (!validate()) return;
   saving.value = true;
+  const payload = cleanPayload();
   try {
     if (isEdit.value) {
-      await put(`/musicians/${route.params.id}`, form.value);
+      await put(`/musicians/${route.params.id}`, payload);
       router.push(`/musiker/${route.params.id}`);
     } else {
-      const created = await post("/musicians", form.value);
+      const created = await post("/musicians", payload);
       router.push(`/musiker/${created.id}`);
     }
   } catch (e) {
