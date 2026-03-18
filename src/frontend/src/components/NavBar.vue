@@ -1,8 +1,29 @@
 <script setup>
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { RouterLink } from "vue-router";
 
 const settingsOpen = ref(false);
+const isDark = ref(false);
+
+function applyTheme(dark) {
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  localStorage.setItem("theme", dark ? "dark" : "light");
+}
+
+function toggleTheme() {
+  isDark.value = !isDark.value;
+  applyTheme(isDark.value);
+}
+
+onMounted(() => {
+  const saved = localStorage.getItem("theme");
+  if (saved) {
+    isDark.value = saved === "dark";
+  } else {
+    isDark.value = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  applyTheme(isDark.value);
+});
 </script>
 
 <template>
@@ -21,6 +42,13 @@ const settingsOpen = ref(false);
             <RouterLink to="/einstellungen/waehrungen">Währungen</RouterLink>
           </div>
         </div>
+        <button
+          class="theme-toggle"
+          :title="isDark ? 'Light Mode' : 'Dark Mode'"
+          @click="toggleTheme"
+        >
+          {{ isDark ? "\u2600" : "\u263E" }}
+        </button>
       </div>
     </div>
   </nav>
@@ -87,6 +115,21 @@ const settingsOpen = ref(false);
 }
 
 .dropdown-menu a:hover {
-  background: #f9fafb;
+  background: var(--color-bg-soft);
+}
+
+.theme-toggle {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  color: var(--color-muted);
+}
+
+.theme-toggle:hover {
+  color: var(--color-text);
+  background: none;
 }
 </style>
