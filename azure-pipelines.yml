@@ -1,0 +1,106 @@
+# Azure DevOps CI Pipeline
+# TODO: Replace 'YourAgentPool' with your on-premise build server pool name
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  name: 'YourAgentPool'
+
+variables:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '20'
+
+stages:
+  - stage: Lint
+    displayName: 'Lint & Format Check'
+    jobs:
+      - job: lint
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+
+          - script: pip install -e '.[dev]'
+            displayName: 'Install Python dependencies'
+          - script: cd src/frontend && npm ci
+            displayName: 'Install Node dependencies'
+
+          - script: ruff check src/backend/
+            displayName: 'Ruff lint'
+          - script: ruff format --check src/backend/
+            displayName: 'Ruff format check'
+          - script: mypy --config-file=pyproject.toml
+            displayName: 'mypy type check'
+
+          - script: cd src/frontend && npx eslint src/
+            displayName: 'ESLint'
+          - script: cd src/frontend && npx prettier --check src/
+            displayName: 'Prettier check'
+
+  - stage: Test
+    displayName: 'Unit Tests'
+    dependsOn: Lint
+    jobs:
+      - job: backend_tests
+        displayName: 'Backend (pytest)'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+          - script: pip install -e '.[dev]'
+            displayName: 'Install dependencies'
+          - script: python -m pytest tests/backend/ -v --junitxml=test-results/backend.xml
+            displayName: 'Run pytest'
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFiles: 'test-results/backend.xml'
+            condition: always()
+
+      - job: frontend_tests
+        displayName: 'Frontend (vitest)'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+          - script: cd src/frontend && npm ci
+            displayName: 'Install dependencies'
+          - script: cd src/frontend && npx vitest run --reporter=junit --outputFile=../../test-results/frontend.xml
+            displayName: 'Run vitest'
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFiles: 'test-results/frontend.xml'
+            condition: always()
+
+  - stage: E2E
+    displayName: 'E2E Tests'
+    dependsOn: Test
+    jobs:
+      - job: e2e_tests
+        displayName: 'Playwright'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+
+          - script: pip install -e '.[dev]'
+            displayName: 'Install Python dependencies'
+          - script: cd src/frontend && npm ci && npx vite build
+            displayName: 'Build frontend'
+          - script: cd e2e && npm ci && npx playwright install --with-deps chromium
+            displayName: 'Install Playwright'
+
+          - script: |
+              PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 &
+              sleep 3
+              cd e2e && npx playwright test
+            displayName: 'Start server and run E2E tests'

@@ -1,0 +1,26 @@
+{
+  "extraKnownMarketplaces": {
+    "superpowers-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "superpowers@superpowers-marketplace": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -d optional ]; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"NOTE: The optional/ directory still exists. The user may want to run init.sh to include the job queue module and/or set up a git remote. Check the First-Time Setup section in CLAUDE.md for instructions. Ask the user if they want to run init.sh.\"}}'; else echo '{}'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

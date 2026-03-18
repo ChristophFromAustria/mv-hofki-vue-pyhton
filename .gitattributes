@@ -1,0 +1,3 @@
+# Force LF line endings for all text files.
+# This prevents CRLF/LF mismatches when cloning on Windows and mounting into Linux containers.
+* text=auto eol=lf
