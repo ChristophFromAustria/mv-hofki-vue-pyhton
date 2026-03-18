@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { get, post, put, del } from "../lib/api.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import ImageGallery from "../components/ImageGallery.vue";
+import InvoiceModal from "../components/InvoiceModal.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -11,6 +12,8 @@ const instrument = ref(null);
 const loans = ref([]);
 const musicians = ref([]);
 const images = ref([]);
+const currencies = ref([]);
+const invoices = ref([]);
 const showDelete = ref(false);
 
 // Loan form state
@@ -22,12 +25,18 @@ const loanErrors = ref({});
 const showReturnDatePicker = ref(false);
 const returnDate = ref("");
 
+// Invoice modal state
+const showInvoiceModal = ref(false);
+const selectedInvoice = ref(null);
+
 const activeLoan = computed(() => loans.value.find((l) => !l.end_date));
+const defaultCurrencyId = computed(() => instrument.value?.currency_id || null);
 
 async function reload() {
   instrument.value = await get(`/instruments/${route.params.id}`);
   loans.value = await get(`/loans?instrument_id=${route.params.id}`);
   images.value = await get(`/instruments/${route.params.id}/images`);
+  invoices.value = await get(`/instruments/${route.params.id}/invoices`);
 }
 
 async function uploadImage(file) {
@@ -51,7 +60,9 @@ async function deleteImage(imageId) {
 }
 
 onMounted(async () => {
-  musicians.value = (await get("/musicians?limit=200")).items;
+  const [m, c] = await Promise.all([get("/musicians?limit=200"), get("/currencies")]);
+  musicians.value = m.items;
+  currencies.value = c;
   await reload();
 });
 
@@ -96,6 +107,49 @@ async function returnWithDate() {
   await put(`/loans/${activeLoan.value.id}/return`, { end_date: returnDate.value });
   showReturnDatePicker.value = false;
   returnDate.value = "";
+  await reload();
+}
+
+// Invoice functions
+function openInvoice(inv) {
+  selectedInvoice.value = inv;
+  showInvoiceModal.value = true;
+}
+
+function newInvoice() {
+  selectedInvoice.value = null;
+  showInvoiceModal.value = true;
+}
+
+async function handleInvoiceSave(evt) {
+  const base = `/instruments/${route.params.id}/invoices`;
+  try {
+    if (evt.isFileUpload) {
+      await fetch(`/api/v1${base}/${evt.id}/file`, {
+        method: "POST",
+        body: evt.file,
+      });
+    } else if (evt.isNew) {
+      await post(base, evt.data);
+    } else {
+      await put(`${base}/${evt.id}`, evt.data);
+    }
+    await reload();
+    if (!evt.isFileUpload) {
+      showInvoiceModal.value = false;
+    } else {
+      // Refresh modal data
+      selectedInvoice.value = invoices.value.find((i) => i.id === evt.id) || null;
+    }
+  } catch (e) {
+    alert("Fehler: " + e.message);
+  }
+}
+
+async function handleInvoiceDelete(invoiceId) {
+  if (!confirm("Rechnung wirklich löschen?")) return;
+  await del(`/instruments/${route.params.id}/invoices/${invoiceId}`);
+  showInvoiceModal.value = false;
   await reload();
 }
 </script>
@@ -225,6 +279,56 @@ async function returnWithDate() {
       </div>
     </div>
 
+    <!-- Invoices section -->
+    <div class="card" style="margin-bottom: 1.5rem">
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1rem;
+        "
+      >
+        <h2 style="font-size: 1.1rem; margin: 0">Rechnungen</h2>
+        <button class="btn-sm" @click="newInvoice">Neue Rechnung</button>
+      </div>
+
+      <div v-if="!invoices.length" style="color: var(--color-muted)">
+        Keine Rechnungen vorhanden.
+      </div>
+
+      <table v-else>
+        <thead>
+          <tr>
+            <th>Nr.</th>
+            <th>Datum</th>
+            <th>Aussteller</th>
+            <th>Betrag</th>
+            <th>Datei</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="inv in invoices"
+            :key="inv.id"
+            style="cursor: pointer"
+            @click="openInvoice(inv)"
+          >
+            <td>{{ inv.invoice_nr || "—" }}</td>
+            <td>{{ inv.date_issued || "—" }}</td>
+            <td>{{ inv.invoice_issuer || "—" }}</td>
+            <td>
+              {{ inv.amount != null ? `${inv.amount} ${inv.currency?.abbreviation || ""}` : "—" }}
+            </td>
+            <td>
+              <span v-if="inv.file_url" class="badge badge-green">Ja</span>
+              <span v-else class="badge badge-gray">Nein</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- Loan history -->
     <div v-if="loans.length" class="card">
       <h2 style="font-size: 1.1rem; margin-bottom: 1rem">Leihhistorie</h2>
@@ -262,6 +366,17 @@ async function returnWithDate() {
       message="Soll dieses Instrument wirklich gelöscht werden?"
       @confirm="remove"
       @cancel="showDelete = false"
+    />
+
+    <InvoiceModal
+      :open="showInvoiceModal"
+      :invoice="selectedInvoice"
+      :currencies="currencies"
+      :instrument-id="instrument.id"
+      :default-currency-id="defaultCurrencyId"
+      @save="handleInvoiceSave"
+      @delete="handleInvoiceDelete"
+      @close="showInvoiceModal = false"
     />
   </div>
 </template>
