@@ -25,6 +25,7 @@ const columns = [
   { key: "manufacturer", label: "Hersteller" },
   { key: "serial_nr", label: "Seriennr." },
   { key: "owner", label: "Eigentümer" },
+  { key: "status_label", label: "Status" },
 ];
 
 async function load() {
@@ -39,6 +40,8 @@ async function load() {
     items.value = data.items.map((i) => ({
       ...i,
       type_label: i.instrument_type?.label || "",
+      status_label: i.active_loan ? "Ausgeliehen" : "Verfügbar",
+      is_extern: i.active_loan?.is_extern || false,
     }));
     total.value = data.total;
   } finally {
@@ -114,14 +117,28 @@ function nextPage() {
     <div v-else class="instrument-grid">
       <div v-for="item in items" :key="item.id" class="instrument-card" @click="goTo(item)">
         <div class="instrument-card-img">
-          <InstrumentIcon :label-short="item.instrument_type?.label_short || '?'" :size="100" />
+          <img
+            v-if="item.profile_image_url"
+            :src="item.profile_image_url"
+            style="width: 100%; height: 120px; object-fit: cover"
+          />
+          <InstrumentIcon
+            v-else
+            :label-short="item.instrument_type?.label_short || '?'"
+            :size="100"
+          />
         </div>
         <div class="instrument-card-body">
           <h3>{{ item.instrument_type?.label }}</h3>
           <p>#{{ item.inventory_nr }} {{ item.manufacturer ? "· " + item.manufacturer : "" }}</p>
         </div>
         <div class="instrument-card-footer">
-          <span class="badge badge-gray">{{ item.owner }}</span>
+          <span :class="item.active_loan ? 'badge badge-green' : 'badge badge-gray'">
+            {{ item.active_loan ? "Ausgeliehen" : "Verfügbar" }}
+          </span>
+          <span v-if="item.is_extern" class="badge" style="background: #fff7ed; color: #c2410c">
+            Extern
+          </span>
         </div>
       </div>
     </div>

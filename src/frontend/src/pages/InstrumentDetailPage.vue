@@ -3,12 +3,14 @@ import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { get, post, put, del } from "../lib/api.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import ImageGallery from "../components/ImageGallery.vue";
 
 const route = useRoute();
 const router = useRouter();
 const instrument = ref(null);
 const loans = ref([]);
 const musicians = ref([]);
+const images = ref([]);
 const showDelete = ref(false);
 
 // Loan form state
@@ -25,6 +27,27 @@ const activeLoan = computed(() => loans.value.find((l) => !l.end_date));
 async function reload() {
   instrument.value = await get(`/instruments/${route.params.id}`);
   loans.value = await get(`/loans?instrument_id=${route.params.id}`);
+  images.value = await get(`/instruments/${route.params.id}/images`);
+}
+
+async function uploadImage(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  await fetch(`/api/v1/instruments/${route.params.id}/images`, {
+    method: "POST",
+    body: formData,
+  });
+  await reload();
+}
+
+async function setProfile(imageId) {
+  await put(`/instruments/${route.params.id}/images/${imageId}/profile`);
+  await reload();
+}
+
+async function deleteImage(imageId) {
+  await del(`/instruments/${route.params.id}/images/${imageId}`);
+  await reload();
 }
 
 onMounted(async () => {
@@ -87,6 +110,17 @@ async function returnWithDate() {
         </router-link>
         <button class="btn-danger" @click="showDelete = true">Löschen</button>
       </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 1.5rem">
+      <ImageGallery
+        :images="images"
+        :can-upload="true"
+        :can-manage="true"
+        @upload="uploadImage"
+        @set-profile="setProfile"
+        @delete="deleteImage"
+      />
     </div>
 
     <div class="card" style="margin-bottom: 1.5rem">
