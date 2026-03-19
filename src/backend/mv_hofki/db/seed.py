@@ -5,8 +5,11 @@ from __future__ import annotations
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.models.currency import Currency
+from mv_hofki.models.general_item_type import GeneralItemType
 from mv_hofki.models.instrument_type import InstrumentType
+from mv_hofki.models.sheet_music_genre import SheetMusicGenre
 
 INSTRUMENT_TYPES = [
     {"label": "Querflöte", "label_short": "FL"},
@@ -38,6 +41,34 @@ CURRENCIES = [
     {"label": "Pfund", "abbreviation": "£"},
 ]
 
+CLOTHING_TYPES = [
+    {"label": "Hut"},
+    {"label": "Jacke"},
+    {"label": "Hose"},
+    {"label": "Weste"},
+    {"label": "Schuhe"},
+    {"label": "Bluse"},
+    {"label": "Rock"},
+    {"label": "Strümpfe"},
+]
+
+SHEET_MUSIC_GENRES = [
+    {"label": "Marsch"},
+    {"label": "Polka"},
+    {"label": "Walzer"},
+    {"label": "Konzertwerk"},
+    {"label": "Kirchenmusik"},
+]
+
+GENERAL_ITEM_TYPES = [
+    {"label": "Lautsprecher"},
+    {"label": "Kabel"},
+    {"label": "Notenständer"},
+    {"label": "Mischpult"},
+    {"label": "Mikrofon"},
+    {"label": "Verstärker"},
+]
+
 
 async def seed_data(session: AsyncSession) -> None:
     """Insert seed data if tables are empty."""
@@ -48,5 +79,17 @@ async def seed_data(session: AsyncSession) -> None:
     result = await session.execute(select(Currency).limit(1))
     if result.scalar_one_or_none() is None:
         await session.execute(insert(Currency), CURRENCIES)
+
+    result = await session.execute(select(ClothingType).limit(1))
+    if result.scalar_one_or_none() is None:
+        await session.execute(insert(ClothingType), CLOTHING_TYPES)
+
+    result = await session.execute(select(SheetMusicGenre).limit(1))
+    if result.scalar_one_or_none() is None:
+        await session.execute(insert(SheetMusicGenre), SHEET_MUSIC_GENRES)
+
+    result = await session.execute(select(GeneralItemType).limit(1))
+    if result.scalar_one_or_none() is None:
+        await session.execute(insert(GeneralItemType), GENERAL_ITEM_TYPES)
 
     await session.commit()
