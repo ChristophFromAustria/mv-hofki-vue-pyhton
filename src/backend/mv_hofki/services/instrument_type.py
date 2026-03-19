@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mv_hofki.models.instrument import Instrument
+from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.schemas.instrument_type import InstrumentTypeCreate, InstrumentTypeUpdate
 
@@ -47,7 +47,7 @@ async def update(
 async def delete(session: AsyncSession, type_id: int) -> None:
     instrument_type = await get_by_id(session, type_id)
     result = await session.execute(
-        select(func.count()).where(Instrument.instrument_type_id == type_id)
+        select(func.count()).where(InstrumentDetail.instrument_type_id == type_id)
     )
     if result.scalar_one() > 0:
         raise HTTPException(

@@ -1,4 +1,4 @@
-"""InstrumentImage service."""
+"""ItemImage service."""
 
 from __future__ import annotations
 
@@ -10,31 +10,29 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.core.config import settings
-from mv_hofki.models.instrument_image import InstrumentImage
+from mv_hofki.models.item_image import ItemImage
 
-UPLOAD_DIR = Path(settings.PROJECT_ROOT) / "data" / "uploads" / "instruments"
+UPLOAD_DIR = Path(settings.PROJECT_ROOT) / "data" / "uploads" / "images"
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-def _instrument_dir(instrument_id: int) -> Path:
-    d = UPLOAD_DIR / str(instrument_id)
+def _item_dir(item_id: int) -> Path:
+    d = UPLOAD_DIR / str(item_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-async def get_all(session: AsyncSession, instrument_id: int) -> list[InstrumentImage]:
+async def get_all(session: AsyncSession, item_id: int) -> list[ItemImage]:
     result = await session.execute(
-        select(InstrumentImage)
-        .where(InstrumentImage.instrument_id == instrument_id)
-        .order_by(InstrumentImage.is_profile.desc(), InstrumentImage.created_at)
+        select(ItemImage)
+        .where(ItemImage.item_id == item_id)
+        .order_by(ItemImage.is_profile.desc(), ItemImage.created_at)
     )
     return list(result.scalars().all())
 
 
-async def upload(
-    session: AsyncSession, instrument_id: int, file: UploadFile
-) -> InstrumentImage:
+async def upload(session: AsyncSession, item_id: int, file: UploadFile) -> ItemImage:
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Ungültiger Dateityp")
 
@@ -44,15 +42,15 @@ async def upload(
 
     ext = Path(file.filename or "image.jpg").suffix or ".jpg"
     filename = f"{uuid.uuid4().hex}{ext}"
-    dest = _instrument_dir(instrument_id) / filename
+    dest = _item_dir(item_id) / filename
     dest.write_bytes(content)
 
     # If this is the first image, make it the profile
-    existing = await get_all(session, instrument_id)
+    existing = await get_all(session, item_id)
     is_profile = len(existing) == 0
 
-    image = InstrumentImage(
-        instrument_id=instrument_id,
+    image = ItemImage(
+        item_id=item_id,
         filename=filename,
         is_profile=is_profile,
     )
@@ -62,17 +60,13 @@ async def upload(
     return image
 
 
-async def set_profile(
-    session: AsyncSession, instrument_id: int, image_id: int
-) -> InstrumentImage:
-    # Unset all profile flags for this instrument
+async def set_profile(session: AsyncSession, item_id: int, image_id: int) -> ItemImage:
+    # Unset all profile flags for this item
     await session.execute(
-        update(InstrumentImage)
-        .where(InstrumentImage.instrument_id == instrument_id)
-        .values(is_profile=False)
+        update(ItemImage).where(ItemImage.item_id == item_id).values(is_profile=False)
     )
-    image = await session.get(InstrumentImage, image_id)
-    if not image or image.instrument_id != instrument_id:
+    image = await session.get(ItemImage, image_id)
+    if not image or image.item_id != item_id:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden")
     image.is_profile = True
     await session.commit()
@@ -80,13 +74,13 @@ async def set_profile(
     return image
 
 
-async def delete(session: AsyncSession, instrument_id: int, image_id: int) -> None:
-    image = await session.get(InstrumentImage, image_id)
-    if not image or image.instrument_id != instrument_id:
+async def delete(session: AsyncSession, item_id: int, image_id: int) -> None:
+    image = await session.get(ItemImage, image_id)
+    if not image or image.item_id != item_id:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden")
 
     # Delete file
-    file_path = _instrument_dir(instrument_id) / image.filename
+    file_path = _item_dir(item_id) / image.filename
     if file_path.exists():
         file_path.unlink()
 
@@ -96,7 +90,7 @@ async def delete(session: AsyncSession, instrument_id: int, image_id: int) -> No
 
     # If deleted image was profile, promote next image
     if was_profile:
-        remaining = await get_all(session, instrument_id)
+        remaining = await get_all(session, item_id)
         if remaining:
             remaining[0].is_profile = True
             await session.commit()
