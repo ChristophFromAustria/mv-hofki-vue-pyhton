@@ -25,12 +25,13 @@ def _to_read(inv) -> InstrumentInvoiceRead:
         file_url = f"/uploads/invoices/{inv.instrument_id}/{inv.filename}"
     return InstrumentInvoiceRead(
         id=inv.id,
+        invoice_nr=inv.invoice_nr,
         instrument_id=inv.instrument_id,
+        title=inv.title,
         amount=inv.amount,
         currency_id=inv.currency_id,
         date_issued=inv.date_issued,
         description=inv.description,
-        invoice_nr=inv.invoice_nr,
         invoice_issuer=inv.invoice_issuer,
         issuer_address=inv.issuer_address,
         filename=inv.filename,

@@ -125,22 +125,43 @@ async function handleInvoiceSave(evt) {
   const base = `/instruments/${route.params.id}/invoices`;
   try {
     if (evt.isFileUpload) {
+      // File replace on existing invoice
       await fetch(`/api/v1${base}/${evt.id}/file`, {
         method: "POST",
         body: evt.file,
       });
-    } else if (evt.isNew) {
-      await post(base, evt.data);
+      await reload();
+      selectedInvoice.value = invoices.value.find((i) => i.id === evt.id) || null;
+      return;
+    }
+
+    let created;
+    if (evt.isNew) {
+      // Step 1: create the invoice record
+      created = await post(base, evt.data);
+      // Step 2: upload file if one was selected
+      if (evt.pendingFile) {
+        const formData = new FormData();
+        formData.append("file", evt.pendingFile);
+        await fetch(`/api/v1${base}/${created.id}/file`, {
+          method: "POST",
+          body: formData,
+        });
+      }
     } else {
       await put(`${base}/${evt.id}`, evt.data);
+      // Upload pending file on edit too
+      if (evt.pendingFile) {
+        const formData = new FormData();
+        formData.append("file", evt.pendingFile);
+        await fetch(`/api/v1${base}/${evt.id}/file`, {
+          method: "POST",
+          body: formData,
+        });
+      }
     }
     await reload();
-    if (!evt.isFileUpload) {
-      showInvoiceModal.value = false;
-    } else {
-      // Refresh modal data
-      selectedInvoice.value = invoices.value.find((i) => i.id === evt.id) || null;
-    }
+    showInvoiceModal.value = false;
   } catch (e) {
     alert("Fehler: " + e.message);
   }
@@ -301,8 +322,8 @@ async function handleInvoiceDelete(invoiceId) {
         <thead>
           <tr>
             <th>Nr.</th>
+            <th>Bezeichnung</th>
             <th>Datum</th>
-            <th>Aussteller</th>
             <th>Betrag</th>
             <th>Datei</th>
           </tr>
@@ -314,12 +335,10 @@ async function handleInvoiceDelete(invoiceId) {
             style="cursor: pointer"
             @click="openInvoice(inv)"
           >
-            <td>{{ inv.invoice_nr || "—" }}</td>
-            <td>{{ inv.date_issued || "—" }}</td>
-            <td>{{ inv.invoice_issuer || "—" }}</td>
-            <td>
-              {{ inv.amount != null ? `${inv.amount} ${inv.currency?.abbreviation || ""}` : "—" }}
-            </td>
+            <td>{{ inv.invoice_nr }}</td>
+            <td>{{ inv.title }}</td>
+            <td>{{ inv.date_issued }}</td>
+            <td>{{ inv.amount }} {{ inv.currency?.abbreviation || "" }}</td>
             <td>
               <span v-if="inv.file_url" class="badge badge-green">Ja</span>
               <span v-else class="badge badge-gray">Nein</span>

@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -65,7 +65,18 @@ async def create(
     instrument_id: int,
     data: InstrumentInvoiceCreate,
 ) -> InstrumentInvoice:
-    invoice = InstrumentInvoice(instrument_id=instrument_id, **data.model_dump())
+    # Auto-assign invoice_nr (per instrument)
+    result = await session.execute(
+        select(func.max(InstrumentInvoice.invoice_nr)).where(
+            InstrumentInvoice.instrument_id == instrument_id
+        )
+    )
+    max_nr = result.scalar_one_or_none() or 0
+    invoice = InstrumentInvoice(
+        instrument_id=instrument_id,
+        invoice_nr=max_nr + 1,
+        **data.model_dump(),
+    )
     session.add(invoice)
     await session.commit()
     await session.refresh(invoice, attribute_names=["currency"])
