@@ -1,31 +1,32 @@
 import { createRouter, createWebHistory } from "vue-router";
 
+function categoryRoutes(category, pathBase) {
+  return [
+    {
+      path: pathBase,
+      name: `${category}-list`,
+      component: () => import("./pages/ItemListPage.vue"),
+      props: () => ({ category }),
+    },
+    {
+      path: `${pathBase}/:id`,
+      name: `${category}-detail`,
+      component: () => import("./pages/ItemDetailPage.vue"),
+      props: (route) => ({ category, id: route.params.id }),
+    },
+  ];
+}
+
 const routes = [
   {
     path: "/",
     name: "dashboard",
     component: () => import("./pages/DashboardPage.vue"),
   },
-  {
-    path: "/instrumente",
-    name: "instruments",
-    component: () => import("./pages/InstrumentListPage.vue"),
-  },
-  {
-    path: "/instrumente/neu",
-    name: "instrument-create",
-    component: () => import("./pages/InstrumentFormPage.vue"),
-  },
-  {
-    path: "/instrumente/:id",
-    name: "instrument-detail",
-    component: () => import("./pages/InstrumentDetailPage.vue"),
-  },
-  {
-    path: "/instrumente/:id/bearbeiten",
-    name: "instrument-edit",
-    component: () => import("./pages/InstrumentFormPage.vue"),
-  },
+  ...categoryRoutes("instrument", "/instrumente"),
+  ...categoryRoutes("clothing", "/kleidung"),
+  ...categoryRoutes("sheet_music", "/noten"),
+  ...categoryRoutes("general_item", "/allgemein"),
   {
     path: "/musiker",
     name: "musicians",
@@ -52,9 +53,24 @@ const routes = [
     component: () => import("./pages/LoanListPage.vue"),
   },
   {
+    path: "/rechnungen",
+    name: "invoices",
+    component: () => import("./pages/InvoiceListPage.vue"),
+  },
+  {
     path: "/einstellungen/instrumententypen",
     name: "instrument-types",
     component: () => import("./pages/InstrumentTypeListPage.vue"),
+  },
+  {
+    path: "/einstellungen/kleidungstypen",
+    name: "clothing-types",
+    component: () => import("./pages/ClothingTypeListPage.vue"),
+  },
+  {
+    path: "/einstellungen/notengenres",
+    name: "sheet-music-genres",
+    component: () => import("./pages/SheetMusicGenreListPage.vue"),
   },
   {
     path: "/einstellungen/waehrungen",

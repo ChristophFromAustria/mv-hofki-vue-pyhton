@@ -33,12 +33,18 @@ onMounted(() => {
       <div class="links">
         <RouterLink to="/">Dashboard</RouterLink>
         <RouterLink to="/instrumente">Instrumente</RouterLink>
+        <RouterLink to="/kleidung">Kleidung</RouterLink>
+        <RouterLink to="/noten">Noten</RouterLink>
+        <RouterLink to="/allgemein">Allgemein</RouterLink>
         <RouterLink to="/musiker">Musiker</RouterLink>
         <RouterLink to="/leihen">Leihregister</RouterLink>
+        <RouterLink to="/rechnungen">Rechnungen</RouterLink>
         <div class="dropdown" @mouseenter="settingsOpen = true" @mouseleave="settingsOpen = false">
           <span class="dropdown-trigger">Einstellungen</span>
           <div v-show="settingsOpen" class="dropdown-menu">
             <RouterLink to="/einstellungen/instrumententypen">Instrumententypen</RouterLink>
+            <RouterLink to="/einstellungen/kleidungstypen">Kleidungstypen</RouterLink>
+            <RouterLink to="/einstellungen/notengenres">Notengenres</RouterLink>
             <RouterLink to="/einstellungen/waehrungen">Währungen</RouterLink>
             <a href="//localhost:7681" target="_blank" class="terminal-link">Terminal</a>
           </div>

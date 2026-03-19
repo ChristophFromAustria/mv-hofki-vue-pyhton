@@ -1,0 +1,61 @@
+export const CATEGORIES = {
+  instrument: {
+    key: "instrument",
+    prefix: "I",
+    label: "Instrumente",
+    labelSingular: "Instrument",
+    routeBase: "/instrumente",
+    apiCategory: "instrument",
+    hasLoans: true,
+    hasInvoices: true,
+    labelField: "dropdown",
+    labelFieldName: "Typ",
+    typeEndpoint: "/instrument-types",
+    typeIdField: "instrument_type_id",
+  },
+  clothing: {
+    key: "clothing",
+    prefix: "K",
+    label: "Kleidung",
+    labelSingular: "Kleidung",
+    routeBase: "/kleidung",
+    apiCategory: "clothing",
+    hasLoans: true,
+    hasInvoices: true,
+    labelField: "dropdown",
+    labelFieldName: "Typ",
+    typeEndpoint: "/clothing-types",
+    typeIdField: "clothing_type_id",
+  },
+  sheet_music: {
+    key: "sheet_music",
+    prefix: "N",
+    label: "Noten",
+    labelSingular: "Notenwerk",
+    routeBase: "/noten",
+    apiCategory: "sheet_music",
+    hasLoans: false,
+    hasInvoices: false,
+    labelField: "text",
+    labelFieldName: "Titel",
+    hasStorageLocation: true,
+  },
+  general_item: {
+    key: "general_item",
+    prefix: "A",
+    label: "Allgemein",
+    labelSingular: "Gegenstand",
+    routeBase: "/allgemein",
+    apiCategory: "general_item",
+    hasLoans: true,
+    hasInvoices: true,
+    labelField: "text",
+    labelFieldName: "Bezeichnung",
+    hasStorageLocation: true,
+  },
+};
+
+export function formatDisplayNr(category, inventoryNr) {
+  const cat = CATEGORIES[category];
+  return `${cat.prefix}-${String(inventoryNr).padStart(3, "0")}`;
+}
