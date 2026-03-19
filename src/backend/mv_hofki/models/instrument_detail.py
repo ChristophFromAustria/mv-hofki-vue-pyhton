@@ -25,7 +25,6 @@ class InstrumentDetail(Base):
     instrument_type_id: Mapped[int] = mapped_column(
         ForeignKey("instrument_types.id"), nullable=False
     )
-    label_addition: Mapped[str | None] = mapped_column(String(100))
     serial_nr: Mapped[str | None] = mapped_column(String(100))
     construction_year: Mapped[int | None] = mapped_column(Integer)
     distributor: Mapped[str | None] = mapped_column(String(100))

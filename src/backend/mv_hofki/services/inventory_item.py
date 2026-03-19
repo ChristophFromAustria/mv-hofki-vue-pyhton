@@ -13,7 +13,6 @@ from sqlalchemy.orm import joinedload
 
 from mv_hofki.core.config import settings
 from mv_hofki.models.clothing_detail import ClothingDetail
-from mv_hofki.models.general_item_detail import GeneralItemDetail
 from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.item_image import ItemImage
@@ -31,12 +30,11 @@ CATEGORY_PREFIXES = {
 LOANABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 INVOICEABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 
-CATEGORY_DETAIL_MAP: dict[str, tuple[type, set[str]]] = {
+CATEGORY_DETAIL_MAP: dict[str, tuple[type | None, set[str]]] = {
     "instrument": (
         InstrumentDetail,
         {
             "instrument_type_id",
-            "label_addition",
             "serial_nr",
             "construction_year",
             "distributor",
@@ -49,7 +47,7 @@ CATEGORY_DETAIL_MAP: dict[str, tuple[type, set[str]]] = {
         SheetMusicDetail,
         {"composer", "arranger", "difficulty", "genre_id"},
     ),
-    "general_item": (GeneralItemDetail, {"general_item_type_id"}),
+    "general_item": (None, set()),
 }
 
 _DETAIL_JOINEDLOAD = {
@@ -61,9 +59,6 @@ _DETAIL_JOINEDLOAD = {
     ),
     "sheet_music": lambda q: q.options(
         joinedload(SheetMusicDetail.genre),
-    ),
-    "general_item": lambda q: q.options(
-        joinedload(GeneralItemDetail.general_item_type),
     ),
 }
 
@@ -125,6 +120,8 @@ async def _enrich(session: AsyncSession, items: list[InventoryItem]) -> None:
 async def _get_detail(session: AsyncSession, item_id: int, category: str) -> Any:
     """Fetch the detail record for an item."""
     detail_model, _ = CATEGORY_DETAIL_MAP[category]
+    if detail_model is None:
+        return None
     query: Any = select(detail_model).where(detail_model.item_id == item_id)  # type: ignore[attr-defined]
     if category in _DETAIL_JOINEDLOAD:
         query = _DETAIL_JOINEDLOAD[category](query)
@@ -163,8 +160,6 @@ def _build_read_dict(item: InventoryItem, detail: Any) -> dict[str, Any]:
             d["clothing_type"] = getattr(detail, "clothing_type", None)
         elif item.category == "sheet_music":
             d["genre"] = getattr(detail, "genre", None)
-        elif item.category == "general_item":
-            d["general_item_type"] = getattr(detail, "general_item_type", None)
     return d
 
 
@@ -187,10 +182,11 @@ async def create(session: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
     session.add(item)
     await session.flush()
 
-    # Create detail record
+    # Create detail record (if the category has one)
     detail_model, _ = CATEGORY_DETAIL_MAP[category]
-    detail = detail_model(item_id=item.id, **detail_fields)
-    session.add(detail)
+    if detail_model is not None:
+        detail = detail_model(item_id=item.id, **detail_fields)
+        session.add(detail)
     await session.commit()
 
     await session.refresh(item)
@@ -282,13 +278,14 @@ async def update(
     # Update detail fields
     if detail_fields:
         detail_model, _ = CATEGORY_DETAIL_MAP[item.category]
-        detail_result = await session.execute(  # type: ignore[var-annotated]
-            select(detail_model).where(detail_model.item_id == item_id)  # type: ignore[attr-defined]
-        )
-        detail = detail_result.scalar_one_or_none()
-        if detail:
-            for key, value in detail_fields.items():
-                setattr(detail, key, value)
+        if detail_model is not None:
+            detail_result = await session.execute(  # type: ignore[var-annotated]
+                select(detail_model).where(detail_model.item_id == item_id)  # type: ignore[attr-defined]
+            )
+            detail = detail_result.scalar_one_or_none()
+            if detail:
+                for key, value in detail_fields.items():
+                    setattr(detail, key, value)
 
     await session.commit()
     await session.refresh(item)

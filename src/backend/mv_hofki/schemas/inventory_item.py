@@ -8,7 +8,6 @@ from pydantic import BaseModel, model_validator
 
 from mv_hofki.schemas.clothing_type import ClothingTypeRead
 from mv_hofki.schemas.currency import CurrencyRead
-from mv_hofki.schemas.general_item_type import GeneralItemTypeRead
 from mv_hofki.schemas.instrument_type import InstrumentTypeRead
 from mv_hofki.schemas.sheet_music_genre import SheetMusicGenreRead
 
@@ -57,7 +56,6 @@ class ItemCreateBase(BaseModel):
 class InstrumentItemCreate(ItemCreateBase):
     category: str = "instrument"
     instrument_type_id: int
-    label_addition: str | None = None
     serial_nr: str | None = None
     construction_year: int | None = None
     distributor: str | None = None
@@ -82,7 +80,6 @@ class SheetMusicItemCreate(ItemCreateBase):
 
 class GeneralItemCreate(ItemCreateBase):
     category: str = "general_item"
-    general_item_type_id: int
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +99,6 @@ class ItemUpdateBase(BaseModel):
 
 class InstrumentItemUpdate(ItemUpdateBase):
     instrument_type_id: int | None = None
-    label_addition: str | None = None
     serial_nr: str | None = None
     construction_year: int | None = None
     distributor: str | None = None
@@ -124,7 +120,7 @@ class SheetMusicItemUpdate(ItemUpdateBase):
 
 
 class GeneralItemUpdate(ItemUpdateBase):
-    general_item_type_id: int | None = None
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +151,6 @@ class ItemRead(BaseModel):
 
 class InstrumentItemRead(ItemRead):
     instrument_type_id: int
-    label_addition: str | None = None
     serial_nr: str | None = None
     construction_year: int | None = None
     distributor: str | None = None
@@ -180,5 +175,4 @@ class SheetMusicItemRead(ItemRead):
 
 
 class GeneralItemRead(ItemRead):
-    general_item_type_id: int
-    general_item_type: GeneralItemTypeRead | None = None
+    pass
