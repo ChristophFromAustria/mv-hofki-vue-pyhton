@@ -97,3 +97,26 @@ async def test_delete_musician_with_active_loan_rejected(client, setup_data, loa
     """Cannot delete a musician who has an active loan."""
     resp = await client.delete(f"/api/v1/musicians/{setup_data['musician_id']}")
     assert resp.status_code == 409
+
+
+async def test_create_loan_for_sheet_music_rejected(client, setup_data):
+    """Sheet music items cannot be loaned → 400."""
+    sheet_music = (
+        await client.post(
+            "/api/v1/items",
+            json={
+                "category": "sheet_music",
+                "label": "Festmarsch",
+                "owner": "Verein",
+            },
+        )
+    ).json()
+    resp = await client.post(
+        "/api/v1/loans",
+        json={
+            "item_id": sheet_music["id"],
+            "musician_id": setup_data["musician_id"],
+            "start_date": "2026-03-01",
+        },
+    )
+    assert resp.status_code == 400

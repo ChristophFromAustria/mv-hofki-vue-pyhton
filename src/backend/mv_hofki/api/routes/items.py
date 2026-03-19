@@ -81,15 +81,25 @@ async def list_items(
 
 @router.post("", status_code=201)
 async def create_item(body: dict[str, Any], db: AsyncSession = Depends(get_db)):
+    from fastapi import HTTPException
+    from pydantic import ValidationError
+
     category = body.get("category")
     if not category or category not in _CREATE_SCHEMAS:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {category}")
 
     # Validate with category-specific schema
     schema_cls = _CREATE_SCHEMAS[category]
-    validated = schema_cls(**body)
+    try:
+        validated = schema_cls(**body)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {"loc": e["loc"], "msg": e["msg"], "type": e["type"]}
+                for e in exc.errors()
+            ],
+        ) from exc
     result = await item_service.create(db, validated.model_dump())
     return _to_read(result)
 
