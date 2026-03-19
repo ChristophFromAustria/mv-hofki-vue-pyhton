@@ -24,15 +24,17 @@ pre-commit install
 
 # Install ttyd (web terminal)
 if ! command -v ttyd &>/dev/null; then
-  curl -sL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 -o /usr/local/bin/ttyd
-  chmod +x /usr/local/bin/ttyd
+  sudo curl -sL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 -o /usr/local/bin/ttyd
+  sudo chmod +x /usr/local/bin/ttyd
 fi
-
-# Superpowers plugin is enabled via .claude/settings.json (extraKnownMarketplaces + enabledPlugins).
-# No CLI install needed — Claude Code picks it up from project settings on session start.
 
 # Source aliases in bashrc (use absolute path since $containerWorkspaceFolder is not a shell variable)
 WORKSPACE="$(pwd)"
 if ! grep -q 'aliases.sh' ~/.bashrc 2>/dev/null; then
   echo "[ -f ${WORKSPACE}/.devcontainer/aliases.sh ] && source ${WORKSPACE}/.devcontainer/aliases.sh" >> ~/.bashrc
 fi
+
+# Superpowers plugin is enabled via .claude/settings.json (extraKnownMarketplaces + enabledPlugins).
+# # No CLI install needed — Claude Code picks it up from project settings on session start.
+
+

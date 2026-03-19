@@ -17,3 +17,7 @@ if command -v ttyd &>/dev/null; then
   tmux new-session -d -s terminal \
     "ttyd --port 7681 --writable bash"
 fi
+
+claude plugin marketplace add obra/superpowers-marketplace
+claude plugin install -s local superpowers@superpowers-marketplace
+

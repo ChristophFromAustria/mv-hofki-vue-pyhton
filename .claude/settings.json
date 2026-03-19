@@ -1,15 +1,4 @@
 {
-  "extraKnownMarketplaces": {
-    "superpowers-marketplace": {
-      "source": {
-        "source": "github",
-        "repo": "obra/superpowers"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "superpowers@superpowers-marketplace": true
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -22,5 +11,6 @@
         ]
       }
     ]
+    
   }
 }
