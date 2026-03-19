@@ -1,4 +1,4 @@
-"""InstrumentInvoice Pydantic schemas."""
+"""ItemInvoice Pydantic schemas."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from mv_hofki.schemas.currency import CurrencyRead
 
 
-class InstrumentInvoiceCreate(BaseModel):
+class ItemInvoiceCreate(BaseModel):
     title: str
     amount: float
     currency_id: int
@@ -19,7 +19,7 @@ class InstrumentInvoiceCreate(BaseModel):
     issuer_address: str | None = None
 
 
-class InstrumentInvoiceUpdate(BaseModel):
+class ItemInvoiceUpdate(BaseModel):
     title: str | None = None
     amount: float | None = None
     currency_id: int | None = None
@@ -29,10 +29,10 @@ class InstrumentInvoiceUpdate(BaseModel):
     issuer_address: str | None = None
 
 
-class InstrumentInvoiceRead(BaseModel):
+class ItemInvoiceRead(BaseModel):
     id: int
     invoice_nr: int
-    instrument_id: int
+    item_id: int
     title: str
     amount: float
     currency_id: int

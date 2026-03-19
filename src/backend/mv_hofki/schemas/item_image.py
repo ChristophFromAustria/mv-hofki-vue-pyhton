@@ -1,4 +1,4 @@
-"""InstrumentImage Pydantic schemas."""
+"""ItemImage Pydantic schemas."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class InstrumentImageRead(BaseModel):
+class ItemImageRead(BaseModel):
     id: int
-    instrument_id: int
+    item_id: int
     filename: str
     is_profile: bool
     created_at: datetime
