@@ -38,6 +38,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.12"
 mypy_path = "src/backend"
@@ -45,6 +48,7 @@ packages = ["mv_hofki"]
 strict = false
 warn_return_any = true
 warn_unused_configs = true
+exclude = ["alembic/"]
 
 [[tool.mypy.overrides]]
 module = ["alembic.*"]
