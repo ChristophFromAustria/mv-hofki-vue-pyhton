@@ -5,7 +5,7 @@ import pytest
 
 @pytest.fixture
 async def setup_data(client):
-    """Create currency, type, instrument, and musician for loan tests."""
+    """Create currency, type, item, and musician for loan tests."""
     currency = (
         await client.post(
             "/api/v1/currencies", json={"label": "Euro", "abbreviation": "€"}
@@ -16,10 +16,12 @@ async def setup_data(client):
             "/api/v1/instrument-types", json={"label": "Trompete", "label_short": "TR"}
         )
     ).json()
-    instrument = (
+    item = (
         await client.post(
-            "/api/v1/instruments",
+            "/api/v1/items",
             json={
+                "category": "instrument",
+                "label": "Trompete",
                 "owner": "Verein",
                 "currency_id": currency["id"],
                 "instrument_type_id": itype["id"],
@@ -32,7 +34,7 @@ async def setup_data(client):
             json={"first_name": "Max", "last_name": "Muster", "is_extern": False},
         )
     ).json()
-    return {"instrument_id": instrument["id"], "musician_id": musician["id"]}
+    return {"item_id": item["id"], "musician_id": musician["id"]}
 
 
 @pytest.fixture
@@ -53,7 +55,7 @@ async def test_create_loan(client, setup_data):
     assert resp.status_code == 201
     data = resp.json()
     assert data["end_date"] is None
-    assert data["instrument"]["inventory_nr"] == 1
+    assert data["item"]["inventory_nr"] == 1
 
 
 async def test_duplicate_active_loan_rejected(client, setup_data, loan):
@@ -64,7 +66,7 @@ async def test_duplicate_active_loan_rejected(client, setup_data, loan):
     assert resp.status_code == 409
 
 
-async def test_return_instrument(client, loan):
+async def test_return_item(client, loan):
     resp = await client.put(f"/api/v1/loans/{loan['id']}/return")
     assert resp.status_code == 200
     assert resp.json()["end_date"] is not None

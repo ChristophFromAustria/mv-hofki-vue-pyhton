@@ -1,4 +1,4 @@
-"""InstrumentImage API tests."""
+"""ItemImage API tests."""
 
 import io
 
@@ -6,7 +6,7 @@ import pytest
 
 
 @pytest.fixture
-async def instrument(client):
+async def item(client):
     currency = (
         await client.post(
             "/api/v1/currencies", json={"label": "Euro", "abbreviation": "€"}
@@ -18,8 +18,10 @@ async def instrument(client):
         )
     ).json()
     resp = await client.post(
-        "/api/v1/instruments",
+        "/api/v1/items",
         json={
+            "category": "instrument",
+            "label": "Trompete",
             "owner": "Verein",
             "currency_id": currency["id"],
             "instrument_type_id": itype["id"],
@@ -30,7 +32,6 @@ async def instrument(client):
 
 def _fake_image():
     """Create a minimal valid PNG."""
-    # Minimal 1x1 PNG
     import struct
     import zlib
 
@@ -50,87 +51,83 @@ def _fake_image():
     return header + ihdr + idat + iend
 
 
-async def test_upload_image(client, instrument):
+async def test_upload_image(client, item):
     png = _fake_image()
     resp = await client.post(
-        f"/api/v1/instruments/{instrument['id']}/images",
+        f"/api/v1/items/{item['id']}/images",
         files={"file": ("test.png", io.BytesIO(png), "image/png")},
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["instrument_id"] == instrument["id"]
+    assert data["item_id"] == item["id"]
     assert data["is_profile"] is True  # First image is profile
     assert data["url"].startswith("/uploads/")
 
 
-async def test_upload_second_image_not_profile(client, instrument):
+async def test_upload_second_image_not_profile(client, item):
     png = _fake_image()
     await client.post(
-        f"/api/v1/instruments/{instrument['id']}/images",
+        f"/api/v1/items/{item['id']}/images",
         files={"file": ("first.png", io.BytesIO(png), "image/png")},
     )
     resp = await client.post(
-        f"/api/v1/instruments/{instrument['id']}/images",
+        f"/api/v1/items/{item['id']}/images",
         files={"file": ("second.png", io.BytesIO(png), "image/png")},
     )
     assert resp.json()["is_profile"] is False
 
 
-async def test_list_images(client, instrument):
+async def test_list_images(client, item):
     png = _fake_image()
     await client.post(
-        f"/api/v1/instruments/{instrument['id']}/images",
+        f"/api/v1/items/{item['id']}/images",
         files={"file": ("test.png", io.BytesIO(png), "image/png")},
     )
-    resp = await client.get(f"/api/v1/instruments/{instrument['id']}/images")
+    resp = await client.get(f"/api/v1/items/{item['id']}/images")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
 
 
-async def test_set_profile(client, instrument):
+async def test_set_profile(client, item):
     png = _fake_image()
     img1 = (
         await client.post(
-            f"/api/v1/instruments/{instrument['id']}/images",
+            f"/api/v1/items/{item['id']}/images",
             files={"file": ("a.png", io.BytesIO(png), "image/png")},
         )
     ).json()
     img2 = (
         await client.post(
-            f"/api/v1/instruments/{instrument['id']}/images",
+            f"/api/v1/items/{item['id']}/images",
             files={"file": ("b.png", io.BytesIO(png), "image/png")},
         )
     ).json()
 
-    resp = await client.put(
-        f"/api/v1/instruments/{instrument['id']}/images/{img2['id']}/profile"
-    )
+    resp = await client.put(f"/api/v1/items/{item['id']}/images/{img2['id']}/profile")
     assert resp.status_code == 200
     assert resp.json()["is_profile"] is True
 
     # Verify first is no longer profile
-    images = (await client.get(f"/api/v1/instruments/{instrument['id']}/images")).json()
+    images = (await client.get(f"/api/v1/items/{item['id']}/images")).json()
     first = next(i for i in images if i["id"] == img1["id"])
     assert first["is_profile"] is False
 
 
-async def test_delete_image(client, instrument):
+async def test_delete_image(client, item):
     png = _fake_image()
     img = (
         await client.post(
-            f"/api/v1/instruments/{instrument['id']}/images",
+            f"/api/v1/items/{item['id']}/images",
             files={"file": ("test.png", io.BytesIO(png), "image/png")},
         )
     ).json()
-    resp = await client.delete(
-        f"/api/v1/instruments/{instrument['id']}/images/{img['id']}"
-    )
+    resp = await client.delete(f"/api/v1/items/{item['id']}/images/{img['id']}")
     assert resp.status_code == 204
 
 
-async def test_reject_non_image(client, instrument):
+async def test_reject_non_image(client, item):
     resp = await client.post(
-        f"/api/v1/instruments/{instrument['id']}/images",
+        f"/api/v1/items/{item['id']}/images",
         files={"file": ("test.txt", io.BytesIO(b"hello"), "text/plain")},
     )
     assert resp.status_code == 400

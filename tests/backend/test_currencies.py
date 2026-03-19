@@ -54,7 +54,7 @@ async def test_get_currency_not_found(client):
 
 
 async def test_delete_currency_in_use_rejected(client, currency):
-    """Cannot delete a currency that is referenced by an instrument."""
+    """Cannot delete a currency that is referenced by an item."""
     itype = (
         await client.post(
             "/api/v1/instrument-types",
@@ -62,8 +62,10 @@ async def test_delete_currency_in_use_rejected(client, currency):
         )
     ).json()
     await client.post(
-        "/api/v1/instruments",
+        "/api/v1/items",
         json={
+            "category": "instrument",
+            "label": "Trompete",
             "owner": "Verein",
             "currency_id": currency["id"],
             "instrument_type_id": itype["id"],

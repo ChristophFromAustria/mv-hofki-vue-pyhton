@@ -43,17 +43,13 @@ async def test_delete_instrument_type(client, instrument_type):
 
 
 async def test_delete_instrument_type_in_use_rejected(client, instrument_type):
-    """Cannot delete an instrument type that is referenced by an instrument."""
-    currency = (
-        await client.post(
-            "/api/v1/currencies", json={"label": "Euro", "abbreviation": "€"}
-        )
-    ).json()
+    """Cannot delete an instrument type that is referenced by an item."""
     await client.post(
-        "/api/v1/instruments",
+        "/api/v1/items",
         json={
+            "category": "instrument",
+            "label": "Querflöte",
             "owner": "Verein",
-            "currency_id": currency["id"],
             "instrument_type_id": instrument_type["id"],
         },
     )
