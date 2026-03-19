@@ -58,17 +58,21 @@ Das bestehende Muster aus `InvoiceModal.vue` (currency-edit-btn + currency-picke
 
 | Feld | Vorher | Nachher |
 |------|--------|---------|
-| label | Freitext "Bezeichnung" | **Dropdown** befüllt aus `instrument_type` — setzt `label` + `instrument_type_id` gleichzeitig |
-| label_addition | Freitext | **Entfernt** |
-| construction_year | Zahl-Input | **Jahres-Dropdown** (1900 bis aktuelles Jahr, Default = aktuelles Jahr) |
+| label | Freitext "Bezeichnung" | **Dropdown** befüllt aus `instrument_type` — setzt `label` + `instrument_type_id` gleichzeitig. Label ist **gelockt** auf den Typ-Namen. |
+| label_addition | Freitext | **Entfernt** (Spalte aus DB entfernen, bestehende Werte in `particularities` übernehmen) |
+| construction_year | Zahl-Input | **Jahres-Dropdown** (1950 bis aktuelles Jahr, Default = aktuelles Jahr) |
 | serial_nr, manufacturer, distributor, container, particularities | — | Bleiben unverändert |
+
+**Unterscheidung gleichartiger Instrumente:** Mehrere Instrumente gleichen Typs (z.B. 3x "Klarinette in B") werden in Listen durch `display_nr` (I-001, I-002, I-003) und `manufacturer` unterschieden. Die Kombination aus Typ + display_nr + Hersteller ist ausreichend.
 
 ### Kleidung
 
 | Feld | Vorher | Nachher |
 |------|--------|---------|
-| label | Freitext "Bezeichnung" | **Dropdown** befüllt aus `clothing_type` — setzt `label` + `clothing_type_id` gleichzeitig |
+| label | Freitext "Bezeichnung" | **Dropdown** befüllt aus `clothing_type` — setzt `label` + `clothing_type_id` gleichzeitig. Label ist **gelockt** auf den Typ-Namen. |
 | size, gender | — | Bleiben unverändert |
+
+**Unterscheidung:** Kleidungsstücke gleichen Typs werden durch `size`, `gender` und `display_nr` unterschieden.
 
 ### Noten
 
@@ -91,21 +95,26 @@ Das bestehende Muster aus `InvoiceModal.vue` (currency-edit-btn + currency-picke
 ### Neue Spalte
 
 - `inventory_item.storage_location` — `VARCHAR(200) NULL`
-  - Verwendet von Noten und Allgemein, ignoriert von Instrument und Kleidung
-  - Auf Basis-Tabelle statt Detail-Tabelle, weil `general_item_detail` komplett entfällt
+  - Auf Basis-Tabelle, damit alle Kategorien es technisch nutzen können
+  - Frontend zeigt das Feld nur bei Noten und Allgemein an
+  - In Schemas: `storage_location` wird auf `ItemCreateBase` definiert (verfügbar für alle Kategorien, Frontend steuert Sichtbarkeit)
 
 ### Entfernte Spalte
 
 - `instrument_detail.label_addition` — Spalte entfernen
 
-### Entfernte Tabelle
+### Entfernte Tabellen
 
 - `general_item_detail` — Tabelle komplett entfernen (hatte nur `item_id` + `general_item_type_id`)
 - `general_item_type` — Lookup-Tabelle entfernen (wird nicht mehr referenziert)
 
 ### Migration
 
-- Alembic-Migration: `storage_location` auf `inventory_item` hinzufügen, `label_addition` von `instrument_detail` entfernen, `general_item_detail` und `general_item_type` droppen
+Alembic-Migration in einem Schritt:
+1. Bestehende `label_addition`-Werte in `particularities` übernehmen (UPDATE ... SET particularities = label_addition WHERE label_addition IS NOT NULL AND particularities IS NULL; bei beiden gesetzt: Konkatenation)
+2. `storage_location` auf `inventory_item` hinzufügen
+3. `label_addition` von `instrument_detail` entfernen
+4. `general_item_detail` und `general_item_type` droppen
 
 ## 5. Rechnungs-Übersichtsseite
 
@@ -130,14 +139,20 @@ NavBar-Link zwischen "Leihregister" und "Einstellungen".
 | Betrag | amount + Währungskürzel |
 | Datei | Badge Ja/Nein |
 
-Klick auf Zeile → navigiert zur Detail-Ansicht des zugehörigen Items.
+- **Default-Sortierung:** `date_issued DESC`
+- Klick auf Zeile → navigiert zur Detail-Ansicht des zugehörigen Items
+- Pagination: 50 pro Seite
 
 ### Summenzeile
 
 - Am Tabellenende: **Gesamtsumme** der aktuell gefilterten Rechnungen
+- `totals_by_currency` bezieht sich auf das **gesamte Filter-Set**, nicht nur die aktuelle Seite
 - Bei unterschiedlichen Währungen: Summe pro Währung separat (z.B. "Gesamt: 1.234,50 € · 500 ATS")
 
 ### Neuer API-Endpoint
+
+**Datei:** `api/routes/invoices.py` (global, vs. bestehendes `api/routes/item_invoices.py` für per-Item)
+**Service:** `services/invoice_overview.py`
 
 ```
 GET /api/v1/invoices?category=&search=&date_from=&date_to=&limit=50&offset=0
@@ -170,34 +185,58 @@ Response:
 }
 ```
 
-## 6. Backend-Änderungen Zusammenfassung
+## 6. Service-Layer: general_item ohne Detail-Tabelle
+
+Da `general_item_detail` wegfällt, braucht `general_item` keine Detail-Tabelle mehr. Änderungen in `services/inventory_item.py`:
+
+- `CATEGORY_DETAIL_MAP`: Eintrag für `general_item` bekommt `None` als DetailModel
+- Guard-Clauses in `create()`, `get_by_id()`, `get_list()`, `update()`, `_build_read_dict()`: wenn `detail_model is None`, Detail-Operationen überspringen
+- `_split_fields()`: gibt leeres Dict für Detail-Felder zurück wenn keine Detail-Felder definiert
+
+## 7. Datei-Änderungen Zusammenfassung
 
 ### Entfernte Dateien
 
-- `models/general_item_detail.py`
-- `models/general_item_type.py`
-- `schemas/general_item_type.py`
-- `services/general_item_type.py`
-- `api/routes/general_item_types.py`
-- `pages/GeneralItemTypeListPage.vue`
+- `src/backend/mv_hofki/models/general_item_detail.py`
+- `src/backend/mv_hofki/models/general_item_type.py`
+- `src/backend/mv_hofki/schemas/general_item_type.py`
+- `src/backend/mv_hofki/services/general_item_type.py`
+- `src/backend/mv_hofki/api/routes/general_item_types.py`
+- `src/frontend/src/pages/GeneralItemTypeListPage.vue`
+- `src/frontend/src/pages/ItemFormPage.vue` (ersetzt durch ItemFormModal.vue)
+- `tests/backend/test_general_item_types.py`
+
+### Neue Dateien
+
+- `src/backend/mv_hofki/services/invoice_overview.py` — Globale Rechnungsabfrage mit Filter + Summen
+- `src/backend/mv_hofki/api/routes/invoices.py` — Route für `/api/v1/invoices`
+- `src/backend/mv_hofki/schemas/invoice_overview.py` — Schemas für globale Rechnungsresponse
+- `src/frontend/src/components/ItemFormModal.vue` — Modal-Formular (ersetzt ItemFormPage.vue)
+- `src/frontend/src/pages/InvoiceListPage.vue` — Rechnungsübersicht
 
 ### Geänderte Dateien (Backend)
 
-- `models/inventory_item.py` — `storage_location` hinzufügen
-- `models/instrument_detail.py` — `label_addition` entfernen
+- `models/inventory_item.py` — `storage_location` Spalte hinzufügen
+- `models/instrument_detail.py` — `label_addition` Spalte entfernen
 - `models/__init__.py` — GeneralItemDetail + GeneralItemType Exports entfernen
-- `schemas/inventory_item.py` — storage_location in Schemas, label_addition entfernen, GeneralItemCreate vereinfachen (kein type_id mehr)
-- `services/inventory_item.py` — CATEGORY_DETAIL_MAP anpassen (general_item hat keine Detail-Tabelle mehr), storage_location handling
-- `db/seed.py` — GENERAL_ITEM_TYPES Seed-Daten entfernen
-- `api/app.py` — general_item_types Router entfernen, invoices Router hinzufügen
-- Neuer Service + Route für globale Rechnungsabfrage
+- `schemas/inventory_item.py` — `storage_location` in `ItemCreateBase`/`ItemUpdateBase`/`ItemRead`, `label_addition` aus Instrument-Schemas entfernen, `GeneralItemCreate`/`GeneralItemUpdate`/`GeneralItemRead` vereinfachen (kein type_id), `SheetMusicItemCreate`/`SheetMusicItemRead` behalten `storage_location` über Basis-Schema
+- `services/inventory_item.py` — `CATEGORY_DETAIL_MAP` anpassen (`general_item` → `None`), Guard-Clauses für Detail-Operationen
+- `db/seed.py` — `GENERAL_ITEM_TYPES` Seed-Daten und Import entfernen
+- `api/app.py` — `general_item_types` Router entfernen, `invoices` Router hinzufügen
 
 ### Geänderte Dateien (Frontend)
 
-- `ItemFormModal.vue` (neu, ersetzt ItemFormPage.vue)
-- `ItemListPage.vue` — Modal-Integration, angepasste Felder
-- `ItemDetailPage.vue` — Modal-Integration, angepasste Detail-Anzeige
-- `InvoiceListPage.vue` (neu)
-- `router.js` — /neu und /bearbeiten Routen entfernen, /rechnungen hinzufügen
-- `NavBar.vue` — Rechnungen-Link, Gegenstandstypen-Link entfernen
-- `categories.js` — Konfiguration anpassen
+- `ItemListPage.vue` — Modal-Integration für Create, Spalten anpassen (Hersteller bei Instrumenten)
+- `ItemDetailPage.vue` — Modal-Integration für Edit, Detail-Felder anpassen (kein label_addition, storage_location für Noten/Allgemein, kein general_item_type)
+- `InvoiceModal.vue` — Prop `instrumentId` → `itemId` (falls noch nicht geschehen)
+- `router.js` — `/neu` und `/bearbeiten` Routen entfernen, `/rechnungen` Route hinzufügen
+- `NavBar.vue` — "Rechnungen"-Link hinzufügen, "Gegenstandstypen"-Link entfernen
+- `categories.js` — Konfiguration für Label-Typ (dropdown vs. text), labelFieldName
+- `LoanListPage.vue` — Falls general_item_type Referenzen vorhanden, entfernen
+- `DashboardPage.vue` — Falls general_item_type Referenzen vorhanden, entfernen
+
+### Geänderte Tests
+
+- `tests/backend/test_items.py` — general_item Tests anpassen (kein type_id mehr), label_addition Tests entfernen, storage_location Tests hinzufügen
+- `tests/backend/test_item_invoices.py` — Falls Referenzen auf general_item_type
+- Neuer Test: `tests/backend/test_invoice_overview.py` — Tests für globalen Rechnungs-Endpoint
