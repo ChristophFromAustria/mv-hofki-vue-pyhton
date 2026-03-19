@@ -45,6 +45,7 @@ class ItemCreateBase(BaseModel):
     currency_id: int | None = None
     owner: str = "MV Hofkirchen"
     notes: str | None = None
+    storage_location: str | None = None
 
     @model_validator(mode="after")
     def cost_requires_currency(self):
@@ -95,6 +96,7 @@ class ItemUpdateBase(BaseModel):
     currency_id: int | None = None
     owner: str | None = None
     notes: str | None = None
+    storage_location: str | None = None
 
 
 class InstrumentItemUpdate(ItemUpdateBase):
@@ -140,6 +142,7 @@ class ItemRead(BaseModel):
     currency_id: int | None
     owner: str
     notes: str | None
+    storage_location: str | None = None
     created_at: datetime
     updated_at: datetime
     currency: CurrencyRead | None = None

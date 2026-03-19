@@ -11,7 +11,6 @@ from fastapi.staticfiles import StaticFiles
 from mv_hofki.api.routes.clothing_types import router as clothing_types_router
 from mv_hofki.api.routes.currencies import router as currencies_router
 from mv_hofki.api.routes.dashboard import router as dashboard_router
-from mv_hofki.api.routes.general_item_types import router as general_item_types_router
 from mv_hofki.api.routes.health import router as health_router
 from mv_hofki.api.routes.instrument_types import router as instrument_types_router
 from mv_hofki.api.routes.item_images import router as item_images_router
@@ -46,7 +45,6 @@ app.include_router(currencies_router)
 app.include_router(instrument_types_router)
 app.include_router(clothing_types_router)
 app.include_router(sheet_music_genres_router)
-app.include_router(general_item_types_router)
 app.include_router(items_router)
 app.include_router(item_images_router)
 app.include_router(item_invoices_router)

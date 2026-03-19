@@ -143,6 +143,7 @@ def _build_read_dict(item: InventoryItem, detail: Any) -> dict[str, Any]:
         "currency_id": item.currency_id,
         "owner": item.owner,
         "notes": item.notes,
+        "storage_location": item.storage_location,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "currency": item.currency,

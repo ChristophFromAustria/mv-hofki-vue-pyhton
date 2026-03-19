@@ -182,23 +182,49 @@ async def test_create_sheet_music_item(client):
 
 
 async def test_create_general_item(client):
-    gtype = (
-        await client.post("/api/v1/general-item-types", json={"label": "Kabel"})
-    ).json()
     resp = await client.post(
         "/api/v1/items",
         json={
             "category": "general_item",
             "label": "XLR-Kabel 5m",
             "owner": "MV Hofkirchen",
-            "general_item_type_id": gtype["id"],
         },
     )
     assert resp.status_code == 201
     data = resp.json()
     assert data["display_nr"] == "A-001"
     assert data["inventory_nr"] == 1
-    assert data["general_item_type"]["label"] == "Kabel"
+    assert data["label"] == "XLR-Kabel 5m"
+
+
+async def test_create_general_item_with_storage_location(client):
+    resp = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "general_item",
+            "label": "Kabelbox",
+            "owner": "MV Hofkirchen",
+            "storage_location": "Schrank 3",
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["storage_location"] == "Schrank 3"
+
+
+async def test_create_sheet_music_with_storage_location(client):
+    resp = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "sheet_music",
+            "label": "Festmarsch",
+            "owner": "MV Hofkirchen",
+            "storage_location": "Regal 2",
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["storage_location"] == "Regal 2"
 
 
 # ---------------------------------------------------------------------------
