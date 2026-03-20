@@ -96,13 +96,23 @@ function nextPage() {
     </div>
 
     <div class="toolbar">
-      <select v-model="categoryFilter" style="width: 160px">
+      <select v-model="categoryFilter" style="min-width: 120px; flex: 1; max-width: 200px">
         <option v-for="opt in categoryOptions" :key="opt.value" :value="opt.value">
           {{ opt.label }}
         </option>
       </select>
-      <input v-model="dateFrom" type="date" style="width: 160px" placeholder="Von" />
-      <input v-model="dateTo" type="date" style="width: 160px" placeholder="Bis" />
+      <input
+        v-model="dateFrom"
+        type="date"
+        style="min-width: 120px; flex: 1; max-width: 200px"
+        placeholder="Von"
+      />
+      <input
+        v-model="dateTo"
+        type="date"
+        style="min-width: 120px; flex: 1; max-width: 200px"
+        placeholder="Bis"
+      />
       <SearchBar v-model="search" placeholder="Suche..." class="grow" />
     </div>
 
@@ -110,31 +120,33 @@ function nextPage() {
       Laden...
     </div>
 
-    <table v-else-if="invoices.length">
-      <thead>
-        <tr>
-          <th>Nr.</th>
-          <th>Gegenstand</th>
-          <th>Bezeichnung</th>
-          <th>Datum</th>
-          <th>Betrag</th>
-          <th>Datei</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="inv in invoices" :key="inv.id" style="cursor: pointer" @click="goToItem(inv)">
-          <td>{{ inv.invoice_nr }}</td>
-          <td>{{ inv.item_display_nr }} {{ inv.item_label }}</td>
-          <td>{{ inv.title }}</td>
-          <td>{{ inv.date_issued }}</td>
-          <td>{{ inv.amount }} {{ inv.currency?.abbreviation || "" }}</td>
-          <td>
-            <span v-if="inv.filename" class="badge badge-green">Ja</span>
-            <span v-else class="badge badge-gray">Nein</span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-else-if="invoices.length" style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+      <table>
+        <thead>
+          <tr>
+            <th>Nr.</th>
+            <th>Gegenstand</th>
+            <th>Bezeichnung</th>
+            <th>Datum</th>
+            <th>Betrag</th>
+            <th>Datei</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="inv in invoices" :key="inv.id" style="cursor: pointer" @click="goToItem(inv)">
+            <td>{{ inv.invoice_nr }}</td>
+            <td>{{ inv.item_display_nr }} {{ inv.item_label }}</td>
+            <td>{{ inv.title }}</td>
+            <td>{{ inv.date_issued }}</td>
+            <td>{{ inv.amount }} {{ inv.currency?.abbreviation || "" }}</td>
+            <td>
+              <span v-if="inv.filename" class="badge badge-green">Ja</span>
+              <span v-else class="badge badge-gray">Nein</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <div v-else style="padding: 2rem; text-align: center; color: var(--color-muted)">
       Keine Rechnungen gefunden.
