@@ -168,6 +168,7 @@ function onModalSave() {
       :columns="columns"
       :rows="items"
       :loading="loading"
+      :card-breakpoint="640"
       @row-click="goTo"
     />
 

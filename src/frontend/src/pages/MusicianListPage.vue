@@ -66,7 +66,13 @@ function goTo(row) {
       <SearchBar v-model="search" placeholder="Suche (Name, Ort, E-Mail...)" class="grow" />
     </div>
 
-    <DataTable :columns="columns" :rows="items" :loading="loading" @row-click="goTo" />
+    <DataTable
+      :columns="columns"
+      :rows="items"
+      :loading="loading"
+      :card-breakpoint="480"
+      @row-click="goTo"
+    />
 
     <div v-if="total > limit" class="pagination">
       <span>{{ offset + 1 }}–{{ Math.min(offset + limit, total) }} von {{ total }}</span>
