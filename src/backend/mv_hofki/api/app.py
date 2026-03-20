@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from mv_hofki.api.routes.clothing_types import router as clothing_types_router
@@ -13,6 +14,7 @@ from mv_hofki.api.routes.currencies import router as currencies_router
 from mv_hofki.api.routes.dashboard import router as dashboard_router
 from mv_hofki.api.routes.health import router as health_router
 from mv_hofki.api.routes.instrument_types import router as instrument_types_router
+from mv_hofki.api.routes.invoices import router as invoices_router
 from mv_hofki.api.routes.item_images import router as item_images_router
 from mv_hofki.api.routes.item_invoices import router as item_invoices_router
 from mv_hofki.api.routes.items import router as items_router
@@ -48,6 +50,7 @@ app.include_router(sheet_music_genres_router)
 app.include_router(items_router)
 app.include_router(item_images_router)
 app.include_router(item_invoices_router)
+app.include_router(invoices_router)
 app.include_router(musicians_router)
 app.include_router(loans_router)
 app.include_router(dashboard_router)
@@ -58,8 +61,17 @@ app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 _frontend_dist = settings.PROJECT_ROOT / "src" / "frontend" / "dist"
 if _frontend_dist.exists():
+    _index_html = _frontend_dist / "index.html"
     app.mount(
-        "/",
-        StaticFiles(directory=str(_frontend_dist), html=True),
-        name="frontend",
+        "/assets",
+        StaticFiles(directory=str(_frontend_dist / "assets")),
+        name="frontend-assets",
     )
+
+    @app.get("/{full_path:path}")
+    async def _spa_fallback(request: Request, full_path: str):
+        """Serve static files or fall back to index.html for SPA routing."""
+        file_path = _frontend_dist / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(_index_html)

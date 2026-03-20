@@ -27,7 +27,10 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite+aiosqlite:///data/mv_hofki.db"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    CLOUDFLARE_API_TOKEN: str | None = None
+    CLOUDFLARE_ZONE_ID: str | None = None
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
