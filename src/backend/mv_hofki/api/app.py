@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from mv_hofki.api.routes.access import router as access_router
 from mv_hofki.api.routes.clothing_types import router as clothing_types_router
 from mv_hofki.api.routes.currencies import router as currencies_router
 from mv_hofki.api.routes.dashboard import router as dashboard_router
@@ -54,6 +55,7 @@ app.include_router(invoices_router)
 app.include_router(musicians_router)
 app.include_router(loans_router)
 app.include_router(dashboard_router)
+app.include_router(access_router)
 
 _uploads_dir = settings.PROJECT_ROOT / "data" / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)
