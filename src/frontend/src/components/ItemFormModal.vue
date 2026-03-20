@@ -200,174 +200,190 @@ async function save() {
 
 <template>
   <div v-if="open" class="overlay" @click.self="$emit('close')">
-    <div class="dialog" style="max-width: 700px; width: 90vw; max-height: 90vh; overflow-y: auto">
+    <div
+      class="dialog"
+      style="max-width: 700px; width: 90vw; max-height: 90vh; display: flex; flex-direction: column"
+    >
       <div style="display: flex; justify-content: space-between; align-items: center">
         <h3>
           {{ isEdit ? cat.labelSingular + " bearbeiten" : cat.labelSingular + " anlegen" }}
         </h3>
       </div>
 
-      <form style="margin-top: 1rem" @submit.prevent="save">
-        <!-- Label field: dropdown or text -->
-        <div
-          v-if="cat.labelField === 'dropdown'"
-          class="form-group"
-          :class="{ error: errors.type }"
-        >
-          <label>{{ cat.labelFieldName }} *</label>
-          <select :value="form[cat.typeIdField]" @change="onTypeChange">
-            <option :value="null" disabled>Auswählen...</option>
-            <option v-for="t in typeOptions" :key="t.id" :value="t.id">
-              {{ t.label }}
-            </option>
-          </select>
-          <span v-if="errors.type" class="form-error">{{ errors.type }}</span>
-        </div>
-
-        <div v-if="cat.labelField === 'text'" class="form-group" :class="{ error: errors.label }">
-          <label>{{ cat.labelFieldName }} *</label>
-          <input v-model="form.label" />
-          <span v-if="errors.label" class="form-error">{{ errors.label }}</span>
-        </div>
-
-        <!-- Instrument-specific fields -->
-        <template v-if="category === 'instrument'">
-          <div class="form-group">
-            <label>Seriennummer</label>
-            <input v-model="form.serial_nr" />
-          </div>
-          <div class="form-group">
-            <label>Hersteller</label>
-            <input v-model="form.manufacturer" />
-          </div>
-          <div class="form-group">
-            <label>Baujahr</label>
-            <select v-model.number="form.construction_year">
-              <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Händler</label>
-            <input v-model="form.distributor" />
-          </div>
-          <div class="form-group">
-            <label>Behältnis</label>
-            <input v-model="form.container" />
-          </div>
-          <div class="form-group">
-            <label>Besonderheiten</label>
-            <input v-model="form.particularities" />
-          </div>
-        </template>
-
-        <!-- Clothing-specific fields -->
-        <template v-if="category === 'clothing'">
-          <div class="form-group">
-            <label>Größe</label>
-            <input v-model="form.size" />
-          </div>
-          <div class="form-group">
-            <label>Geschlecht</label>
-            <select v-model="form.gender">
-              <option value="">—</option>
-              <option value="Herren">Herren</option>
-              <option value="Damen">Damen</option>
-            </select>
-          </div>
-        </template>
-
-        <!-- Sheet music-specific fields -->
-        <template v-if="category === 'sheet_music'">
-          <div class="form-group">
-            <label>Komponist</label>
-            <input v-model="form.composer" />
-          </div>
-          <div class="form-group">
-            <label>Arrangeur</label>
-            <input v-model="form.arranger" />
-          </div>
-          <div class="form-group">
-            <label>Schwierigkeitsgrad</label>
-            <input v-model="form.difficulty" />
-          </div>
-          <div class="form-group">
-            <label>Gattung</label>
-            <select v-model.number="form.genre_id">
-              <option :value="null">—</option>
-              <option v-for="g in genreOptions" :key="g.id" :value="g.id">
-                {{ g.label }}
+      <form
+        style="margin-top: 1rem; display: flex; flex-direction: column; overflow: hidden; flex: 1"
+        @submit.prevent="save"
+      >
+        <div style="overflow-y: auto; flex: 1; padding-bottom: 0.5rem">
+          <!-- Label field: dropdown or text -->
+          <div
+            v-if="cat.labelField === 'dropdown'"
+            class="form-group"
+            :class="{ error: errors.type }"
+          >
+            <label>{{ cat.labelFieldName }} *</label>
+            <select :value="form[cat.typeIdField]" @change="onTypeChange">
+              <option :value="null" disabled>Auswählen...</option>
+              <option v-for="t in typeOptions" :key="t.id" :value="t.id">
+                {{ t.label }}
               </option>
             </select>
+            <span v-if="errors.type" class="form-error">{{ errors.type }}</span>
           </div>
-          <div class="form-group">
-            <label>Lagerort</label>
-            <input v-model="form.storage_location" />
-          </div>
-        </template>
 
-        <!-- General item-specific fields -->
-        <template v-if="category === 'general_item'">
-          <div class="form-group">
-            <label>Hersteller</label>
-            <input v-model="form.manufacturer" />
+          <div v-if="cat.labelField === 'text'" class="form-group" :class="{ error: errors.label }">
+            <label>{{ cat.labelFieldName }} *</label>
+            <input v-model="form.label" />
+            <span v-if="errors.label" class="form-error">{{ errors.label }}</span>
           </div>
-          <div class="form-group">
-            <label>Lagerort</label>
-            <input v-model="form.storage_location" />
-          </div>
-        </template>
 
-        <!-- Common fields -->
-        <div class="form-group" :class="{ error: errors.owner }">
-          <label>Eigentümer *</label>
-          <input v-model="form.owner" />
-          <span v-if="errors.owner" class="form-error">{{ errors.owner }}</span>
-        </div>
-        <div class="form-group">
-          <label>Anschaffungsdatum</label>
-          <input v-model="form.acquisition_date" type="date" />
-        </div>
-        <div class="form-group">
-          <label>
-            Anschaffungskosten ({{ currencyAbbr }})
-            <button
-              type="button"
-              class="currency-edit-btn"
-              title="Währung ändern"
-              @click="showCurrencyPicker = !showCurrencyPicker"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+          <!-- Instrument-specific fields -->
+          <template v-if="category === 'instrument'">
+            <div class="form-group">
+              <label>Seriennummer</label>
+              <input v-model="form.serial_nr" />
+            </div>
+            <div class="form-group">
+              <label>Hersteller</label>
+              <input v-model="form.manufacturer" />
+            </div>
+            <div class="form-group">
+              <label>Baujahr</label>
+              <select v-model.number="form.construction_year">
+                <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Händler</label>
+              <input v-model="form.distributor" />
+            </div>
+            <div class="form-group">
+              <label>Behältnis</label>
+              <input v-model="form.container" />
+            </div>
+            <div class="form-group">
+              <label>Besonderheiten</label>
+              <input v-model="form.particularities" />
+            </div>
+          </template>
+
+          <!-- Clothing-specific fields -->
+          <template v-if="category === 'clothing'">
+            <div class="form-group">
+              <label>Größe</label>
+              <input v-model="form.size" />
+            </div>
+            <div class="form-group">
+              <label>Geschlecht</label>
+              <select v-model="form.gender">
+                <option value="">—</option>
+                <option value="Herren">Herren</option>
+                <option value="Damen">Damen</option>
+              </select>
+            </div>
+          </template>
+
+          <!-- Sheet music-specific fields -->
+          <template v-if="category === 'sheet_music'">
+            <div class="form-group">
+              <label>Komponist</label>
+              <input v-model="form.composer" />
+            </div>
+            <div class="form-group">
+              <label>Arrangeur</label>
+              <input v-model="form.arranger" />
+            </div>
+            <div class="form-group">
+              <label>Schwierigkeitsgrad</label>
+              <input v-model="form.difficulty" />
+            </div>
+            <div class="form-group">
+              <label>Gattung</label>
+              <select v-model.number="form.genre_id">
+                <option :value="null">—</option>
+                <option v-for="g in genreOptions" :key="g.id" :value="g.id">
+                  {{ g.label }}
+                </option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Lagerort</label>
+              <input v-model="form.storage_location" />
+            </div>
+          </template>
+
+          <!-- General item-specific fields -->
+          <template v-if="category === 'general_item'">
+            <div class="form-group">
+              <label>Hersteller</label>
+              <input v-model="form.manufacturer" />
+            </div>
+            <div class="form-group">
+              <label>Lagerort</label>
+              <input v-model="form.storage_location" />
+            </div>
+          </template>
+
+          <!-- Common fields -->
+          <div class="form-group" :class="{ error: errors.owner }">
+            <label>Eigentümer *</label>
+            <input v-model="form.owner" />
+            <span v-if="errors.owner" class="form-error">{{ errors.owner }}</span>
+          </div>
+          <div class="form-group">
+            <label>Anschaffungsdatum</label>
+            <input v-model="form.acquisition_date" type="date" />
+          </div>
+          <div class="form-group">
+            <label>
+              Anschaffungskosten ({{ currencyAbbr }})
+              <button
+                type="button"
+                class="currency-edit-btn"
+                title="Währung ändern"
+                @click="showCurrencyPicker = !showCurrencyPicker"
               >
-                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                <path d="m15 5 4 4" />
-              </svg>
-            </button>
-          </label>
-          <div v-if="showCurrencyPicker" class="currency-picker">
-            <button
-              v-for="c in currencies"
-              :key="c.id"
-              type="button"
-              :class="{ active: c.id === form.currency_id }"
-              @click="pickCurrency(c.id)"
-            >
-              {{ c.abbreviation }} — {{ c.label }}
-            </button>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  <path d="m15 5 4 4" />
+                </svg>
+              </button>
+            </label>
+            <div v-if="showCurrencyPicker" class="currency-picker">
+              <button
+                v-for="c in currencies"
+                :key="c.id"
+                type="button"
+                :class="{ active: c.id === form.currency_id }"
+                @click="pickCurrency(c.id)"
+              >
+                {{ c.abbreviation }} — {{ c.label }}
+              </button>
+            </div>
+            <input v-model.number="form.acquisition_cost" type="number" step="0.01" />
           </div>
-          <input v-model.number="form.acquisition_cost" type="number" step="0.01" />
-        </div>
-        <div class="form-group">
-          <label>Notizen</label>
-          <textarea v-model="form.notes" rows="3" />
+          <div class="form-group">
+            <label>Notizen</label>
+            <textarea v-model="form.notes" rows="3" />
+          </div>
         </div>
 
-        <div class="dialog-actions">
+        <div
+          class="dialog-actions"
+          style="
+            border-top: 1px solid var(--color-border);
+            padding-top: 0.75rem;
+            margin-top: 0.5rem;
+            flex-shrink: 0;
+          "
+        >
           <button type="button" @click="$emit('close')">Abbrechen</button>
           <button type="submit" class="btn-primary" :disabled="saving">Speichern</button>
         </div>
