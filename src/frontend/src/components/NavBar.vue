@@ -73,6 +73,9 @@ onMounted(() => {
             </RouterLink>
             <RouterLink to="/einstellungen/notengenres" @click="closeMenu">Notengenres</RouterLink>
             <RouterLink to="/einstellungen/waehrungen" @click="closeMenu">Währungen</RouterLink>
+            <RouterLink to="/einstellungen/zugriff" @click="closeMenu">
+              Zugriffsverwaltung
+            </RouterLink>
             <a href="//localhost:7681" target="_blank" class="terminal-link">Terminal</a>
           </div>
         </div>
