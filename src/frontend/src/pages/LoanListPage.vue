@@ -1,18 +1,23 @@
 <script setup>
 import { ref, onMounted, watch } from "vue";
 import { get, post, put } from "../lib/api.js";
+import { CATEGORIES } from "../lib/categories.js";
 
 const loans = ref([]);
-const instruments = ref([]);
+const loanableItems = ref([]);
 const musicians = ref([]);
 const loading = ref(true);
 const activeOnly = ref(true);
 const showForm = ref(false);
 
-const form = ref({ instrument_id: null, musician_id: null, start_date: "" });
+const form = ref({ item_id: null, musician_id: null, start_date: "" });
 const formErrors = ref({});
 const returningLoanId = ref(null);
 const returnDate = ref("");
+
+function itemRouteBase(category) {
+  return CATEGORIES[category]?.routeBase || "/instrumente";
+}
 
 async function load() {
   loading.value = true;
@@ -24,8 +29,13 @@ async function load() {
 }
 
 onMounted(async () => {
-  const [i, m] = await Promise.all([get("/instruments?limit=200"), get("/musicians?limit=200")]);
-  instruments.value = i.items;
+  const [instruments, clothing, generalItems, m] = await Promise.all([
+    get("/items?category=instrument&limit=200"),
+    get("/items?category=clothing&limit=200"),
+    get("/items?category=general_item&limit=200"),
+    get("/musicians?limit=200"),
+  ]);
+  loanableItems.value = [...instruments.items, ...clothing.items, ...generalItems.items];
   musicians.value = m.items;
   await load();
 });
@@ -34,7 +44,7 @@ watch(activeOnly, load);
 
 function validateForm() {
   formErrors.value = {};
-  if (!form.value.instrument_id) formErrors.value.instrument_id = "Pflichtfeld";
+  if (!form.value.item_id) formErrors.value.item_id = "Pflichtfeld";
   if (!form.value.musician_id) formErrors.value.musician_id = "Pflichtfeld";
   if (!form.value.start_date) formErrors.value.start_date = "Pflichtfeld";
   return Object.keys(formErrors.value).length === 0;
@@ -45,7 +55,7 @@ async function createLoan() {
   try {
     await post("/loans", form.value);
     showForm.value = false;
-    form.value = { instrument_id: null, musician_id: null, start_date: "" };
+    form.value = { item_id: null, musician_id: null, start_date: "" };
     formErrors.value = {};
     await load();
   } catch (e) {
@@ -79,17 +89,15 @@ async function returnWithDate(id) {
       <h3 style="margin-bottom: 1rem">Neue Ausleihe</h3>
       <form @submit.prevent="createLoan">
         <div class="grid grid-3">
-          <div class="form-group" :class="{ error: formErrors.instrument_id }">
-            <label>Instrument *</label>
-            <select v-model.number="form.instrument_id">
+          <div class="form-group" :class="{ error: formErrors.item_id }">
+            <label>Gegenstand *</label>
+            <select v-model.number="form.item_id">
               <option :value="null" disabled>Auswählen...</option>
-              <option v-for="i in instruments" :key="i.id" :value="i.id">
-                #{{ i.inventory_nr }} {{ i.instrument_type?.label }}
+              <option v-for="i in loanableItems" :key="i.id" :value="i.id">
+                {{ i.display_nr }} {{ i.label }}
               </option>
             </select>
-            <span v-if="formErrors.instrument_id" class="form-error">{{
-              formErrors.instrument_id
-            }}</span>
+            <span v-if="formErrors.item_id" class="form-error">{{ formErrors.item_id }}</span>
           </div>
           <div class="form-group" :class="{ error: formErrors.musician_id }">
             <label>Musiker *</label>
@@ -124,67 +132,69 @@ async function returnWithDate(id) {
     </div>
 
     <div v-if="loading" style="text-align: center; padding: 2rem">Laden...</div>
-    <table v-else-if="loans.length">
-      <thead>
-        <tr>
-          <th>Instrument</th>
-          <th>Inv.-Nr.</th>
-          <th>Musiker</th>
-          <th>Von</th>
-          <th>Bis</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="l in loans" :key="l.id">
-          <td>
-            <router-link :to="`/instrumente/${l.instrument.id}`">
-              {{ l.instrument.instrument_type.label }}
-            </router-link>
-          </td>
-          <td>{{ l.instrument.inventory_nr }}</td>
-          <td>
-            <router-link :to="`/musiker/${l.musician.id}`">
-              {{ l.musician.first_name }} {{ l.musician.last_name }}
-            </router-link>
-          </td>
-          <td>{{ l.start_date }}</td>
-          <td>{{ l.end_date || "—" }}</td>
-          <td>
-            <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
-              {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
-            </span>
-          </td>
-          <td>
-            <template v-if="!l.end_date">
-              <div
-                v-if="returningLoanId === l.id"
-                style="display: flex; gap: 0.25rem; align-items: center"
-              >
-                <input
-                  v-model="returnDate"
-                  type="date"
-                  style="width: 140px; padding: 0.2rem 0.4rem; font-size: 0.8rem"
-                />
-                <button
-                  class="btn-sm btn-primary"
-                  :disabled="!returnDate"
-                  @click="returnWithDate(l.id)"
+    <div v-else-if="loans.length" style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+      <table>
+        <thead>
+          <tr>
+            <th>Gegenstand</th>
+            <th>Inv.-Nr.</th>
+            <th>Musiker</th>
+            <th>Von</th>
+            <th>Bis</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="l in loans" :key="l.id">
+            <td>
+              <router-link :to="itemRouteBase(l.item.category) + '/' + l.item.id">
+                {{ l.item.label }}
+              </router-link>
+            </td>
+            <td>{{ l.item.display_nr }}</td>
+            <td>
+              <router-link :to="`/musiker/${l.musician.id}`">
+                {{ l.musician.first_name }} {{ l.musician.last_name }}
+              </router-link>
+            </td>
+            <td>{{ l.start_date }}</td>
+            <td>{{ l.end_date || "—" }}</td>
+            <td>
+              <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
+                {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
+              </span>
+            </td>
+            <td>
+              <template v-if="!l.end_date">
+                <div
+                  v-if="returningLoanId === l.id"
+                  style="display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap"
                 >
-                  OK
-                </button>
-                <button class="btn-sm" @click="returningLoanId = null">X</button>
-              </div>
-              <div v-else style="display: flex; gap: 0.25rem">
-                <button class="btn-sm" @click="returnToday(l.id)">Heute</button>
-                <button class="btn-sm" @click="returningLoanId = l.id">Datum</button>
-              </div>
-            </template>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+                  <input
+                    v-model="returnDate"
+                    type="date"
+                    style="max-width: 160px; padding: 0.2rem 0.4rem; font-size: 1rem"
+                  />
+                  <button
+                    class="btn-sm btn-primary"
+                    :disabled="!returnDate"
+                    @click="returnWithDate(l.id)"
+                  >
+                    OK
+                  </button>
+                  <button class="btn-sm" @click="returningLoanId = null">X</button>
+                </div>
+                <div v-else style="display: flex; gap: 0.25rem">
+                  <button class="btn-sm" @click="returnToday(l.id)">Heute</button>
+                  <button class="btn-sm" @click="returningLoanId = l.id">Datum</button>
+                </div>
+              </template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     <p v-else style="text-align: center; padding: 2rem; color: var(--color-muted)">
       Keine Leihen vorhanden
     </p>

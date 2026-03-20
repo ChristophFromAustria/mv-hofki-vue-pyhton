@@ -312,10 +312,10 @@ async function onEditSave() {
           <button class="btn-primary" @click="returnToday">Heute zurückgeben</button>
           <button class="btn" @click="showReturnDatePicker = true">Datum wählen</button>
         </div>
-        <div v-else style="display: flex; gap: 0.5rem; align-items: end">
+        <div v-else style="display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap">
           <div class="form-group" style="margin: 0">
             <label>Rückgabedatum</label>
-            <input v-model="returnDate" type="date" style="width: 180px" />
+            <input v-model="returnDate" type="date" style="max-width: 180px" />
           </div>
           <button class="btn-primary" :disabled="!returnDate" @click="returnWithDate">
             Zurückgeben
@@ -329,7 +329,10 @@ async function onEditSave() {
         <p style="margin-bottom: 0.75rem; color: var(--color-muted)">
           <span class="badge badge-green">Verfügbar</span>
         </p>
-        <form style="display: flex; gap: 0.75rem; align-items: end" @submit.prevent="createLoan">
+        <form
+          style="display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap"
+          @submit.prevent="createLoan"
+        >
           <div
             class="form-group"
             style="margin: 0; flex: 1"
@@ -348,7 +351,7 @@ async function onEditSave() {
           </div>
           <div class="form-group" style="margin: 0" :class="{ error: loanErrors.start_date }">
             <label>Datum</label>
-            <input v-model="loanForm.start_date" type="date" style="width: 160px" />
+            <input v-model="loanForm.start_date" type="date" style="max-width: 160px" />
             <span v-if="loanErrors.start_date" class="form-error">{{ loanErrors.start_date }}</span>
           </div>
           <button type="submit" class="btn-primary" :disabled="loanSaving">Ausleihen</button>
@@ -374,65 +377,69 @@ async function onEditSave() {
         Keine Rechnungen vorhanden.
       </div>
 
-      <table v-else>
-        <thead>
-          <tr>
-            <th>Nr.</th>
-            <th>Bezeichnung</th>
-            <th>Datum</th>
-            <th>Betrag</th>
-            <th>Datei</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="inv in invoices"
-            :key="inv.id"
-            style="cursor: pointer"
-            @click="openInvoice(inv)"
-          >
-            <td>{{ inv.invoice_nr }}</td>
-            <td>{{ inv.title }}</td>
-            <td>{{ inv.date_issued }}</td>
-            <td>{{ inv.amount }} {{ inv.currency?.abbreviation || "" }}</td>
-            <td>
-              <span v-if="inv.file_url" class="badge badge-green">Ja</span>
-              <span v-else class="badge badge-gray">Nein</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-else style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+        <table>
+          <thead>
+            <tr>
+              <th>Nr.</th>
+              <th>Bezeichnung</th>
+              <th>Datum</th>
+              <th>Betrag</th>
+              <th>Datei</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="inv in invoices"
+              :key="inv.id"
+              style="cursor: pointer"
+              @click="openInvoice(inv)"
+            >
+              <td>{{ inv.invoice_nr }}</td>
+              <td>{{ inv.title }}</td>
+              <td>{{ inv.date_issued }}</td>
+              <td>{{ inv.amount }} {{ inv.currency?.abbreviation || "" }}</td>
+              <td>
+                <span v-if="inv.file_url" class="badge badge-green">Ja</span>
+                <span v-else class="badge badge-gray">Nein</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Loan history -->
     <div v-if="cat.hasLoans && loans.length" class="card">
       <h2 style="font-size: 1.1rem; margin-bottom: 1rem">Leihhistorie</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Musiker</th>
-            <th>Von</th>
-            <th>Bis</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="l in loans" :key="l.id">
-            <td>
-              <router-link :to="`/musiker/${l.musician.id}`">
-                {{ l.musician.first_name }} {{ l.musician.last_name }}
-              </router-link>
-            </td>
-            <td>{{ l.start_date }}</td>
-            <td>{{ l.end_date || "—" }}</td>
-            <td>
-              <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
-                {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+        <table>
+          <thead>
+            <tr>
+              <th>Musiker</th>
+              <th>Von</th>
+              <th>Bis</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="l in loans" :key="l.id">
+              <td>
+                <router-link :to="`/musiker/${l.musician.id}`">
+                  {{ l.musician.first_name }} {{ l.musician.last_name }}
+                </router-link>
+              </td>
+              <td>{{ l.start_date }}</td>
+              <td>{{ l.end_date || "—" }}</td>
+              <td>
+                <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
+                  {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <ConfirmDialog
