@@ -2,19 +2,29 @@
 defineProps({
   title: { type: String, default: "" },
   value: { type: [Number, String], default: 0 },
+  to: { type: String, default: "" },
 });
 </script>
 
 <template>
-  <div class="card stat-card">
+  <component :is="to ? 'router-link' : 'div'" :to="to || undefined" class="card stat-card">
     <div class="stat-value">{{ value }}</div>
     <div class="stat-title">{{ title }}</div>
-  </div>
+  </component>
 </template>
 
 <style scoped>
 .stat-card {
   text-align: center;
+  display: block;
+  color: inherit;
+}
+a.stat-card {
+  text-decoration: none;
+  transition: box-shadow 0.15s;
+}
+a.stat-card:hover {
+  box-shadow: 0 4px 12px var(--color-shadow);
 }
 .stat-value {
   font-size: 2rem;
