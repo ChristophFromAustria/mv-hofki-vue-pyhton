@@ -5,6 +5,13 @@ import { RouterLink } from "vue-router";
 const settingsOpen = ref(false);
 const isDark = ref(false);
 
+const menuOpen = ref(false);
+
+function closeMenu() {
+  menuOpen.value = false;
+  settingsOpen.value = false;
+}
+
 function applyTheme(dark) {
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
   localStorage.setItem("theme", dark ? "dark" : "light");
@@ -29,23 +36,32 @@ onMounted(() => {
 <template>
   <nav class="navbar">
     <div class="navbar-inner">
-      <RouterLink to="/" class="brand">MV Hofkirchen</RouterLink>
-      <div class="links">
-        <RouterLink to="/">Dashboard</RouterLink>
-        <RouterLink to="/instrumente">Instrumente</RouterLink>
-        <RouterLink to="/kleidung">Kleidung</RouterLink>
-        <RouterLink to="/noten">Noten</RouterLink>
-        <RouterLink to="/allgemein">Allgemein</RouterLink>
-        <RouterLink to="/musiker">Musiker</RouterLink>
-        <RouterLink to="/leihen">Leihregister</RouterLink>
-        <RouterLink to="/rechnungen">Rechnungen</RouterLink>
+      <RouterLink to="/" class="brand" @click="closeMenu">MV Hofkirchen</RouterLink>
+
+      <button class="hamburger" :class="{ open: menuOpen }" @click="menuOpen = !menuOpen">
+        <span></span><span></span><span></span>
+      </button>
+
+      <div class="links" :class="{ open: menuOpen }">
+        <RouterLink to="/" @click="closeMenu">Dashboard</RouterLink>
+        <RouterLink to="/instrumente" @click="closeMenu">Instrumente</RouterLink>
+        <RouterLink to="/kleidung" @click="closeMenu">Kleidung</RouterLink>
+        <RouterLink to="/noten" @click="closeMenu">Noten</RouterLink>
+        <RouterLink to="/allgemein" @click="closeMenu">Allgemein</RouterLink>
+        <RouterLink to="/musiker" @click="closeMenu">Musiker</RouterLink>
+        <RouterLink to="/leihen" @click="closeMenu">Leihregister</RouterLink>
+        <RouterLink to="/rechnungen" @click="closeMenu">Rechnungen</RouterLink>
         <div class="dropdown" @mouseenter="settingsOpen = true" @mouseleave="settingsOpen = false">
-          <span class="dropdown-trigger">Einstellungen</span>
+          <span class="dropdown-trigger" @click="settingsOpen = !settingsOpen">Einstellungen</span>
           <div v-show="settingsOpen" class="dropdown-menu">
-            <RouterLink to="/einstellungen/instrumententypen">Instrumententypen</RouterLink>
-            <RouterLink to="/einstellungen/kleidungstypen">Kleidungstypen</RouterLink>
-            <RouterLink to="/einstellungen/notengenres">Notengenres</RouterLink>
-            <RouterLink to="/einstellungen/waehrungen">Währungen</RouterLink>
+            <RouterLink to="/einstellungen/instrumententypen" @click="closeMenu">
+              Instrumententypen
+            </RouterLink>
+            <RouterLink to="/einstellungen/kleidungstypen" @click="closeMenu">
+              Kleidungstypen
+            </RouterLink>
+            <RouterLink to="/einstellungen/notengenres" @click="closeMenu">Notengenres</RouterLink>
+            <RouterLink to="/einstellungen/waehrungen" @click="closeMenu">Währungen</RouterLink>
             <a href="//localhost:7681" target="_blank" class="terminal-link">Terminal</a>
           </div>
         </div>
@@ -57,6 +73,8 @@ onMounted(() => {
           {{ isDark ? "\u2600" : "\u263E" }}
         </button>
       </div>
+
+      <div v-if="menuOpen" class="menu-backdrop" @click="closeMenu"></div>
     </div>
   </nav>
 </template>
@@ -65,6 +83,9 @@ onMounted(() => {
 .navbar {
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg);
+  position: sticky;
+  top: 0;
+  z-index: 200;
 }
 
 .navbar-inner {
@@ -91,6 +112,45 @@ onMounted(() => {
 .links a.router-link-active {
   color: var(--color-primary);
   font-weight: 600;
+}
+
+.hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 44px;
+  align-items: center;
+  justify-content: center;
+}
+
+.hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--color-text);
+  border-radius: 2px;
+  transition:
+    transform 0.2s,
+    opacity 0.2s;
+}
+
+.hamburger.open span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.hamburger.open span:nth-child(2) {
+  opacity: 0;
+}
+.hamburger.open span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+.menu-backdrop {
+  display: none;
 }
 
 .dropdown {
@@ -136,7 +196,12 @@ onMounted(() => {
   border: none;
   font-size: 1.2rem;
   cursor: pointer;
-  padding: 0.25rem;
+  padding: 0.5rem;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
   color: var(--color-muted);
 }
@@ -144,5 +209,83 @@ onMounted(() => {
 .theme-toggle:hover {
   color: var(--color-text);
   background: none;
+}
+
+@media (max-width: 768px) {
+  .hamburger {
+    display: flex;
+  }
+
+  .links {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 260px;
+    max-width: 80vw;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    background: var(--color-bg);
+    border-left: 1px solid var(--color-border);
+    padding: 1rem 0;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    z-index: 300;
+    overflow-y: auto;
+  }
+
+  .links.open {
+    transform: translateX(0);
+  }
+
+  .links > a,
+  .links > .dropdown {
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+  }
+
+  .links > a:hover,
+  .dropdown-trigger:hover {
+    background: var(--color-bg-soft);
+  }
+
+  .dropdown-trigger {
+    display: block;
+    padding: 0;
+  }
+
+  .dropdown-menu {
+    position: static;
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    min-width: 0;
+  }
+
+  .dropdown-menu a {
+    padding: 0.625rem 1.25rem 0.625rem 2.5rem;
+    font-size: 0.9rem;
+  }
+
+  .terminal-link {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0.625rem !important;
+  }
+
+  .theme-toggle {
+    align-self: flex-start;
+    margin: 0.5rem 1rem;
+  }
+
+  .menu-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: var(--color-overlay);
+    z-index: 250;
+  }
 }
 </style>
