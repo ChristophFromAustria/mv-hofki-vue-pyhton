@@ -24,7 +24,7 @@ ALLOWED_TYPES = {
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
-INVOICEABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
+INVOICEABLE_CATEGORIES = {"instrument", "clothing", "general_item", "sheet_music"}
 
 
 def _invoice_dir(item_id: int) -> Path:
