@@ -41,7 +41,7 @@ onMounted(() => {
       </button>
 
       <RouterLink to="/" class="brand" @click="closeMenu">
-        <img src="/apple-touch-icon.png" alt="MVH" class="brand-logo" />
+        <img src="/logo-64.png" alt="MVH" class="brand-logo" />
         MV Hofkirchen
       </RouterLink>
 
