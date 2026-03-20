@@ -36,21 +36,19 @@ onMounted(() => {
 <template>
   <nav class="navbar">
     <div class="navbar-inner">
+      <button class="hamburger" :class="{ open: menuOpen }" @click="menuOpen = !menuOpen">
+        <span></span><span></span><span></span>
+      </button>
+
       <RouterLink to="/" class="brand" @click="closeMenu">MV Hofkirchen</RouterLink>
 
-      <div class="nav-actions">
-        <button
-          class="theme-toggle"
-          :title="isDark ? 'Light Mode' : 'Dark Mode'"
-          @click="toggleTheme"
-        >
-          {{ isDark ? "\u2600" : "\u263E" }}
-        </button>
-
-        <button class="hamburger" :class="{ open: menuOpen }" @click="menuOpen = !menuOpen">
-          <span></span><span></span><span></span>
-        </button>
-      </div>
+      <button
+        class="theme-toggle"
+        :title="isDark ? 'Light Mode' : 'Dark Mode'"
+        @click="toggleTheme"
+      >
+        {{ isDark ? "\u2600" : "\u263E" }}
+      </button>
 
       <div class="links" :class="{ open: menuOpen }">
         <RouterLink to="/" @click="closeMenu">Dashboard</RouterLink>
@@ -223,12 +221,6 @@ onMounted(() => {
 .terminal-link {
   border-top: none;
   margin-top: 0;
-}
-
-.nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
 }
 
 .theme-toggle {
