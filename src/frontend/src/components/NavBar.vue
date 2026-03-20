@@ -40,7 +40,10 @@ onMounted(() => {
         <span></span><span></span><span></span>
       </button>
 
-      <RouterLink to="/" class="brand" @click="closeMenu">MV Hofkirchen</RouterLink>
+      <RouterLink to="/" class="brand" @click="closeMenu">
+        <img src="/apple-touch-icon.png" alt="MVH" class="brand-logo" />
+        MV Hofkirchen
+      </RouterLink>
 
       <button
         class="theme-toggle"
@@ -102,6 +105,15 @@ onMounted(() => {
   font-weight: 700;
   font-size: 1.1rem;
   color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
 }
 
 .links {
