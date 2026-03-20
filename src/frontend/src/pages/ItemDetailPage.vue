@@ -38,7 +38,11 @@ const showInvoiceModal = ref(false);
 const selectedInvoice = ref(null);
 
 const activeLoan = computed(() => loans.value.find((l) => !l.end_date));
-const defaultCurrencyId = computed(() => item.value?.currency_id || null);
+const defaultCurrencyId = computed(() => {
+  if (item.value?.currency_id) return item.value.currency_id;
+  const euro = currencies.value.find((c) => c.abbreviation === "€");
+  return euro?.id || currencies.value[0]?.id || null;
+});
 
 async function reload() {
   item.value = await get(`/items/${props.id}`);

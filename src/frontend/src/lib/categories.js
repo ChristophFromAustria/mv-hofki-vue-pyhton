@@ -35,7 +35,7 @@ export const CATEGORIES = {
     routeBase: "/noten",
     apiCategory: "sheet_music",
     hasLoans: false,
-    hasInvoices: false,
+    hasInvoices: true,
     labelField: "text",
     labelFieldName: "Titel",
     hasStorageLocation: true,
