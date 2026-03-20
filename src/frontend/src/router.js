@@ -77,6 +77,11 @@ const routes = [
     name: "currencies",
     component: () => import("./pages/CurrencyListPage.vue"),
   },
+  {
+    path: "/einstellungen/zugriff",
+    name: "access-settings",
+    component: () => import("./pages/AccessSettingsPage.vue"),
+  },
 ];
 
 const router = createRouter({
