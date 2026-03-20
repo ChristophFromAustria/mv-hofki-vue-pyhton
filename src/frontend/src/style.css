@@ -106,8 +106,9 @@ button:hover,
 }
 
 .btn-sm {
-  padding: 0.25rem 0.5rem;
+  padding: 0.375rem 0.625rem;
   font-size: 0.8rem;
+  min-height: 36px;
 }
 
 /* Forms */
@@ -129,7 +130,7 @@ textarea {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-family: var(--font-sans);
 }
 
@@ -389,4 +390,41 @@ tr:hover {
   color: var(--color-danger);
   font-size: 0.75rem;
   margin-top: 0.25rem;
+}
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 768px) {
+  .grid-2,
+  .grid-3,
+  .grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .toolbar > * {
+    flex-shrink: 1;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-header h1 {
+    font-size: 1.25rem;
+  }
 }
