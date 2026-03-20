@@ -15,6 +15,6 @@ defineProps({ placeholder: { type: String, default: "Suchen..." } });
 
 <style scoped>
 .search-input {
-  max-width: 300px;
+  max-width: 100%;
 }
 </style>
