@@ -38,9 +38,19 @@ onMounted(() => {
     <div class="navbar-inner">
       <RouterLink to="/" class="brand" @click="closeMenu">MV Hofkirchen</RouterLink>
 
-      <button class="hamburger" :class="{ open: menuOpen }" @click="menuOpen = !menuOpen">
-        <span></span><span></span><span></span>
-      </button>
+      <div class="nav-actions">
+        <button
+          class="theme-toggle"
+          :title="isDark ? 'Light Mode' : 'Dark Mode'"
+          @click="toggleTheme"
+        >
+          {{ isDark ? "\u2600" : "\u263E" }}
+        </button>
+
+        <button class="hamburger" :class="{ open: menuOpen }" @click="menuOpen = !menuOpen">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
 
       <div class="links" :class="{ open: menuOpen }">
         <RouterLink to="/" @click="closeMenu">Dashboard</RouterLink>
@@ -65,13 +75,6 @@ onMounted(() => {
             <a href="//localhost:7681" target="_blank" class="terminal-link">Terminal</a>
           </div>
         </div>
-        <button
-          class="theme-toggle"
-          :title="isDark ? 'Light Mode' : 'Dark Mode'"
-          @click="toggleTheme"
-        >
-          {{ isDark ? "\u2600" : "\u263E" }}
-        </button>
       </div>
 
       <div v-if="menuOpen" class="menu-backdrop" @click="closeMenu"></div>
@@ -191,6 +194,12 @@ onMounted(() => {
   padding-top: 0.625rem !important;
 }
 
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .theme-toggle {
   background: none;
   border: none;
@@ -273,11 +282,6 @@ onMounted(() => {
     border-top: none;
     margin-top: 0;
     padding-top: 0.625rem !important;
-  }
-
-  .theme-toggle {
-    align-self: flex-start;
-    margin: 0.5rem 1rem;
   }
 
   .menu-backdrop {
