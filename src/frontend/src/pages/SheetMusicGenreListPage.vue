@@ -5,31 +5,31 @@ import ConfirmDialog from "../components/ConfirmDialog.vue";
 
 const items = ref([]);
 const editing = ref(null);
-const form = ref({ label: "", abbreviation: "" });
+const form = ref({ label: "" });
 const deleteTarget = ref(null);
 
 async function load() {
-  items.value = await get("/currencies");
+  items.value = await get("/sheet-music-genres");
 }
 
 onMounted(load);
 
 function startEdit(item) {
   editing.value = item.id;
-  form.value = { label: item.label, abbreviation: item.abbreviation };
+  form.value = { label: item.label };
 }
 
 function startCreate() {
   editing.value = "new";
-  form.value = { label: "", abbreviation: "" };
+  form.value = { label: "" };
 }
 
 async function save() {
   try {
     if (editing.value === "new") {
-      await post("/currencies", form.value);
+      await post("/sheet-music-genres", form.value);
     } else {
-      await put(`/currencies/${editing.value}`, form.value);
+      await put(`/sheet-music-genres/${editing.value}`, form.value);
     }
     editing.value = null;
     await load();
@@ -40,7 +40,7 @@ async function save() {
 
 async function remove() {
   try {
-    await del(`/currencies/${deleteTarget.value}`);
+    await del(`/sheet-music-genres/${deleteTarget.value}`);
     deleteTarget.value = null;
     await load();
   } catch (e) {
@@ -53,8 +53,8 @@ async function remove() {
 <template>
   <div>
     <div class="page-header">
-      <h1>Währungen</h1>
-      <button class="btn btn-primary" @click="startCreate">Neue Währung</button>
+      <h1>Notengenres</h1>
+      <button class="btn btn-primary" @click="startCreate">Neues Genre</button>
     </div>
 
     <div style="overflow-x: auto; -webkit-overflow-scrolling: touch">
@@ -62,18 +62,12 @@ async function remove() {
         <thead>
           <tr>
             <th>Bezeichnung</th>
-            <th>Kürzel</th>
             <th style="width: 120px"></th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="editing === 'new'">
-            <td>
-              <input v-model="form.label" placeholder="Bezeichnung" />
-            </td>
-            <td>
-              <input v-model="form.abbreviation" placeholder="Kürzel" style="max-width: 100px" />
-            </td>
+            <td><input v-model="form.label" placeholder="Bezeichnung" /></td>
             <td>
               <div style="display: flex; gap: 0.25rem">
                 <button class="btn-sm btn-primary" @click="save">OK</button>
@@ -85,9 +79,6 @@ async function remove() {
             <template v-if="editing === item.id">
               <td><input v-model="form.label" /></td>
               <td>
-                <input v-model="form.abbreviation" style="max-width: 100px" />
-              </td>
-              <td>
                 <div style="display: flex; gap: 0.25rem">
                   <button class="btn-sm btn-primary" @click="save">OK</button>
                   <button class="btn-sm" @click="editing = null">X</button>
@@ -96,7 +87,6 @@ async function remove() {
             </template>
             <template v-else>
               <td>{{ item.label }}</td>
-              <td>{{ item.abbreviation }}</td>
               <td>
                 <div style="display: flex; gap: 0.25rem">
                   <button class="btn-sm" @click="startEdit(item)">Bearbeiten</button>
@@ -111,8 +101,8 @@ async function remove() {
 
     <ConfirmDialog
       :open="!!deleteTarget"
-      title="Währung löschen"
-      message="Soll diese Währung wirklich gelöscht werden?"
+      title="Genre löschen"
+      message="Soll dieses Notengenre wirklich gelöscht werden?"
       @confirm="remove"
       @cancel="deleteTarget = null"
     />

@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { get, del } from "../lib/api.js";
+import { CATEGORIES } from "../lib/categories.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 
 const route = useRoute();
@@ -62,35 +63,39 @@ async function remove() {
     </div>
 
     <div v-if="loans.length" class="card">
-      <h2 style="font-size: 1.1rem; margin-bottom: 1rem">Ausgeliehene Instrumente</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Instrument</th>
-            <th>Inv.-Nr.</th>
-            <th>Von</th>
-            <th>Bis</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="l in loans" :key="l.id">
-            <td>
-              <router-link :to="`/instrumente/${l.instrument.id}`">
-                {{ l.instrument.instrument_type.label }}
-              </router-link>
-            </td>
-            <td>{{ l.instrument.inventory_nr }}</td>
-            <td>{{ l.start_date }}</td>
-            <td>{{ l.end_date || "—" }}</td>
-            <td>
-              <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
-                {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 style="font-size: 1.1rem; margin-bottom: 1rem">Ausgeliehene Gegenstände</h2>
+      <div style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+        <table>
+          <thead>
+            <tr>
+              <th>Gegenstand</th>
+              <th>Inv.-Nr.</th>
+              <th>Von</th>
+              <th>Bis</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="l in loans" :key="l.id">
+              <td>
+                <router-link
+                  :to="(CATEGORIES[l.item.category]?.routeBase || '/instrumente') + '/' + l.item.id"
+                >
+                  {{ l.item.label }}
+                </router-link>
+              </td>
+              <td>{{ l.item.display_nr }}</td>
+              <td>{{ l.start_date }}</td>
+              <td>{{ l.end_date || "—" }}</td>
+              <td>
+                <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
+                  {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <ConfirmDialog

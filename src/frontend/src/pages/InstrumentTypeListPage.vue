@@ -57,32 +57,20 @@ async function remove() {
       <button class="btn btn-primary" @click="startCreate">Neuer Typ</button>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Bezeichnung</th>
-          <th>Kürzel</th>
-          <th style="width: 120px"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-if="editing === 'new'">
-          <td><input v-model="form.label" placeholder="Bezeichnung" /></td>
-          <td>
-            <input v-model="form.label_short" placeholder="Kürzel" style="width: 80px" />
-          </td>
-          <td>
-            <div style="display: flex; gap: 0.25rem">
-              <button class="btn-sm btn-primary" @click="save">OK</button>
-              <button class="btn-sm" @click="editing = null">X</button>
-            </div>
-          </td>
-        </tr>
-        <tr v-for="item in items" :key="item.id">
-          <template v-if="editing === item.id">
-            <td><input v-model="form.label" /></td>
+    <div style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+      <table>
+        <thead>
+          <tr>
+            <th>Bezeichnung</th>
+            <th>Kürzel</th>
+            <th style="width: 120px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="editing === 'new'">
+            <td><input v-model="form.label" placeholder="Bezeichnung" /></td>
             <td>
-              <input v-model="form.label_short" style="width: 80px" />
+              <input v-model="form.label_short" placeholder="Kürzel" style="max-width: 100px" />
             </td>
             <td>
               <div style="display: flex; gap: 0.25rem">
@@ -90,20 +78,34 @@ async function remove() {
                 <button class="btn-sm" @click="editing = null">X</button>
               </div>
             </td>
-          </template>
-          <template v-else>
-            <td>{{ item.label }}</td>
-            <td>{{ item.label_short }}</td>
-            <td>
-              <div style="display: flex; gap: 0.25rem">
-                <button class="btn-sm" @click="startEdit(item)">Bearbeiten</button>
-                <button class="btn-sm btn-danger" @click="deleteTarget = item.id">X</button>
-              </div>
-            </td>
-          </template>
-        </tr>
-      </tbody>
-    </table>
+          </tr>
+          <tr v-for="item in items" :key="item.id">
+            <template v-if="editing === item.id">
+              <td><input v-model="form.label" /></td>
+              <td>
+                <input v-model="form.label_short" style="max-width: 100px" />
+              </td>
+              <td>
+                <div style="display: flex; gap: 0.25rem">
+                  <button class="btn-sm btn-primary" @click="save">OK</button>
+                  <button class="btn-sm" @click="editing = null">X</button>
+                </div>
+              </td>
+            </template>
+            <template v-else>
+              <td>{{ item.label }}</td>
+              <td>{{ item.label_short }}</td>
+              <td>
+                <div style="display: flex; gap: 0.25rem">
+                  <button class="btn-sm" @click="startEdit(item)">Bearbeiten</button>
+                  <button class="btn-sm btn-danger" @click="deleteTarget = item.id">X</button>
+                </div>
+              </td>
+            </template>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <ConfirmDialog
       :open="!!deleteTarget"

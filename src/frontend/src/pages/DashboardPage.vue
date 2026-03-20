@@ -32,22 +32,24 @@ onMounted(async () => {
 
       <div v-if="stats.instruments_by_type.length" class="card">
         <h2 style="font-size: 1.1rem; margin-bottom: 1rem">Instrumente nach Typ</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Typ</th>
-              <th>Kürzel</th>
-              <th style="text-align: right">Anzahl</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="t in stats.instruments_by_type" :key="t.label">
-              <td>{{ t.label }}</td>
-              <td>{{ t.label_short }}</td>
-              <td style="text-align: right">{{ t.count }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+          <table>
+            <thead>
+              <tr>
+                <th>Typ</th>
+                <th>Kürzel</th>
+                <th style="text-align: right">Anzahl</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in stats.instruments_by_type" :key="t.label">
+                <td>{{ t.label }}</td>
+                <td>{{ t.label_short }}</td>
+                <td style="text-align: right">{{ t.count }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </template>
   </div>
