@@ -21,3 +21,7 @@ fi
 claude plugin marketplace add obra/superpowers-marketplace
 claude plugin install -s local superpowers@superpowers-marketplace
 
+# Register MCP servers in Claude Code (ignore errors if already registered)
+claude mcp add sequential-thinking -- mcp-server-sequential-thinking || true
+claude mcp add context7 -- npx -y @upstash/context7-mcp || true
+

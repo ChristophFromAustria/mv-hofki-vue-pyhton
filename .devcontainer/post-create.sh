@@ -30,8 +30,8 @@ fi
 # Source aliases in bashrc (use absolute path since $containerWorkspaceFolder is not a shell variable)
 WORKSPACE="$(pwd)"
 
-# Install ccstatusline globally and apply config
-sudo npm install -g ccstatusline
+# Install Claude Code addons globally
+sudo npm install -g ccstatusline @modelcontextprotocol/server-sequential-thinking
 mkdir -p /home/vscode/.config/ccstatusline
 cp "${WORKSPACE}/.devcontainer/ccstatusline-settings.json" /home/vscode/.config/ccstatusline/settings.json
 
