@@ -10,11 +10,13 @@ alias claude-unsafe='claude --allow-dangerously-skip-permissions'
 # Backend server (uvicorn in tmux session "server")
 alias server-logs='tmux capture-pane -t server -p -S -500'
 alias server-attach='tmux attach -t server'
+alias server-start='tmux new-session -d -s server "PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 --reload"'
 alias server-restart='tmux send-keys -t server C-c && sleep 1 && tmux send-keys -t server "PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 --reload" Enter'
 
 # Frontend watcher (vite build --watch in tmux session "frontend")
 alias frontend-logs='tmux capture-pane -t frontend -p -S -500'
 alias frontend-attach='tmux attach -t frontend'
+alias frontend-build='cd src/frontend && VITE_BASE_PATH=${VITE_BASE_PATH:-/} npx vite build'
 alias frontend-restart='tmux send-keys -t frontend C-c && sleep 1 && tmux send-keys -t frontend "cd src/frontend && VITE_BASE_PATH=\${VITE_BASE_PATH:-/} npx vite build --watch" Enter'
 
 # Web terminal (ttyd on port 7681 in tmux session "terminal")
