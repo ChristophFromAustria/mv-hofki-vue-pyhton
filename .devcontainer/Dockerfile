@@ -3,7 +3,6 @@ FROM mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
 ARG TZ
 ENV TZ="$TZ"
 
-ARG CLAUDE_CODE_VERSION=latest
 
 # Remove broken Yarn repo (expired GPG key in base image)
 RUN rm -f /etc/apt/sources.list.d/yarn.list
@@ -17,13 +16,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml /tmp/pyproject.toml
 RUN pip install --no-cache-dir $(python3 -c "import tomllib,pathlib;d=tomllib.loads(pathlib.Path('/tmp/pyproject.toml').read_text());print(' '.join(d['project']['dependencies']+d['project']['optional-dependencies']['dev']))")
 
-# Install Node.js LTS for frontend + Claude Code
+# Install Node.js LTS for frontend tooling
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code globally
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+# Install Claude Code via native installer (as vscode user so it lands on their PATH)
+USER vscode
+RUN curl -fsSL https://claude.ai/install.sh | bash
+USER root
 
 # Persist bash history
 RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \

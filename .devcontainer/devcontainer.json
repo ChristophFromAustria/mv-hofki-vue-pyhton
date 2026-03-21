@@ -5,8 +5,7 @@
     "dockerfile": "Dockerfile",
     "context": "..",
     "args": {
-      "TZ": "${localEnv:TZ:Europe/Berlin}",
-      "CLAUDE_CODE_VERSION": "latest"
+      "TZ": "${localEnv:TZ:Europe/Berlin}"
     }
   },
   "customizations": {
