@@ -20,7 +20,7 @@ alias frontend-restart='tmux send-keys -t frontend C-c && sleep 1 && tmux send-k
 # Web terminal (ttyd on port 7681 in tmux session "terminal")
 alias terminal-logs='tmux capture-pane -t terminal -p -S -500'
 alias terminal-attach='tmux attach -t terminal'
-alias terminal-restart='tmux send-keys -t terminal C-c && sleep 1 && tmux send-keys -t terminal "ttyd --port 7681 --writable bash" Enter'
+alias terminal-restart='tmux send-keys -t terminal C-c && sleep 1 && tmux send-keys -t terminal "ttyd --port 7681 --writable --index $WORKSPACE/.devcontainer/ttyd-index.html -t fontSize=16 -t disableResizeOverlay=true bash" Enter'
 
 # MCP keepalive proxy (not active by default — use setup-mcp-proxy.sh to configure)
 WORKSPACE="$(pwd)"

@@ -15,7 +15,7 @@ tmux new-session -d -s frontend \
 # Start web terminal (ttyd) in tmux
 if command -v ttyd &>/dev/null; then
   tmux new-session -d -s terminal \
-    "ttyd --port 7681 --writable bash"
+    "ttyd --port 7681 --writable --index $WORKSPACE/.devcontainer/ttyd-index.html -t fontSize=16 -t disableResizeOverlay=true bash"
 fi
 
 claude plugin marketplace add obra/superpowers-marketplace
