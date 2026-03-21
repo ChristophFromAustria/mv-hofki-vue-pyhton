@@ -5,6 +5,7 @@ import { CATEGORIES } from "../lib/categories.js";
 import StatCard from "../components/StatCard.vue";
 
 const stats = ref(null);
+const email = ref(null);
 const loading = ref(true);
 
 function categoryRoute(category) {
@@ -13,7 +14,9 @@ function categoryRoute(category) {
 
 onMounted(async () => {
   try {
-    stats.value = await get("/dashboard");
+    const [dashboardData, meData] = await Promise.all([get("/dashboard"), get("/me")]);
+    stats.value = dashboardData;
+    email.value = meData.email;
   } catch (e) {
     console.error("Dashboard laden fehlgeschlagen:", e);
   } finally {
@@ -24,7 +27,10 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1 style="margin-bottom: 1.5rem">Dashboard</h1>
+    <h1 style="margin-bottom: 1.5rem; text-align: center">
+      <template v-if="email">Willkommen {{ email }}!</template>
+      <template v-else>Dashboard</template>
+    </h1>
 
     <div v-if="loading" style="text-align: center; padding: 2rem">Laden...</div>
 
