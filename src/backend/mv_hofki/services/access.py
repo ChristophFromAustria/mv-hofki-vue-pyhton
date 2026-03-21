@@ -24,24 +24,20 @@ def _headers(token: str) -> dict[str, str]:
 
 
 async def _fetch_policy(
-    client: httpx.AsyncClient, zone_id: str, token: str
-) -> tuple[str, str, dict]:
-    """Find the first reusable allow policy and return (app_id, policy_id, policy)."""
-    url = f"{CF_API_BASE}/zones/{zone_id}/access/apps"
+    client: httpx.AsyncClient, account_id: str, policy_id: str, token: str
+) -> dict:
+    """Fetch the reusable policy by ID."""
+    url = f"{CF_API_BASE}/accounts/{account_id}/access/policies/{policy_id}"
     resp = await client.get(url, headers=_headers(token))
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Cloudflare API nicht erreichbar")
+        logger.error("Cloudflare GET policy failed: %s", resp.status_code)
+        raise HTTPException(status_code=502, detail="Cloudflare-Policy nicht gefunden")
 
     data = resp.json()
     if not data.get("success") or not data.get("result"):
-        raise HTTPException(status_code=502, detail="Keine Access-Anwendungen gefunden")
+        raise HTTPException(status_code=502, detail="Cloudflare-Policy nicht gefunden")
 
-    for app in data["result"]:
-        for policy in app.get("policies", []):
-            if policy.get("decision") == "allow" and policy.get("reusable"):
-                return app["id"], policy["id"], policy
-
-    raise HTTPException(status_code=502, detail="Keine Allow-Policy gefunden")
+    return dict(data["result"])
 
 
 def _extract_emails(policy: dict) -> list[str]:
@@ -54,40 +50,47 @@ def _extract_emails(policy: dict) -> list[str]:
     return sorted(emails)
 
 
+def _check_config(s: Settings) -> tuple[str, str, str]:
+    """Validate Cloudflare config and return (token, account_id, policy_id)."""
+    if (
+        not s.CLOUDFLARE_API_TOKEN
+        or not s.CLOUDFLARE_ACCOUNT_ID
+        or not s.CLOUDFLARE_POLICY_ID
+    ):
+        raise HTTPException(status_code=500, detail="Cloudflare-Konfiguration fehlt")
+    return s.CLOUDFLARE_API_TOKEN, s.CLOUDFLARE_ACCOUNT_ID, s.CLOUDFLARE_POLICY_ID
+
+
 async def get_emails() -> list[str]:
     """Get the list of allowed email addresses."""
-    s = _get_settings()
-    if not s.CLOUDFLARE_API_TOKEN or not s.CLOUDFLARE_ZONE_ID:
-        raise HTTPException(status_code=500, detail="Cloudflare-Konfiguration fehlt")
+    token, account_id, policy_id = _check_config(_get_settings())
 
     async with httpx.AsyncClient() as client:
-        _, _, policy = await _fetch_policy(
-            client, s.CLOUDFLARE_ZONE_ID, s.CLOUDFLARE_API_TOKEN
-        )
+        policy = await _fetch_policy(client, account_id, policy_id, token)
     return _extract_emails(policy)
 
 
 async def _update_policy_emails(
     client: httpx.AsyncClient,
-    zone_id: str,
-    token: str,
-    app_id: str,
+    account_id: str,
     policy_id: str,
+    token: str,
     policy: dict,
     new_include: list[dict],
 ) -> list[str]:
     """PUT updated include list to Cloudflare and return the new email list."""
-    url = f"{CF_API_BASE}/zones/{zone_id}/access/apps/{app_id}/policies/{policy_id}"
+    url = f"{CF_API_BASE}/accounts/{account_id}/access/policies/{policy_id}"
     payload = {
         "name": policy["name"],
         "decision": policy["decision"],
         "include": new_include,
         "exclude": policy.get("exclude", []),
         "require": policy.get("require", []),
+        "session_duration": policy.get("session_duration", "24h"),
     }
     resp = await client.put(url, headers=_headers(token), json=payload)
     if resp.status_code != 200:
-        logger.error("Cloudflare PUT failed: %s", resp.status_code)
+        logger.error("Cloudflare PUT failed: %s — %s", resp.status_code, resp.text)
         raise HTTPException(
             status_code=502, detail="Cloudflare-Policy konnte nicht aktualisiert werden"
         )
@@ -98,14 +101,10 @@ async def _update_policy_emails(
 
 async def add_email(email: str) -> list[str]:
     """Add an email to the access allow-list."""
-    s = _get_settings()
-    if not s.CLOUDFLARE_API_TOKEN or not s.CLOUDFLARE_ZONE_ID:
-        raise HTTPException(status_code=500, detail="Cloudflare-Konfiguration fehlt")
+    token, account_id, policy_id = _check_config(_get_settings())
 
     async with httpx.AsyncClient() as client:
-        app_id, policy_id, policy = await _fetch_policy(
-            client, s.CLOUDFLARE_ZONE_ID, s.CLOUDFLARE_API_TOKEN
-        )
+        policy = await _fetch_policy(client, account_id, policy_id, token)
 
         existing = _extract_emails(policy)
         if email.lower() in [e.lower() for e in existing]:
@@ -115,26 +114,16 @@ async def add_email(email: str) -> list[str]:
 
         new_include = policy.get("include", []) + [{"email": {"email": email}}]
         return await _update_policy_emails(
-            client,
-            s.CLOUDFLARE_ZONE_ID,
-            s.CLOUDFLARE_API_TOKEN,
-            app_id,
-            policy_id,
-            policy,
-            new_include,
+            client, account_id, policy_id, token, policy, new_include
         )
 
 
 async def remove_email(email: str) -> list[str]:
     """Remove an email from the access allow-list."""
-    s = _get_settings()
-    if not s.CLOUDFLARE_API_TOKEN or not s.CLOUDFLARE_ZONE_ID:
-        raise HTTPException(status_code=500, detail="Cloudflare-Konfiguration fehlt")
+    token, account_id, policy_id = _check_config(_get_settings())
 
     async with httpx.AsyncClient() as client:
-        app_id, policy_id, policy = await _fetch_policy(
-            client, s.CLOUDFLARE_ZONE_ID, s.CLOUDFLARE_API_TOKEN
-        )
+        policy = await _fetch_policy(client, account_id, policy_id, token)
 
         existing = _extract_emails(policy)
         if email.lower() not in [e.lower() for e in existing]:
@@ -152,11 +141,5 @@ async def remove_email(email: str) -> list[str]:
             if entry.get("email", {}).get("email", "").lower() != email.lower()
         ]
         return await _update_policy_emails(
-            client,
-            s.CLOUDFLARE_ZONE_ID,
-            s.CLOUDFLARE_API_TOKEN,
-            app_id,
-            policy_id,
-            policy,
-            new_include,
+            client, account_id, policy_id, token, policy, new_include
         )

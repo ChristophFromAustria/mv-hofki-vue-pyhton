@@ -1,6 +1,6 @@
 """Tests for Cloudflare Access email management."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -10,28 +10,21 @@ from mv_hofki.services import access as access_service
 # --- Sample Cloudflare API responses ---
 
 
-def _make_apps_response(emails: list[str]):
-    """Build a fake Cloudflare GET /access/apps response."""
+def _make_policy_response(emails: list[str]):
+    """Build a fake Cloudflare GET /access/policies/{id} response."""
     include = [{"email": {"email": e}} for e in emails]
     return {
         "success": True,
-        "result": [
-            {
-                "id": "app-1",
-                "name": "mv-hofki",
-                "policies": [
-                    {
-                        "id": "policy-1",
-                        "decision": "allow",
-                        "reusable": True,
-                        "include": include,
-                        "exclude": [],
-                        "require": [],
-                        "name": "Allow emails",
-                    }
-                ],
-            }
-        ],
+        "result": {
+            "id": "policy-1",
+            "decision": "allow",
+            "reusable": True,
+            "include": include,
+            "exclude": [],
+            "require": [],
+            "name": "Allow emails",
+            "session_duration": "24h",
+        },
     }
 
 
@@ -47,14 +40,13 @@ def _make_put_response(emails: list[str]):
             "exclude": [],
             "require": [],
             "name": "Allow emails",
+            "session_duration": "24h",
         },
     }
 
 
 def _mock_httpx_client(get_response=None, put_response=None):
     """Create a mock httpx.AsyncClient with preset responses."""
-    from unittest.mock import MagicMock
-
     mock_client = AsyncMock()
     if get_response is not None:
         mock_get_resp = MagicMock()
@@ -77,20 +69,21 @@ def _mock_httpx_client(get_response=None, put_response=None):
 @pytest.fixture(autouse=True)
 def _cf_settings(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "test-token")
-    monkeypatch.setenv("CLOUDFLARE_ZONE_ID", "test-zone")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "test-account")
+    monkeypatch.setenv("CLOUDFLARE_POLICY_ID", "test-policy")
 
 
 class TestGetEmails:
     async def test_returns_sorted_emails(self):
         mock = _mock_httpx_client(
-            get_response=_make_apps_response(["b@example.com", "a@example.com"])
+            get_response=_make_policy_response(["b@example.com", "a@example.com"])
         )
         with patch("mv_hofki.services.access.httpx.AsyncClient", return_value=mock):
             result = await access_service.get_emails()
         assert result == ["a@example.com", "b@example.com"]
 
-    async def test_raises_when_no_apps(self):
-        mock = _mock_httpx_client(get_response={"success": True, "result": []})
+    async def test_raises_when_policy_not_found(self):
+        mock = _mock_httpx_client(get_response={"success": True, "result": None})
         with patch("mv_hofki.services.access.httpx.AsyncClient", return_value=mock):
             with pytest.raises(HTTPException) as exc_info:
                 await access_service.get_emails()
@@ -100,7 +93,7 @@ class TestGetEmails:
 class TestAddEmail:
     async def test_adds_email(self):
         mock = _mock_httpx_client(
-            get_response=_make_apps_response(["existing@example.com"]),
+            get_response=_make_policy_response(["existing@example.com"]),
             put_response=_make_put_response(
                 ["existing@example.com", "new@example.com"]
             ),
@@ -112,7 +105,7 @@ class TestAddEmail:
 
     async def test_rejects_duplicate(self):
         mock = _mock_httpx_client(
-            get_response=_make_apps_response(["existing@example.com"])
+            get_response=_make_policy_response(["existing@example.com"])
         )
         with patch("mv_hofki.services.access.httpx.AsyncClient", return_value=mock):
             with pytest.raises(HTTPException) as exc_info:
@@ -123,7 +116,7 @@ class TestAddEmail:
 class TestRemoveEmail:
     async def test_removes_email(self):
         mock = _mock_httpx_client(
-            get_response=_make_apps_response(
+            get_response=_make_policy_response(
                 ["keep@example.com", "remove@example.com"]
             ),
             put_response=_make_put_response(["keep@example.com"]),
@@ -134,7 +127,7 @@ class TestRemoveEmail:
 
     async def test_rejects_nonexistent(self):
         mock = _mock_httpx_client(
-            get_response=_make_apps_response(["existing@example.com"])
+            get_response=_make_policy_response(["existing@example.com"])
         )
         with patch("mv_hofki.services.access.httpx.AsyncClient", return_value=mock):
             with pytest.raises(HTTPException) as exc_info:
@@ -143,7 +136,7 @@ class TestRemoveEmail:
 
     async def test_prevents_removing_last_email(self):
         mock = _mock_httpx_client(
-            get_response=_make_apps_response(["last@example.com"])
+            get_response=_make_policy_response(["last@example.com"])
         )
         with patch("mv_hofki.services.access.httpx.AsyncClient", return_value=mock):
             with pytest.raises(HTTPException) as exc_info:
