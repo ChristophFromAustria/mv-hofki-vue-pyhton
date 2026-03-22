@@ -18,13 +18,15 @@ defineProps({
   text-align: center;
   display: block;
   color: inherit;
+  border-left: 4px solid var(--color-primary);
+  transition: all var(--transition);
 }
 a.stat-card {
   text-decoration: none;
-  transition: box-shadow 0.15s;
 }
 a.stat-card:hover {
-  box-shadow: 0 4px 12px var(--color-shadow);
+  box-shadow: 0 4px 16px var(--color-shadow);
+  transform: translateY(-2px);
 }
 .stat-value {
   font-size: 2rem;
