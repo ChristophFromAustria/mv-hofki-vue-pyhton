@@ -25,7 +25,9 @@ class Settings(BaseSettings):
 
     PROJECT_ROOT: Path = _find_project_root()
 
-    DATABASE_URL: str = "sqlite+aiosqlite:///data/mv_hofki.db"
+    DATABASE_URL: str = (
+        f"sqlite+aiosqlite:///{_find_project_root() / 'data' / 'mv_hofki.db'}"
+    )
 
     CLOUDFLARE_API_TOKEN: str | None = None
     CLOUDFLARE_ACCOUNT_ID: str | None = None

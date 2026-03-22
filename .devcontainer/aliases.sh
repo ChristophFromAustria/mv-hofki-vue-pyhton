@@ -5,7 +5,7 @@
 alias ll='ls -alF'
 
 # Claude Code
-alias claude-unsafe='claude --allow-dangerously-skip-permissions'
+alias claude-unsafe='claude --allow-dangerously-skip-permissions --permission-mode bypassPermissions'
 
 # Backend server (uvicorn in tmux session "server")
 alias server-logs='tmux capture-pane -t server -p -S -500'

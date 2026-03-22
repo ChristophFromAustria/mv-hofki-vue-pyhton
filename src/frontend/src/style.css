@@ -56,6 +56,21 @@ body {
   line-height: 1.6;
 }
 
+/* Watermark logo background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: url("../public/mv-hofkirchen-logo.png") center center / 40vmin no-repeat;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+[data-theme="dark"] body::before {
+  opacity: 0.04;
+}
+
 a {
   color: var(--color-primary);
   text-decoration: none;
