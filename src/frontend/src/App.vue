@@ -8,7 +8,11 @@ const version = __APP_VERSION__;
 <template>
   <NavBar />
   <main class="container">
-    <RouterView />
+    <RouterView v-slot="{ Component, route }">
+      <Transition name="fade" mode="out-in">
+        <component :is="Component" :key="route.path" />
+      </Transition>
+    </RouterView>
   </main>
   <div class="app-version">v{{ version }}</div>
 </template>
