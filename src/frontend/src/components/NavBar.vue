@@ -149,6 +149,10 @@ onMounted(() => {
   font-size: 1rem;
 }
 
+.links > a {
+  transition: all var(--transition);
+}
+
 .links > a:hover,
 .dropdown-trigger:hover {
   background: var(--color-bg-soft);
@@ -157,6 +161,9 @@ onMounted(() => {
 .links a.router-link-active {
   color: var(--color-primary);
   font-weight: 600;
+  background: var(--color-primary-light);
+  border-left: 3px solid var(--color-primary);
+  padding-left: calc(1.25rem - 3px);
 }
 
 .hamburger {
