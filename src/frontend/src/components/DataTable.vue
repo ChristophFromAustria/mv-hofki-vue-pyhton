@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from "vue";
+import LoadingSpinner from "./LoadingSpinner.vue";
 
 const props = defineProps({
   columns: { type: Array, default: () => [] },
@@ -28,7 +29,7 @@ onUnmounted(() => {
 <template>
   <!-- Card layout for mobile when cardBreakpoint is set -->
   <div v-if="useCards" class="dt-cards">
-    <div v-if="loading" class="dt-empty">Laden...</div>
+    <LoadingSpinner v-if="loading" />
     <div v-else-if="!rows?.length" class="dt-empty">Keine Einträge</div>
     <div v-for="row in rows" :key="row.id" class="dt-card" @click="$emit('row-click', row)">
       <div v-for="col in columns" :key="col.key" class="dt-card-row">
@@ -52,7 +53,9 @@ onUnmounted(() => {
       </thead>
       <tbody>
         <tr v-if="loading">
-          <td :colspan="columns.length" style="text-align: center; padding: 2rem">Laden...</td>
+          <td :colspan="columns.length" style="padding: 0">
+            <LoadingSpinner />
+          </td>
         </tr>
         <tr v-else-if="!rows?.length">
           <td

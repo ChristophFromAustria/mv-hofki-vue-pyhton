@@ -3,6 +3,7 @@ import { ref, onMounted } from "vue";
 import { get } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import StatCard from "../components/StatCard.vue";
+import LoadingSpinner from "../components/LoadingSpinner.vue";
 
 const stats = ref(null);
 const email = ref(null);
@@ -32,7 +33,7 @@ onMounted(async () => {
       <template v-else>Dashboard</template>
     </h1>
 
-    <div v-if="loading" style="text-align: center; padding: 2rem">Laden...</div>
+    <LoadingSpinner v-if="loading" />
 
     <template v-else-if="stats">
       <div
