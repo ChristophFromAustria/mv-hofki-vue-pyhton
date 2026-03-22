@@ -112,6 +112,13 @@ button:hover,
   background: var(--color-border);
 }
 
+button:focus-visible,
+.btn:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .btn-primary {
   background: var(--color-primary);
   color: white;
@@ -409,6 +416,11 @@ tbody tr:hover {
 .view-toggle button.active {
   background: var(--color-primary);
   color: white;
+}
+
+.view-toggle button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 /* Form validation */
