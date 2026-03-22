@@ -10,32 +10,37 @@
 
 :root {
   --color-bg: #ffffff;
-  --color-bg-soft: #f9fafb;
-  --color-text: #1a1a1a;
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
-  --color-border: #e5e7eb;
-  --color-muted: #6b7280;
+  --color-bg-soft: #f8f9fa;
+  --color-text: #1e293b;
+  --color-primary: #1e3a5f;
+  --color-primary-hover: #152d4a;
+  --color-primary-light: rgba(30, 58, 95, 0.08);
+  --color-border: #e2e8f0;
+  --color-muted: #64748b;
   --color-danger: #dc2626;
   --color-danger-bg: #fef2f2;
   --color-badge-green-bg: #dcfce7;
   --color-badge-green-text: #166534;
-  --color-badge-gray-bg: #f3f4f6;
-  --color-badge-gray-text: #374151;
-  --color-shadow: rgba(0, 0, 0, 0.1);
-  --color-overlay: rgba(0, 0, 0, 0.3);
-  --font-sans: system-ui, -apple-system, sans-serif;
+  --color-badge-gray-bg: #f1f5f9;
+  --color-badge-gray-text: #475569;
+  --color-shadow: rgba(15, 23, 42, 0.08);
+  --color-overlay: rgba(15, 23, 42, 0.4);
+  --color-row-alt: rgba(30, 58, 95, 0.03);
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", monospace;
   --max-width: 1200px;
+  --radius: 8px;
+  --transition: 0.2s ease;
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --color-bg: #1a1a2e;
-  --color-bg-soft: #16213e;
+  --color-bg: #0f172a;
+  --color-bg-soft: #1e293b;
   --color-text: #e2e8f0;
-  --color-primary: #60a5fa;
-  --color-primary-hover: #93bbfd;
+  --color-primary: #7dd3fc;
+  --color-primary-hover: #bae6fd;
+  --color-primary-light: rgba(125, 211, 252, 0.08);
   --color-border: #334155;
   --color-muted: #94a3b8;
   --color-danger: #f87171;
@@ -44,8 +49,9 @@
   --color-badge-green-text: #6ee7b7;
   --color-badge-gray-bg: #1e293b;
   --color-badge-gray-text: #cbd5e1;
-  --color-shadow: rgba(0, 0, 0, 0.4);
+  --color-shadow: rgba(0, 0, 0, 0.3);
   --color-overlay: rgba(0, 0, 0, 0.6);
+  --color-row-alt: rgba(125, 211, 252, 0.04);
   color-scheme: dark;
 }
 
@@ -54,6 +60,8 @@ body {
   color: var(--color-text);
   background: var(--color-bg);
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Watermark logo background */
@@ -88,12 +96,15 @@ button,
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--color-bg);
   color: var(--color-text);
   font-size: 0.875rem;
   cursor: pointer;
-  transition: background 0.15s;
+  transition:
+    background var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
 }
 
 button:hover,
@@ -161,7 +172,7 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
 /* Tables */
@@ -193,7 +204,7 @@ tr:hover {
 /* Cards */
 .card {
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 1.25rem;
   background: var(--color-bg);
 }
@@ -398,7 +409,7 @@ tr:hover {
 .form-group.error input:focus,
 .form-group.error select:focus,
 .form-group.error textarea:focus {
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
 }
 
 .form-error {
