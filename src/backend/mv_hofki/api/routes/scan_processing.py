@@ -11,6 +11,7 @@ from mv_hofki.api.deps import get_db
 from mv_hofki.schemas.detected_staff import DetectedStaffRead
 from mv_hofki.schemas.detected_symbol import DetectedSymbolRead, SymbolCorrectionRequest
 from mv_hofki.schemas.sheet_music_scan import ScanStatusRead
+from mv_hofki.services import sheet_music_scan as scan_service
 
 router = APIRouter(prefix="/api/v1/scanner", tags=["scanner-processing"])
 
@@ -18,30 +19,41 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/scans/{scan_id}/process", response_model=ScanStatusRead)
-async def trigger_processing(scan_id: int, db: AsyncSession = Depends(get_db)):
-    """Trigger the processing pipeline for a scan.
-
-    This is a placeholder that sets the status to 'processing'.
-    The actual pipeline integration will connect the stages to this endpoint.
-    """
+async def trigger_processing(
+    scan_id: int,
+    project_id: int | None = None,
+    part_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger the processing pipeline for a scan."""
+    from mv_hofki.models.scan_part import ScanPart
     from mv_hofki.models.sheet_music_scan import SheetMusicScan
 
     scan = await db.get(SheetMusicScan, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan nicht gefunden")
 
-    if scan.status not in ("uploaded", "review", "completed"):
+    if scan.status == "processing":
         raise HTTPException(status_code=409, detail="Scan wird bereits verarbeitet")
+
+    # Resolve project_id and part_id from scan
+    part = await db.get(ScanPart, scan.part_id)
+    if not part:
+        raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
+    actual_project_id = part.project_id
+    actual_part_id = part.id
 
     scan.status = "processing"
     await db.commit()
+
+    try:
+        await scan_service.run_pipeline(db, actual_project_id, actual_part_id, scan_id)
+    except Exception:
+        scan.status = "uploaded"
+        await db.commit()
+        raise
+
     await db.refresh(scan)
-
-    # TODO: actual pipeline execution will be added here
-    # For now, just set status back to review as placeholder
-    scan.status = "review"
-    await db.commit()
-
     return ScanStatusRead(status=scan.status, current_stage=None, progress=1.0)
 
 
@@ -112,6 +124,7 @@ async def correct_symbol(
 ):
     """Correct a symbol's match — sets user_corrected_symbol_id and user_verified."""
     from mv_hofki.models.detected_symbol import DetectedSymbol
+    from mv_hofki.models.symbol_variant import SymbolVariant
 
     symbol = await db.get(DetectedSymbol, symbol_id)
     if not symbol:
@@ -119,8 +132,17 @@ async def correct_symbol(
 
     symbol.user_corrected_symbol_id = data.symbol_template_id
     symbol.user_verified = True
+
+    # Feedback loop: add snippet as new variant of the corrected template
+    if symbol.snippet_path:
+        variant = SymbolVariant(
+            template_id=data.symbol_template_id,
+            image_path=symbol.snippet_path,
+            source="user_correction",
+        )
+        db.add(variant)
+
     await db.commit()
-    await db.refresh(symbol)
     return {"status": "ok"}
 
 

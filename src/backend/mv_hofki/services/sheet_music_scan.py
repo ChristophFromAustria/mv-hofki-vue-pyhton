@@ -122,3 +122,130 @@ async def delete(
         shutil.rmtree(scan_directory)
     await session.delete(scan)
     await session.commit()
+
+
+async def run_pipeline(
+    session: AsyncSession,
+    project_id: int,
+    part_id: int,
+    scan_id: int,
+) -> None:
+    import json
+
+    import cv2
+    from sqlalchemy import delete as sa_delete
+    from sqlalchemy import select as sa_select
+
+    from mv_hofki.models.detected_staff import DetectedStaff
+    from mv_hofki.models.detected_symbol import DetectedSymbol
+    from mv_hofki.models.symbol_variant import SymbolVariant
+    from mv_hofki.services.scanner.pipeline import Pipeline
+    from mv_hofki.services.scanner.stages.base import PipelineContext
+    from mv_hofki.services.scanner.stages.matching import MatchingStage
+    from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
+    from mv_hofki.services.scanner.stages.segmentation import SegmentationStage
+    from mv_hofki.services.scanner.stages.staff_removal import StaffRemovalStage
+    from mv_hofki.services.scanner.stages.stave_detection import StaveDetectionStage
+
+    scan = await get_by_id(session, project_id, part_id, scan_id)
+    img_path = settings.PROJECT_ROOT / scan.image_path
+    img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise HTTPException(status_code=400, detail="Bild konnte nicht geladen werden")
+
+    # Load symbol library variants
+    result = await session.execute(sa_select(SymbolVariant))
+    variants = list(result.scalars().all())
+
+    variant_images = []
+    variant_template_ids = []
+    for v in variants:
+        v_path = settings.PROJECT_ROOT / v.image_path
+        v_img = cv2.imread(str(v_path), cv2.IMREAD_GRAYSCALE)
+        if v_img is not None:
+            variant_images.append(v_img)
+            variant_template_ids.append(v.template_id)
+
+    # Build pipeline config
+    config = json.loads(scan.pipeline_config_json) if scan.pipeline_config_json else {}
+
+    stages = [
+        PreprocessStage(),
+        StaveDetectionStage(),
+        StaffRemovalStage(),
+        SegmentationStage(),
+        MatchingStage(
+            variant_images=variant_images, variant_template_ids=variant_template_ids
+        ),
+    ]
+
+    ctx = PipelineContext(image=img, config=config)
+    pipeline = Pipeline(stages=stages)
+    ctx = pipeline.run(ctx)
+
+    # Clear previous detection results
+    staff_ids_q = sa_select(DetectedStaff.id).where(DetectedStaff.scan_id == scan_id)
+    await session.execute(
+        sa_delete(DetectedSymbol).where(DetectedSymbol.staff_id.in_(staff_ids_q))
+    )
+    await session.execute(
+        sa_delete(DetectedStaff).where(DetectedStaff.scan_id == scan_id)
+    )
+
+    # Persist detected staves
+    snippet_dir = _scan_dir(project_id, part_id, scan_id) / "snippets"
+    snippet_dir.mkdir(parents=True, exist_ok=True)
+
+    for staff_data in ctx.staves:
+        staff = DetectedStaff(
+            scan_id=scan_id,
+            staff_index=staff_data.staff_index,
+            y_top=staff_data.y_top,
+            y_bottom=staff_data.y_bottom,
+            line_positions_json=json.dumps(staff_data.line_positions),
+            line_spacing=staff_data.line_spacing,
+            clef=staff_data.clef,
+            key_signature=staff_data.key_signature,
+            time_signature=staff_data.time_signature,
+        )
+        session.add(staff)
+        await session.flush()
+
+        # Persist symbols for this staff
+        for sym_data in ctx.symbols:
+            if sym_data.staff_index != staff_data.staff_index:
+                continue
+
+            snippet_path = None
+            if sym_data.snippet is not None:
+                snippet_filename = f"{sym_data.sequence_order}.png"
+                snippet_file = snippet_dir / snippet_filename
+                cv2.imwrite(str(snippet_file), sym_data.snippet)
+                snippet_path = str(snippet_file.relative_to(settings.PROJECT_ROOT))
+
+            symbol = DetectedSymbol(
+                staff_id=staff.id,
+                x=sym_data.x,
+                y=sym_data.y,
+                width=sym_data.width,
+                height=sym_data.height,
+                snippet_path=snippet_path,
+                position_on_staff=sym_data.position_on_staff,
+                sequence_order=sym_data.sequence_order,
+                matched_symbol_id=sym_data.matched_template_id,
+                confidence=sym_data.confidence,
+                user_verified=sym_data.confidence is not None
+                and sym_data.confidence >= 0.85,
+            )
+            session.add(symbol)
+
+    # Save processed image
+    if ctx.processed_image is not None:
+        processed_path = _scan_dir(project_id, part_id, scan_id) / "processed.png"
+        cv2.imwrite(str(processed_path), ctx.processed_image)
+        scan.processed_image_path = str(
+            processed_path.relative_to(settings.PROJECT_ROOT)
+        )
+
+    scan.status = "review"
+    await session.commit()
