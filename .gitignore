@@ -26,6 +26,12 @@ data/*.db
 data/uploads/*
 !data/uploads/.gitkeep
 
+# Worktrees
+.worktrees/
+
+# Superpowers
+.superpowers/
+
 # OS
 .DS_Store
 Thumbs.db
