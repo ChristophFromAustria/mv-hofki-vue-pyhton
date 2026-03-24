@@ -24,6 +24,7 @@ from mv_hofki.api.routes.me import router as me_router
 from mv_hofki.api.routes.musicians import router as musicians_router
 from mv_hofki.api.routes.scan_parts import router as scan_parts_router
 from mv_hofki.api.routes.scan_projects import router as scan_projects_router
+from mv_hofki.api.routes.scans import router as scans_router
 from mv_hofki.api.routes.sheet_music_genres import router as sheet_music_genres_router
 from mv_hofki.core.config import settings
 from mv_hofki.db.engine import async_session_factory
@@ -62,10 +63,15 @@ app.include_router(me_router)
 app.include_router(access_router)
 app.include_router(scan_projects_router)
 app.include_router(scan_parts_router)
+app.include_router(scans_router)
 
 _uploads_dir = settings.PROJECT_ROOT / "data" / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
+
+_scans_dir = settings.PROJECT_ROOT / "data" / "scans"
+_scans_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/scans", StaticFiles(directory=str(_scans_dir)), name="scans")
 
 _frontend_dist = settings.PROJECT_ROOT / "src" / "frontend" / "dist"
 if _frontend_dist.exists():
