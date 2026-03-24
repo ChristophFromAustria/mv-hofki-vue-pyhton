@@ -141,11 +141,9 @@ async def run_pipeline(
     from mv_hofki.models.symbol_variant import SymbolVariant
     from mv_hofki.services.scanner.pipeline import Pipeline
     from mv_hofki.services.scanner.stages.base import PipelineContext
-    from mv_hofki.services.scanner.stages.matching import MatchingStage
     from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
-    from mv_hofki.services.scanner.stages.segmentation import SegmentationStage
-    from mv_hofki.services.scanner.stages.staff_removal import StaffRemovalStage
     from mv_hofki.services.scanner.stages.stave_detection import StaveDetectionStage
+    from mv_hofki.services.scanner.stages.template_matching import TemplateMatchingStage
 
     scan = await get_by_id(session, project_id, part_id, scan_id)
     img_path = settings.PROJECT_ROOT / scan.image_path
@@ -153,29 +151,37 @@ async def run_pipeline(
     if img is None:
         raise HTTPException(status_code=400, detail="Bild konnte nicht geladen werden")
 
-    # Load symbol library variants
-    result = await session.execute(sa_select(SymbolVariant))
+    # Load symbol library variants that have height_in_lines (user-captured templates)
+    result = await session.execute(
+        sa_select(SymbolVariant).where(SymbolVariant.height_in_lines.isnot(None))
+    )
     variants = list(result.scalars().all())
 
     variant_images = []
     variant_template_ids = []
+    variant_heights = []
     for v in variants:
         v_path = settings.PROJECT_ROOT / v.image_path
         v_img = cv2.imread(str(v_path), cv2.IMREAD_GRAYSCALE)
-        if v_img is not None:
+        if v_img is not None and v.height_in_lines is not None:
             variant_images.append(v_img)
             variant_template_ids.append(v.template_id)
+            variant_heights.append(v.height_in_lines)
 
-    # Build pipeline config
+    # Pass the user's threshold into the pipeline config
+    adjustments = json.loads(scan.adjustments_json) if scan.adjustments_json else {}
     config = json.loads(scan.pipeline_config_json) if scan.pipeline_config_json else {}
+    if "threshold" in adjustments:
+        config["threshold"] = adjustments["threshold"]
 
     stages = [
         PreprocessStage(),
         StaveDetectionStage(),
-        StaffRemovalStage(),
-        SegmentationStage(),
-        MatchingStage(
-            variant_images=variant_images, variant_template_ids=variant_template_ids
+        TemplateMatchingStage(
+            variant_images=variant_images,
+            variant_template_ids=variant_template_ids,
+            variant_heights=variant_heights,
+            confidence_threshold=config.get("confidence_threshold", 0.6),
         ),
     ]
 
