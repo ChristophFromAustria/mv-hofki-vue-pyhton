@@ -284,3 +284,21 @@ def test_matching_finds_best_match():
 
     assert template_id == 42
     assert confidence > 0.8
+
+
+def test_preprocess_global_threshold():
+    from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
+
+    img = np.full((100, 100), 180, dtype=np.uint8)
+    img[30:70, 30:70] = 40
+
+    ctx = PipelineContext(image=img, config={"threshold": 128})
+    stage = PreprocessStage()
+    result = stage.process(ctx)
+
+    assert result.processed_image is not None
+    unique = np.unique(result.processed_image)
+    assert all(v in (0, 255) for v in unique)
+    # With global threshold=128: pixels at 180 → white, pixels at 40 → black
+    assert result.processed_image[50, 50] == 0  # dark area → black
+    assert result.processed_image[5, 5] == 255  # light area → white
