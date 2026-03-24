@@ -26,6 +26,7 @@ from mv_hofki.api.routes.scan_parts import router as scan_parts_router
 from mv_hofki.api.routes.scan_projects import router as scan_projects_router
 from mv_hofki.api.routes.scans import router as scans_router
 from mv_hofki.api.routes.sheet_music_genres import router as sheet_music_genres_router
+from mv_hofki.api.routes.symbol_library import router as symbol_library_router
 from mv_hofki.core.config import settings
 from mv_hofki.db.engine import async_session_factory
 from mv_hofki.db.seed import seed_data
@@ -64,6 +65,7 @@ app.include_router(access_router)
 app.include_router(scan_projects_router)
 app.include_router(scan_parts_router)
 app.include_router(scans_router)
+app.include_router(symbol_library_router)
 
 _uploads_dir = settings.PROJECT_ROOT / "data" / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)

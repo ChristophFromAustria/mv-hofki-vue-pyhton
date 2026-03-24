@@ -9,6 +9,8 @@ from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.models.currency import Currency
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.models.sheet_music_genre import SheetMusicGenre
+from mv_hofki.models.symbol_template import SymbolTemplate
+from mv_hofki.services.scanner.library.seed import SYMBOL_TEMPLATES
 
 INSTRUMENT_TYPES = [
     {"label": "Querflöte", "label_short": "FL"},
@@ -77,5 +79,12 @@ async def seed_data(session: AsyncSession) -> None:
     result = await session.execute(select(SheetMusicGenre).limit(1))
     if result.scalar_one_or_none() is None:
         await session.execute(insert(SheetMusicGenre), SHEET_MUSIC_GENRES)
+
+    result = await session.execute(select(SymbolTemplate).limit(1))
+    if result.scalar_one_or_none() is None:
+        await session.execute(
+            insert(SymbolTemplate),
+            [{"is_seed": True, **t} for t in SYMBOL_TEMPLATES],
+        )
 
     await session.commit()
