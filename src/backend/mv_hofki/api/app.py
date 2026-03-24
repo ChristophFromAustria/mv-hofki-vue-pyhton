@@ -22,6 +22,7 @@ from mv_hofki.api.routes.items import router as items_router
 from mv_hofki.api.routes.loans import router as loans_router
 from mv_hofki.api.routes.me import router as me_router
 from mv_hofki.api.routes.musicians import router as musicians_router
+from mv_hofki.api.routes.scan_parts import router as scan_parts_router
 from mv_hofki.api.routes.scan_projects import router as scan_projects_router
 from mv_hofki.api.routes.sheet_music_genres import router as sheet_music_genres_router
 from mv_hofki.core.config import settings
@@ -60,6 +61,7 @@ app.include_router(dashboard_router)
 app.include_router(me_router)
 app.include_router(access_router)
 app.include_router(scan_projects_router)
+app.include_router(scan_parts_router)
 
 _uploads_dir = settings.PROJECT_ROOT / "data" / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)
