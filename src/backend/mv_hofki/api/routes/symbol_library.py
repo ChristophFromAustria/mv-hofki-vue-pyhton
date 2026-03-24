@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
 from mv_hofki.schemas.pagination import PaginatedResponse
-from mv_hofki.schemas.symbol_template import SymbolTemplateCreate, SymbolTemplateRead
+from mv_hofki.schemas.symbol_template import (
+    SymbolTemplateCreate,
+    SymbolTemplateRead,
+    TemplateCaptureRequest,
+)
 from mv_hofki.schemas.symbol_variant import SymbolVariantRead
 from mv_hofki.services import symbol_library as lib_service
 
@@ -45,3 +49,21 @@ async def get_template(template_id: int, db: AsyncSession = Depends(get_db)):
 )
 async def list_variants(template_id: int, db: AsyncSession = Depends(get_db)):
     return await lib_service.get_variants(db, template_id)
+
+
+@router.post("/templates/capture", response_model=SymbolTemplateRead, status_code=201)
+async def capture_template(
+    data: TemplateCaptureRequest, db: AsyncSession = Depends(get_db)
+):
+    return await lib_service.capture_template(
+        db,
+        scan_id=data.scan_id,
+        x=data.x,
+        y=data.y,
+        width=data.width,
+        height=data.height,
+        name=data.name,
+        category=data.category,
+        musicxml_element=data.musicxml_element,
+        height_in_lines=data.height_in_lines,
+    )

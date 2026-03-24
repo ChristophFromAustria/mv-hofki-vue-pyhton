@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class SymbolTemplateCreate(BaseModel):
@@ -13,6 +13,25 @@ class SymbolTemplateCreate(BaseModel):
     display_name: str
     musicxml_element: str | None = None
     lilypond_token: str | None = None
+
+
+class TemplateCaptureRequest(BaseModel):
+    scan_id: int
+    x: int
+    y: int
+    width: int
+    height: int
+    name: str
+    category: str
+    musicxml_element: str | None = None
+    height_in_lines: float
+
+    @field_validator("name")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Darf nicht leer sein")
+        return v.strip()
 
 
 class SymbolTemplateRead(BaseModel):
