@@ -13,6 +13,7 @@ class SymbolVariantRead(BaseModel):
     image_path: str
     source: str
     usage_count: int
+    height_in_lines: float | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

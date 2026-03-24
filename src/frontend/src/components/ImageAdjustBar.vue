@@ -6,12 +6,14 @@ const emit = defineEmits(["adjust", "analyze"]);
 const brightness = ref(0);
 const contrast = ref(1.0);
 const rotation = ref(0);
+const threshold = ref(128);
 
 function emitAdjust() {
   emit("adjust", {
     brightness: brightness.value,
     contrast: contrast.value,
     rotation: rotation.value,
+    threshold: threshold.value,
   });
 }
 
@@ -20,7 +22,7 @@ function rotate(deg) {
   emitAdjust();
 }
 
-watch([brightness, contrast], emitAdjust);
+watch([brightness, contrast, threshold], emitAdjust);
 </script>
 
 <template>
@@ -51,6 +53,21 @@ watch([brightness, contrast], emitAdjust);
         min="0.5"
         max="2.0"
         step="0.1"
+        class="adjust-slider"
+      />
+    </div>
+
+    <div class="adjust-group">
+      <label class="adjust-label">
+        Schwellwert
+        <span class="adjust-value">{{ threshold }}</span>
+      </label>
+      <input
+        v-model.number="threshold"
+        type="range"
+        min="0"
+        max="255"
+        step="1"
         class="adjust-slider"
       />
     </div>

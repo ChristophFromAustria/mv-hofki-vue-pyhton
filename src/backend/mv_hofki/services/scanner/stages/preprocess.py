@@ -30,15 +30,19 @@ class PreprocessStage(ProcessingStage):
         if brightness != 0 or contrast != 1.0:
             gray = cv2.convertScaleAbs(gray, alpha=contrast, beta=brightness)
 
-        # Adaptive thresholding — handles uneven lighting from degraded copies
-        binary = cv2.adaptiveThreshold(
-            gray,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            blockSize=15,
-            C=10,
-        )
+        # Binarize: use global threshold if provided, otherwise adaptive
+        threshold_val = ctx.config.get("threshold")
+        if threshold_val is not None:
+            _, binary = cv2.threshold(gray, int(threshold_val), 255, cv2.THRESH_BINARY)
+        else:
+            binary = cv2.adaptiveThreshold(
+                gray,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY,
+                blockSize=15,
+                C=10,
+            )
 
         # Deskew using Hough line detection
         binary = self._deskew(binary)

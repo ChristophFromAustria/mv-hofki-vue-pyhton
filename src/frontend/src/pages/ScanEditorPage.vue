@@ -20,10 +20,20 @@ const error = ref(null);
 const processing = ref(false);
 const statusMessage = ref("");
 
-const adjustments = ref({ brightness: 0, contrast: 1.0, rotation: 0 });
+const adjustments = ref({ brightness: 0, contrast: 1.0, rotation: 0, threshold: 128 });
 const selectedSymbol = ref(null);
 const showCorrectPicker = ref(false);
 const libraryTemplates = ref([]);
+
+const captureMode = ref(false);
+const captureBox = ref(null);
+const showCaptureDialog = ref(false);
+const captureForm = ref({
+  name: "",
+  category: "note",
+  musicxml_element: "",
+  height_in_lines: 4.0,
+});
 
 let pollTimer = null;
 
@@ -89,6 +99,20 @@ async function startAnalysis() {
   processing.value = true;
   statusMessage.value = "Analyse wird gestartet...";
   try {
+    // Save current adjustments to the scan first
+    if (scan.value) {
+      const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
+      for (const part of partsData) {
+        const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
+        const found = scansData.find((s) => String(s.id) === String(props.scanId));
+        if (found) {
+          await put(`/scanner/projects/${props.projectId}/parts/${part.id}/scans/${props.scanId}`, {
+            adjustments_json: JSON.stringify(adjustments.value),
+          });
+          break;
+        }
+      }
+    }
     await post(`/scanner/scans/${props.scanId}/process`, {});
     // Poll for completion
     pollTimer = setInterval(async () => {
@@ -116,6 +140,29 @@ async function startAnalysis() {
 
 function onAdjust(adj) {
   adjustments.value = adj;
+}
+
+function onCaptureBox(box) {
+  captureBox.value = box;
+  showCaptureDialog.value = true;
+}
+
+async function saveCapturedTemplate() {
+  if (!captureBox.value || !captureForm.value.name.trim()) return;
+  await post("/scanner/library/templates/capture", {
+    scan_id: parseInt(props.scanId),
+    ...captureBox.value,
+    name: captureForm.value.name.trim(),
+    category: captureForm.value.category,
+    musicxml_element: captureForm.value.musicxml_element || null,
+    height_in_lines: captureForm.value.height_in_lines,
+  });
+  showCaptureDialog.value = false;
+  captureMode.value = false;
+  captureForm.value = { name: "", category: "note", musicxml_element: "", height_in_lines: 4.0 };
+  // Refresh library
+  const data = await get("/scanner/library/templates?limit=200");
+  libraryTemplates.value = data.items || [];
 }
 
 function onSelectSymbol(symbol) {
@@ -202,13 +249,24 @@ onUnmounted(() => {
       <template v-else>
         <!-- Canvas area -->
         <div class="canvas-area">
+          <div class="toolbar-extras">
+            <button
+              class="btn btn-sm"
+              :class="{ 'btn-active': captureMode }"
+              @click="captureMode = !captureMode"
+            >
+              {{ captureMode ? "Erfassung beenden" : "Vorlage erfassen" }}
+            </button>
+          </div>
           <ScanCanvas
             :image-path="scan?.image_path ?? null"
             :staves="staves"
             :symbols="symbols"
             :adjustments="adjustments"
             :selected-symbol-id="selectedSymbol?.id ?? null"
+            :capture-mode="captureMode"
             @select-symbol="onSelectSymbol"
+            @capture-box="onCaptureBox"
           />
         </div>
 
@@ -267,6 +325,59 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+    <!-- Capture dialog -->
+    <div v-if="showCaptureDialog" class="modal-backdrop" @click.self="showCaptureDialog = false">
+      <div class="modal">
+        <h2>Vorlage erfassen</h2>
+        <p class="capture-info">Ausschnitt: {{ captureBox?.width }}×{{ captureBox?.height }} px</p>
+        <label>
+          Name
+          <input v-model="captureForm.name" type="text" placeholder="z.B. Viertelnote" />
+        </label>
+        <label>
+          Kategorie
+          <select v-model="captureForm.category">
+            <option value="note">Note</option>
+            <option value="rest">Pause</option>
+            <option value="accidental">Vorzeichen</option>
+            <option value="clef">Schlüssel</option>
+            <option value="time_sig">Taktart</option>
+            <option value="barline">Taktstrich</option>
+            <option value="dynamic">Dynamik</option>
+            <option value="ornament">Verzierung</option>
+            <option value="other">Sonstiges</option>
+          </select>
+        </label>
+        <label>
+          Höhe in Notenlinien
+          <input
+            v-model.number="captureForm.height_in_lines"
+            type="number"
+            min="0.5"
+            max="10"
+            step="0.5"
+          />
+        </label>
+        <label>
+          MusicXML (optional)
+          <textarea
+            v-model="captureForm.musicxml_element"
+            rows="3"
+            placeholder="<note>...</note>"
+          />
+        </label>
+        <div class="modal-actions">
+          <button class="btn" @click="showCaptureDialog = false">Abbrechen</button>
+          <button
+            class="btn btn-primary"
+            :disabled="!captureForm.name.trim()"
+            @click="saveCapturedTemplate"
+          >
+            Speichern
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -298,6 +409,8 @@ onUnmounted(() => {
   flex: 3;
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-area {
@@ -408,5 +521,53 @@ onUnmounted(() => {
   font-size: 0.7rem;
   color: var(--color-muted);
   margin-top: 0.2rem;
+}
+
+.toolbar-extras {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-bg-soft);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.btn-active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.capture-info {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.modal label {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.modal input,
+.modal select,
+.modal textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
 }
 </style>
