@@ -58,6 +58,28 @@ const routes = [
     component: () => import("./pages/InvoiceListPage.vue"),
   },
   {
+    path: "/notenscanner",
+    name: "scanner-projects",
+    component: () => import("./pages/ScanProjectListPage.vue"),
+  },
+  {
+    path: "/notenscanner/bibliothek",
+    name: "symbol-library",
+    component: () => import("./pages/SymbolLibraryPage.vue"),
+  },
+  {
+    path: "/notenscanner/:id",
+    name: "scanner-project-detail",
+    component: () => import("./pages/ScanProjectDetailPage.vue"),
+    props: (route) => ({ id: route.params.id }),
+  },
+  {
+    path: "/notenscanner/:id/scan/:scanId",
+    name: "scan-editor",
+    component: () => import("./pages/ScanEditorPage.vue"),
+    props: (route) => ({ projectId: route.params.id, scanId: route.params.scanId }),
+  },
+  {
     path: "/einstellungen/instrumententypen",
     name: "instrument-types",
     component: () => import("./pages/InstrumentTypeListPage.vue"),
