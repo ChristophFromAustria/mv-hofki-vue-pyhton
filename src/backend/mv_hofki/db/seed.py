@@ -86,5 +86,17 @@ async def seed_data(session: AsyncSession) -> None:
             insert(SymbolTemplate),
             [{"is_seed": True, **t} for t in SYMBOL_TEMPLATES],
         )
+    else:
+        # Update existing seed templates with new fields (musicxml, lilypond)
+        for t in SYMBOL_TEMPLATES:
+            row = await session.execute(
+                select(SymbolTemplate).where(SymbolTemplate.name == t["name"])
+            )
+            existing = row.scalar_one_or_none()
+            if existing and existing.is_seed:
+                if t.get("musicxml_element") and not existing.musicxml_element:
+                    existing.musicxml_element = t["musicxml_element"]
+                if t.get("lilypond_token") and not existing.lilypond_token:
+                    existing.lilypond_token = t["lilypond_token"]
 
     await session.commit()
