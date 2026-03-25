@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import cairosvg  # type: ignore[import-not-found]
@@ -62,7 +63,65 @@ def _trim_whitespace(png_data: bytes, padding: int = 10) -> bytes:
     return bytes(buf)
 
 
-def render_musicxml(fragment: str) -> bytes:
+@dataclass
+class RenderResult:
+    """Result of rendering notation to PNG."""
+
+    png_data: bytes
+    height_in_lines: float | None = None
+
+
+def _detect_height_in_lines(png_data: bytes) -> float | None:
+    """Detect staff line spacing in rendered image and compute symbol height."""
+    arr = np.frombuffer(png_data, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return None
+
+    # Horizontal projection to find staff lines
+    _, binary = cv2.threshold(img, 200, 255, cv2.THRESH_BINARY_INV)
+    projection = np.sum(binary, axis=1).astype(float)
+
+    if projection.max() == 0:
+        return None
+
+    threshold = projection.max() * 0.3
+    line_rows = np.where(projection > threshold)[0]
+    if len(line_rows) < 5:
+        return None
+
+    # Group consecutive rows into line centers
+    groups: list[list[int]] = []
+    current: list[int] = [int(line_rows[0])]
+    for r in line_rows[1:]:
+        if r - current[-1] <= 3:
+            current.append(int(r))
+        else:
+            groups.append(current)
+            current = [int(r)]
+    groups.append(current)
+
+    centers = [int(np.mean(g)) for g in groups]
+    if len(centers) < 5:
+        return None
+
+    # Use first 5 lines as staff
+    staff_lines = centers[:5]
+    spacings = np.diff(staff_lines)
+    line_spacing = float(np.mean(spacings))
+    if line_spacing < 2:
+        return None
+
+    # Find symbol bounding box height (non-white area)
+    coords = cv2.findNonZero(binary)
+    if coords is None:
+        return None
+    _, _, _, symbol_h = cv2.boundingRect(coords)
+
+    return round(symbol_h / line_spacing, 1)
+
+
+def render_musicxml(fragment: str) -> RenderResult:
     """Render a MusicXML fragment to PNG bytes.
 
     The fragment should be a <note>, <rest>, or similar element.
@@ -107,10 +166,12 @@ def render_musicxml(fragment: str) -> bytes:
         raise RuntimeError("Verovio konnte kein SVG erzeugen")
 
     png_bytes: bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"))
-    return _trim_whitespace(png_bytes)
+    trimmed = _trim_whitespace(png_bytes)
+    height_in_lines = _detect_height_in_lines(png_bytes)
+    return RenderResult(png_data=trimmed, height_in_lines=height_in_lines)
 
 
-def render_lilypond(token: str) -> bytes:
+def render_lilypond(token: str) -> RenderResult:
     """Render a LilyPond token to PNG bytes.
 
     The token (e.g. "c'4") is wrapped in a minimal LilyPond file.
@@ -165,4 +226,7 @@ def render_lilypond(token: str) -> bytes:
                 raise RuntimeError("LilyPond hat keine PNG-Datei erzeugt")
             png_path = candidates[0]
 
-        return _trim_whitespace(png_path.read_bytes())
+        raw = png_path.read_bytes()
+        trimmed = _trim_whitespace(raw)
+        height_in_lines = _detect_height_in_lines(raw)
+        return RenderResult(png_data=trimmed, height_in_lines=height_in_lines)

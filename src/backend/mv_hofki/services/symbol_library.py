@@ -140,6 +140,7 @@ async def save_rendered_variant(
     template_id: int,
     png_data: bytes,
     source: str,
+    height_in_lines: float | None = None,
 ) -> SymbolTemplate:
     """Save rendered PNG bytes as a new variant for the given template."""
     import uuid
@@ -156,6 +157,7 @@ async def save_rendered_variant(
         template_id=template_id,
         image_path=str(variant_path.relative_to(settings.PROJECT_ROOT)),
         source=source,
+        height_in_lines=height_in_lines,
     )
     session.add(variant)
     await session.commit()

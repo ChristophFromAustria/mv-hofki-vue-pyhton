@@ -123,9 +123,13 @@ async def render_musicxml_endpoint(
     template = await lib_service.get_template_by_id(db, template_id)
     if not template.musicxml_element:
         raise HTTPException(status_code=400, detail="Kein MusicXML-Element vorhanden")
-    png_data = render_musicxml(template.musicxml_element)
+    result = render_musicxml(template.musicxml_element)
     return await lib_service.save_rendered_variant(
-        db, template_id, png_data, source="rendered_musicxml"
+        db,
+        template_id,
+        result.png_data,
+        source="rendered_musicxml",
+        height_in_lines=result.height_in_lines,
     )
 
 
@@ -144,7 +148,11 @@ async def render_lilypond_endpoint(
     template = await lib_service.get_template_by_id(db, template_id)
     if not template.lilypond_token:
         raise HTTPException(status_code=400, detail="Kein LilyPond-Token vorhanden")
-    png_data = render_lilypond(template.lilypond_token)
+    result = render_lilypond(template.lilypond_token)
     return await lib_service.save_rendered_variant(
-        db, template_id, png_data, source="rendered_lilypond"
+        db,
+        template_id,
+        result.png_data,
+        source="rendered_lilypond",
+        height_in_lines=result.height_in_lines,
     )

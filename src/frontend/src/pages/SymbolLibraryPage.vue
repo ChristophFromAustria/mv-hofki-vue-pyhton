@@ -40,11 +40,13 @@ const deleteVariantTarget = ref(null);
 const rendering = ref(null); // "musicxml" | "lilypond" | null
 const previewVariant = ref(null);
 const previewImageUrl = ref(null);
+const previewNatW = ref(0);
+const previewNatH = ref(0);
 const cropDrawing = ref(false);
 const cropStart = ref({ x: 0, y: 0 });
 const cropEnd = ref({ x: 0, y: 0 });
 const cropRect = ref(null);
-const previewImgEl = ref(null);
+const svgOverlay = ref(null);
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
@@ -186,6 +188,13 @@ function openPreview(v) {
   previewImageUrl.value = variantImageUrl(v);
   cropRect.value = null;
   cropDrawing.value = false;
+  // Load natural dimensions
+  const img = new Image();
+  img.onload = () => {
+    previewNatW.value = img.naturalWidth;
+    previewNatH.value = img.naturalHeight;
+  };
+  img.src = previewImageUrl.value;
 }
 
 function closePreview() {
@@ -194,26 +203,30 @@ function closePreview() {
   cropRect.value = null;
 }
 
-function toImageCoords(e) {
-  const img = previewImgEl.value;
-  if (!img) return { x: 0, y: 0 };
-  const rect = img.getBoundingClientRect();
-  const x = Math.round(((e.clientX - rect.left) / rect.width) * img.naturalWidth);
-  const y = Math.round(((e.clientY - rect.top) / rect.height) * img.naturalHeight);
-  return { x, y };
+function toSvgCoords(e) {
+  const svg = svgOverlay.value;
+  if (!svg) return { x: 0, y: 0 };
+  const rect = svg.getBoundingClientRect();
+  const x = Math.round(((e.clientX - rect.left) / rect.width) * previewNatW.value);
+  const y = Math.round(((e.clientY - rect.top) / rect.height) * previewNatH.value);
+  return { x: Math.max(0, x), y: Math.max(0, y) };
 }
 
 function onCropMouseDown(e) {
-  if (e.target !== previewImgEl.value) return;
+  // Only start crop on the SVG overlay
+  if (!svgOverlay.value || !svgOverlay.value.contains(e.target)) return;
+  e.preventDefault();
   cropDrawing.value = true;
-  cropStart.value = toImageCoords(e);
-  cropEnd.value = cropStart.value;
+  const pt = toSvgCoords(e);
+  cropStart.value = pt;
+  cropEnd.value = pt;
   cropRect.value = null;
 }
 
 function onCropMouseMove(e) {
   if (!cropDrawing.value) return;
-  cropEnd.value = toImageCoords(e);
+  e.preventDefault();
+  cropEnd.value = toSvgCoords(e);
 }
 
 function onCropMouseUp() {
@@ -223,34 +236,22 @@ function onCropMouseUp() {
   const y = Math.min(cropStart.value.y, cropEnd.value.y);
   const w = Math.abs(cropEnd.value.x - cropStart.value.x);
   const h = Math.abs(cropEnd.value.y - cropStart.value.y);
-  if (w > 3 && h > 3) {
+  if (w > 5 && h > 5) {
     cropRect.value = { x, y, width: w, height: h };
   }
 }
 
-function cropOverlayStyle() {
-  const img = previewImgEl.value;
-  if (!img || !cropDrawing.value) return {};
-  const rect = img.getBoundingClientRect();
-  const sx = Math.min(cropStart.value.x, cropEnd.value.x);
-  const sy = Math.min(cropStart.value.y, cropEnd.value.y);
-  const sw = Math.abs(cropEnd.value.x - cropStart.value.x);
-  const sh = Math.abs(cropEnd.value.y - cropStart.value.y);
+// Computed SVG drawing rect (for both live drawing and finalized crop)
+const drawingRect = computed(() => {
+  if (cropRect.value) return cropRect.value;
+  if (!cropDrawing.value) return null;
   return {
-    left:
-      (sx / img.naturalWidth) * rect.width +
-      rect.left -
-      img.closest(".lightbox").getBoundingClientRect().left +
-      "px",
-    top:
-      (sy / img.naturalHeight) * rect.height +
-      rect.top -
-      img.closest(".lightbox").getBoundingClientRect().top +
-      "px",
-    width: (sw / img.naturalWidth) * rect.width + "px",
-    height: (sh / img.naturalHeight) * rect.height + "px",
+    x: Math.min(cropStart.value.x, cropEnd.value.x),
+    y: Math.min(cropStart.value.y, cropEnd.value.y),
+    width: Math.abs(cropEnd.value.x - cropStart.value.x),
+    height: Math.abs(cropEnd.value.y - cropStart.value.y),
   };
-}
+});
 
 async function applyCrop() {
   if (!cropRect.value || !previewVariant.value || !editingTemplate.value) return;
@@ -258,7 +259,6 @@ async function applyCrop() {
     `/scanner/library/templates/${editingTemplate.value.id}/variants/${previewVariant.value.id}/crop`,
     cropRect.value,
   );
-  // Refresh variants and close preview
   variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
   await fetchTemplates();
   closePreview();
@@ -452,23 +452,30 @@ onMounted(fetchTemplates);
     />
 
     <!-- Image preview / crop lightbox -->
-    <div
-      v-if="previewImageUrl"
-      class="lightbox"
-      @mousedown="onCropMouseDown"
-      @mousemove="onCropMouseMove"
-      @mouseup="onCropMouseUp"
-    >
-      <img
-        ref="previewImgEl"
-        :src="previewImageUrl"
-        alt="Vorschau"
-        class="lightbox-img"
-        draggable="false"
-      />
-      <!-- Crop selection rectangle (while drawing) -->
-      <div v-if="cropDrawing" class="crop-rect" :style="cropOverlayStyle()" />
-      <!-- Crop confirm bar -->
+    <div v-if="previewImageUrl" class="lightbox">
+      <div class="lightbox-canvas">
+        <img :src="previewImageUrl" alt="Vorschau" class="lightbox-img" draggable="false" />
+        <svg
+          ref="svgOverlay"
+          class="lightbox-svg"
+          :viewBox="`0 0 ${previewNatW} ${previewNatH}`"
+          @mousedown="onCropMouseDown"
+          @mousemove="onCropMouseMove"
+          @mouseup="onCropMouseUp"
+        >
+          <rect
+            v-if="drawingRect"
+            :x="drawingRect.x"
+            :y="drawingRect.y"
+            :width="drawingRect.width"
+            :height="drawingRect.height"
+            fill="rgba(245, 158, 11, 0.2)"
+            stroke="#f59e0b"
+            stroke-width="3"
+            stroke-dasharray="8 4"
+          />
+        </svg>
+      </div>
       <div class="lightbox-toolbar">
         <span class="lightbox-hint">Bereich auswählen zum Zuschneiden</span>
         <div class="lightbox-actions">
@@ -707,24 +714,31 @@ onMounted(fetchTemplates);
   align-items: center;
   justify-content: center;
   z-index: 600;
-  cursor: crosshair;
   user-select: none;
 }
 
+.lightbox-canvas {
+  position: relative;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
 .lightbox-img {
+  display: block;
   max-width: 90vw;
   max-height: 80vh;
   object-fit: contain;
   background: #fff;
   border-radius: var(--radius);
-  padding: 1rem;
 }
 
-.crop-rect {
+.lightbox-svg {
   position: absolute;
-  border: 2px dashed #f59e0b;
-  background: rgba(245, 158, 11, 0.15);
-  pointer-events: none;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
 }
 
 .lightbox-toolbar {
