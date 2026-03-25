@@ -206,7 +206,7 @@ def render_lilypond(token: str) -> RenderResult:
             [
                 lilypond_bin,
                 "--png",
-                "-dresolution=300",
+                "-dresolution=600",
                 f"--output={tmpdir}/output",
                 str(ly_path),
             ],
