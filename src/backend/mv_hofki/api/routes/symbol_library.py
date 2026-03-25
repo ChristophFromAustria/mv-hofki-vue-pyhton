@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
@@ -87,6 +87,27 @@ async def crop_variant(
         db, template_id, variant_id, data.x, data.y, data.width, data.height
     )
     return {"status": "ok"}
+
+
+@router.post(
+    "/templates/{template_id}/variants/upload",
+    response_model=SymbolTemplateRead,
+    status_code=201,
+)
+async def upload_variant(
+    template_id: int,
+    file: UploadFile,
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload an image file as a new variant for the given template."""
+    content = await file.read()
+    if not content:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="Leere Datei")
+    return await lib_service.save_rendered_variant(
+        db, template_id, content, source="cropped"
+    )
 
 
 @router.post("/templates/capture", response_model=SymbolTemplateRead, status_code=201)

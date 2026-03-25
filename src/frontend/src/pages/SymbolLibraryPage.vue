@@ -253,12 +253,46 @@ const drawingRect = computed(() => {
   };
 });
 
+const cropPreviewDataUrl = ref(null);
+
+// Generate a preview of the cropped area using canvas
+function updateCropPreview() {
+  if (!cropRect.value || !previewImageUrl.value) {
+    cropPreviewDataUrl.value = null;
+    return;
+  }
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    const c = cropRect.value;
+    const canvas = document.createElement("canvas");
+    canvas.width = c.width;
+    canvas.height = c.height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, c.x, c.y, c.width, c.height, 0, 0, c.width, c.height);
+    cropPreviewDataUrl.value = canvas.toDataURL("image/png");
+  };
+  img.src = previewImageUrl.value;
+}
+
+watch(cropRect, updateCropPreview);
+
 async function applyCrop() {
-  if (!cropRect.value || !previewVariant.value || !editingTemplate.value) return;
-  await post(
-    `/scanner/library/templates/${editingTemplate.value.id}/variants/${previewVariant.value.id}/crop`,
-    cropRect.value,
-  );
+  if (!cropPreviewDataUrl.value || !editingTemplate.value) return;
+  // Convert data URL to blob
+  const resp = await fetch(cropPreviewDataUrl.value);
+  const blob = await resp.blob();
+  const formData = new FormData();
+  formData.append("file", blob, "cropped.png");
+
+  const BASE_URL = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
+  const url = `${BASE_URL}/api/v1/scanner/library/templates/${editingTemplate.value.id}/variants/upload`;
+  const uploadResp = await fetch(url, { method: "POST", body: formData });
+  if (!uploadResp.ok) {
+    const text = await uploadResp.text();
+    alert(`Zuschneiden fehlgeschlagen: ${text}`);
+    return;
+  }
   variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
   await fetchTemplates();
   closePreview();
@@ -476,11 +510,16 @@ onMounted(fetchTemplates);
           />
         </svg>
       </div>
+      <!-- Crop preview -->
+      <div v-if="cropPreviewDataUrl" class="crop-preview">
+        <span class="crop-preview-label">Vorschau:</span>
+        <img :src="cropPreviewDataUrl" alt="Zugeschnitten" class="crop-preview-img" />
+      </div>
       <div class="lightbox-toolbar">
         <span class="lightbox-hint">Bereich auswählen zum Zuschneiden</span>
         <div class="lightbox-actions">
-          <button v-if="cropRect" class="btn btn-sm btn-primary" @click.stop="applyCrop">
-            Zuschneiden ({{ cropRect.width }}×{{ cropRect.height }})
+          <button v-if="cropPreviewDataUrl" class="btn btn-sm btn-primary" @click.stop="applyCrop">
+            Als neue Variante speichern
           </button>
           <button class="btn btn-sm" @click.stop="closePreview">Schliessen</button>
         </div>
@@ -759,5 +798,29 @@ onMounted(fetchTemplates);
 .lightbox-actions {
   display: flex;
   gap: 0.5rem;
+}
+
+.crop-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius);
+}
+
+.crop-preview-label {
+  color: #aaa;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.crop-preview-img {
+  max-height: 80px;
+  max-width: 200px;
+  background: #fff;
+  border-radius: 3px;
+  padding: 4px;
 }
 </style>
