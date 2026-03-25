@@ -2,10 +2,12 @@
 defineProps({
   template: { type: Object, required: true },
 });
+
+const emit = defineEmits(["edit"]);
 </script>
 
 <template>
-  <div class="symbol-card">
+  <div class="symbol-card" @click="emit('edit', template)">
     <div class="card-header">
       <span class="display-name">{{ template.display_name }}</span>
       <span class="category-badge">{{ template.category }}</span>
@@ -29,7 +31,7 @@ defineProps({
   transition:
     box-shadow var(--transition),
     background var(--transition);
-  cursor: default;
+  cursor: pointer;
 }
 
 .symbol-card:hover {
