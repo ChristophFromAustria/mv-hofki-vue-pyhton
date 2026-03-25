@@ -56,7 +56,12 @@ onMounted(fetchProjects);
   <div>
     <div class="page-header">
       <h1>Scan-Projekte</h1>
-      <button class="btn btn-primary" @click="showCreate = true">+ Neues Projekt</button>
+      <div class="header-actions">
+        <RouterLink to="/notenscanner/bibliothek" class="btn btn-secondary">
+          Vorlagen verwalten
+        </RouterLink>
+        <button class="btn btn-primary" @click="showCreate = true">+ Neues Projekt</button>
+      </div>
     </div>
 
     <LoadingSpinner v-if="loading" />
@@ -205,5 +210,11 @@ onMounted(fetchProjects);
   display: flex;
   gap: 0.5rem;
   justify-content: flex-end;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 </style>
