@@ -2,6 +2,9 @@
 # Runs once after the container is created (not on every start).
 set -euo pipefail
 
+# Mark workspace as safe for git (bind-mount from Windows host)
+git config --global --add safe.directory /workspaces/mv_hofki
+
 # Fix git SSL backend — VS Code may forward host's 'schannel' config which doesn't exist on Linux
 if git config --global --get-regexp 'http\..*\.sslbackend' 2>/dev/null | grep -q schannel; then
   git config --global --get-regexp 'http\..*\.sslbackend' | grep schannel | while read -r key _; do

@@ -21,8 +21,12 @@ if command -v ttyd &>/dev/null; then
     "ttyd --port 7681 --writable --index $WORKSPACE/.devcontainer/ttyd-index.html -t fontSize=16 -t disableResizeOverlay=true bash"
 fi
 
-claude plugin marketplace add obra/superpowers-marketplace
-claude plugin install -s local superpowers@superpowers-marketplace
+
+# Claude Code plugins & MCP servers — best-effort (don't fail the whole script)
+claude plugin marketplace add obra/superpowers-marketplace || true
+claude plugin marketplace add anthropics/claude-code || true
+claude plugin install -s user superpowers@superpowers-marketplace || true
+claude plugin install -s user frontend-design@claude-code-plugins || true
 
 # Register MCP servers in Claude Code (ignore errors if already registered)
 claude mcp add sequential-thinking -- mcp-server-sequential-thinking || true
