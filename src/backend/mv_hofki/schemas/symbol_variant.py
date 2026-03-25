@@ -14,6 +14,7 @@ class SymbolVariantRead(BaseModel):
     source: str
     usage_count: int
     height_in_lines: float | None
+    source_line_spacing: float | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

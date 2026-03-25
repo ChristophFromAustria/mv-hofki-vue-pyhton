@@ -514,6 +514,17 @@ onMounted(fetchTemplates);
           />
         </svg>
       </div>
+      <!-- Variant info -->
+      <div v-if="previewVariant" class="lightbox-info">
+        <span>{{ previewNatW }}×{{ previewNatH }} px</span>
+        <span v-if="previewVariant.source_line_spacing">
+          Linienabstand: {{ previewVariant.source_line_spacing }} px
+        </span>
+        <span v-if="previewVariant.height_in_lines">
+          Höhe: {{ previewVariant.height_in_lines }} Linien
+        </span>
+        <span class="lightbox-source">{{ previewVariant.source }}</span>
+      </div>
       <!-- Crop preview -->
       <div v-if="cropPreviewDataUrl" class="crop-preview">
         <span class="crop-preview-label">Vorschau:</span>
@@ -802,6 +813,21 @@ onMounted(fetchTemplates);
 .lightbox-actions {
   display: flex;
   gap: 0.5rem;
+}
+
+.lightbox-info {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius);
+  color: #ccc;
+  font-size: 0.8rem;
+}
+
+.lightbox-source {
+  color: #888;
 }
 
 .crop-preview {

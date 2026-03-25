@@ -26,6 +26,7 @@ class SymbolVariant(Base):
     feature_vector_json: Mapped[str | None] = mapped_column(Text)
     usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     height_in_lines: Mapped[float | None] = mapped_column(Float)
+    source_line_spacing: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     template: Mapped[SymbolTemplate] = relationship(back_populates="variants")

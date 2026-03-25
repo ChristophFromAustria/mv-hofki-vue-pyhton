@@ -151,22 +151,27 @@ async def run_pipeline(
     if img is None:
         raise HTTPException(status_code=400, detail="Bild konnte nicht geladen werden")
 
-    # Load symbol library variants that have height_in_lines (user-captured templates)
+    # Load variants with scaling info
     result = await session.execute(
-        sa_select(SymbolVariant).where(SymbolVariant.height_in_lines.isnot(None))
+        sa_select(SymbolVariant).where(
+            (SymbolVariant.height_in_lines.isnot(None))
+            | (SymbolVariant.source_line_spacing.isnot(None))
+        )
     )
     variants = list(result.scalars().all())
 
     variant_images = []
     variant_template_ids = []
     variant_heights = []
+    variant_line_spacings = []
     for v in variants:
         v_path = settings.PROJECT_ROOT / v.image_path
         v_img = cv2.imread(str(v_path), cv2.IMREAD_GRAYSCALE)
-        if v_img is not None and v.height_in_lines is not None:
+        if v_img is not None:
             variant_images.append(v_img)
             variant_template_ids.append(v.template_id)
-            variant_heights.append(v.height_in_lines)
+            variant_heights.append(v.height_in_lines or 4.0)
+            variant_line_spacings.append(v.source_line_spacing)
 
     # Pass the user's threshold into the pipeline config
     adjustments = json.loads(scan.adjustments_json) if scan.adjustments_json else {}
@@ -181,6 +186,7 @@ async def run_pipeline(
             variant_images=variant_images,
             variant_template_ids=variant_template_ids,
             variant_heights=variant_heights,
+            variant_line_spacings=variant_line_spacings,
             confidence_threshold=config.get("confidence_threshold", 0.6),
         ),
     ]

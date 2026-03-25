@@ -22,11 +22,15 @@ class TemplateMatchingStage(ProcessingStage):
         variant_images: list[np.ndarray],
         variant_template_ids: list[int],
         variant_heights: list[float],
+        variant_line_spacings: list[float | None] | None = None,
         confidence_threshold: float = 0.6,
     ) -> None:
         self._variant_images = variant_images
         self._variant_template_ids = variant_template_ids
         self._variant_heights = variant_heights
+        self._variant_line_spacings = variant_line_spacings or [None] * len(
+            variant_images
+        )
         self._confidence_threshold = confidence_threshold
 
     def process(self, ctx: PipelineContext) -> PipelineContext:
@@ -43,9 +47,13 @@ class TemplateMatchingStage(ProcessingStage):
             for i, tmpl_img in enumerate(self._variant_images):
                 template_id = self._variant_template_ids[i]
                 height_in_lines = self._variant_heights[i]
+                source_ls = self._variant_line_spacings[i]
 
                 scaled = self._scale_template(
-                    tmpl_img, height_in_lines, staff.line_spacing
+                    tmpl_img,
+                    height_in_lines,
+                    staff.line_spacing,
+                    source_line_spacing=source_ls,
                 )
                 if scaled is None:
                     continue
@@ -142,14 +150,25 @@ class TemplateMatchingStage(ProcessingStage):
         template: np.ndarray,
         height_in_lines: float,
         line_spacing: float,
+        source_line_spacing: float | None = None,
     ) -> np.ndarray | None:
-        """Scale template to match the staff's line spacing."""
-        target_height = int(height_in_lines * line_spacing)
-        if target_height < 3:
-            return None
+        """Scale template to match the target staff's line spacing.
+
+        If source_line_spacing is known, scale by the ratio of target
+        to source line spacing (px-per-line-space matching).
+        Otherwise fall back to height_in_lines * line_spacing.
+        """
+        if source_line_spacing and source_line_spacing > 0:
+            scale = line_spacing / source_line_spacing
+        else:
+            target_height = int(height_in_lines * line_spacing)
+            if target_height < 3:
+                return None
+            h = template.shape[0]
+            scale = target_height / h
 
         h, w = template.shape[:2]
-        scale = target_height / h
+        target_height = max(3, int(h * scale))
         target_width = max(1, int(w * scale))
 
         if len(template.shape) == 3:

@@ -69,26 +69,33 @@ class RenderResult:
 
     png_data: bytes
     height_in_lines: float | None = None
+    source_line_spacing: float | None = None
 
 
-def _detect_height_in_lines(png_data: bytes) -> float | None:
-    """Detect staff line spacing in rendered image and compute symbol height."""
+@dataclass
+class _StaffAnalysis:
+    height_in_lines: float | None = None
+    line_spacing: float | None = None
+
+
+def _analyze_staff(png_data: bytes) -> _StaffAnalysis:
+    """Detect staff line spacing and symbol height in a rendered image."""
     arr = np.frombuffer(png_data, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
     if img is None:
-        return None
+        return _StaffAnalysis()
 
     # Horizontal projection to find staff lines
     _, binary = cv2.threshold(img, 200, 255, cv2.THRESH_BINARY_INV)
     projection = np.sum(binary, axis=1).astype(float)
 
     if projection.max() == 0:
-        return None
+        return _StaffAnalysis()
 
     threshold = projection.max() * 0.3
     line_rows = np.where(projection > threshold)[0]
     if len(line_rows) < 5:
-        return None
+        return _StaffAnalysis()
 
     # Group consecutive rows into line centers
     groups: list[list[int]] = []
@@ -103,22 +110,26 @@ def _detect_height_in_lines(png_data: bytes) -> float | None:
 
     centers = [int(np.mean(g)) for g in groups]
     if len(centers) < 5:
-        return None
+        return _StaffAnalysis()
 
     # Use first 5 lines as staff
     staff_lines = centers[:5]
     spacings = np.diff(staff_lines)
     line_spacing = float(np.mean(spacings))
     if line_spacing < 2:
-        return None
+        return _StaffAnalysis()
 
     # Find symbol bounding box height (non-white area)
+    height_in_lines = None
     coords = cv2.findNonZero(binary)
-    if coords is None:
-        return None
-    _, _, _, symbol_h = cv2.boundingRect(coords)
+    if coords is not None:
+        _, _, _, symbol_h = cv2.boundingRect(coords)
+        height_in_lines = round(symbol_h / line_spacing, 1)
 
-    return round(symbol_h / line_spacing, 1)
+    return _StaffAnalysis(
+        height_in_lines=height_in_lines,
+        line_spacing=round(line_spacing, 1),
+    )
 
 
 def render_musicxml(fragment: str) -> RenderResult:
@@ -166,9 +177,13 @@ def render_musicxml(fragment: str) -> RenderResult:
         raise RuntimeError("Verovio konnte kein SVG erzeugen")
 
     png_bytes: bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"), scale=2.0)
+    analysis = _analyze_staff(png_bytes)
     trimmed = _trim_whitespace(png_bytes)
-    height_in_lines = _detect_height_in_lines(png_bytes)
-    return RenderResult(png_data=trimmed, height_in_lines=height_in_lines)
+    return RenderResult(
+        png_data=trimmed,
+        height_in_lines=analysis.height_in_lines,
+        source_line_spacing=analysis.line_spacing,
+    )
 
 
 def render_lilypond(token: str) -> RenderResult:
@@ -227,6 +242,10 @@ def render_lilypond(token: str) -> RenderResult:
             png_path = candidates[0]
 
         raw = png_path.read_bytes()
+        analysis = _analyze_staff(raw)
         trimmed = _trim_whitespace(raw)
-        height_in_lines = _detect_height_in_lines(raw)
-        return RenderResult(png_data=trimmed, height_in_lines=height_in_lines)
+        return RenderResult(
+            png_data=trimmed,
+            height_in_lines=analysis.height_in_lines,
+            source_line_spacing=analysis.line_spacing,
+        )
