@@ -152,7 +152,7 @@ def render_musicxml(fragment: str) -> RenderResult:
     tk = verovio.toolkit()
     tk.setOptions(
         {
-            "scale": 40,
+            "scale": 100,
             "adjustPageHeight": True,
             "adjustPageWidth": True,
             "border": 10,
@@ -165,7 +165,7 @@ def render_musicxml(fragment: str) -> RenderResult:
     if not svg:
         raise RuntimeError("Verovio konnte kein SVG erzeugen")
 
-    png_bytes: bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"))
+    png_bytes: bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"), scale=2.0)
     trimmed = _trim_whitespace(png_bytes)
     height_in_lines = _detect_height_in_lines(png_bytes)
     return RenderResult(png_data=trimmed, height_in_lines=height_in_lines)
