@@ -110,6 +110,67 @@ async def test_delete_variant(client):
 
 
 @pytest.mark.asyncio
+async def test_render_musicxml_creates_variant(client):
+    """Render MusicXML should create a variant."""
+    resp = await client.post(
+        "/api/v1/scanner/library/templates",
+        json={
+            "category": "note",
+            "name": "test_render_xml",
+            "display_name": "Test Render XML",
+            "musicxml_element": (
+                "<note><pitch><step>C</step><octave>4</octave></pitch>"
+                "<duration>4</duration><type>quarter</type></note>"
+            ),
+        },
+    )
+    assert resp.status_code == 201
+    tid = resp.json()["id"]
+
+    resp = await client.post(f"/api/v1/scanner/library/templates/{tid}/render-musicxml")
+    assert resp.status_code == 200
+    assert resp.json()["variant_count"] >= 1
+
+    resp = await client.get(f"/api/v1/scanner/library/templates/{tid}/variants")
+    variants = resp.json()
+    assert any(v["source"] == "rendered_musicxml" for v in variants)
+
+
+@pytest.mark.asyncio
+async def test_render_musicxml_no_element_returns_400(client):
+    """Render MusicXML without element should return 400."""
+    resp = await client.post(
+        "/api/v1/scanner/library/templates",
+        json={
+            "category": "note",
+            "name": "test_render_empty",
+            "display_name": "Test Render Empty",
+        },
+    )
+    tid = resp.json()["id"]
+
+    resp = await client.post(f"/api/v1/scanner/library/templates/{tid}/render-musicxml")
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_render_lilypond_no_token_returns_400(client):
+    """Render LilyPond without token should return 400."""
+    resp = await client.post(
+        "/api/v1/scanner/library/templates",
+        json={
+            "category": "note",
+            "name": "test_render_ly_empty",
+            "display_name": "Test Render LY Empty",
+        },
+    )
+    tid = resp.json()["id"]
+
+    resp = await client.post(f"/api/v1/scanner/library/templates/{tid}/render-lilypond")
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_seed_data_structure():
     """Verify seed data has required fields."""
     assert len(SYMBOL_TEMPLATES) > 30

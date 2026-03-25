@@ -102,6 +102,34 @@ async def delete_variant(
     await session.commit()
 
 
+async def save_rendered_variant(
+    session: AsyncSession,
+    template_id: int,
+    png_data: bytes,
+    source: str,
+) -> SymbolTemplate:
+    """Save rendered PNG bytes as a new variant for the given template."""
+    import uuid
+
+    template = await get_template_by_id(session, template_id)
+    variant_dir = settings.PROJECT_ROOT / "data" / "symbol_library" / str(template_id)
+    variant_dir.mkdir(parents=True, exist_ok=True)
+
+    variant_filename = f"{uuid.uuid4().hex}.png"
+    variant_path = variant_dir / variant_filename
+    variant_path.write_bytes(png_data)
+
+    variant = SymbolVariant(
+        template_id=template_id,
+        image_path=str(variant_path.relative_to(settings.PROJECT_ROOT)),
+        source=source,
+    )
+    session.add(variant)
+    await session.commit()
+    await session.refresh(template)
+    return template
+
+
 async def capture_template(
     session: AsyncSession,
     *,

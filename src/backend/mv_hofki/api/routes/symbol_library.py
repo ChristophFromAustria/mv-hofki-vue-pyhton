@@ -92,3 +92,45 @@ async def capture_template(
         musicxml_element=data.musicxml_element,
         height_in_lines=data.height_in_lines,
     )
+
+
+@router.post(
+    "/templates/{template_id}/render-musicxml",
+    response_model=SymbolTemplateRead,
+)
+async def render_musicxml_endpoint(
+    template_id: int, db: AsyncSession = Depends(get_db)
+):
+    """Render the template's MusicXML to a PNG variant."""
+    from fastapi import HTTPException
+
+    from mv_hofki.services.notation_renderer import render_musicxml
+
+    template = await lib_service.get_template_by_id(db, template_id)
+    if not template.musicxml_element:
+        raise HTTPException(status_code=400, detail="Kein MusicXML-Element vorhanden")
+    png_data = render_musicxml(template.musicxml_element)
+    return await lib_service.save_rendered_variant(
+        db, template_id, png_data, source="rendered_musicxml"
+    )
+
+
+@router.post(
+    "/templates/{template_id}/render-lilypond",
+    response_model=SymbolTemplateRead,
+)
+async def render_lilypond_endpoint(
+    template_id: int, db: AsyncSession = Depends(get_db)
+):
+    """Render the template's LilyPond token to a PNG variant."""
+    from fastapi import HTTPException
+
+    from mv_hofki.services.notation_renderer import render_lilypond
+
+    template = await lib_service.get_template_by_id(db, template_id)
+    if not template.lilypond_token:
+        raise HTTPException(status_code=400, detail="Kein LilyPond-Token vorhanden")
+    png_data = render_lilypond(template.lilypond_token)
+    return await lib_service.save_rendered_variant(
+        db, template_id, png_data, source="rendered_lilypond"
+    )
