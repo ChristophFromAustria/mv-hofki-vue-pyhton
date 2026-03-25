@@ -22,13 +22,13 @@ class TemplateMatchingStage(ProcessingStage):
         variant_images: list[np.ndarray],
         variant_template_ids: list[int],
         variant_heights: list[float],
-        variant_line_spacings: list[float | None] | None = None,
+        variant_line_spacings: list[float] | None = None,
         confidence_threshold: float = 0.6,
     ) -> None:
         self._variant_images = variant_images
         self._variant_template_ids = variant_template_ids
         self._variant_heights = variant_heights
-        self._variant_line_spacings = variant_line_spacings or [None] * len(
+        self._variant_line_spacings = variant_line_spacings or [0.0] * len(
             variant_images
         )
         self._confidence_threshold = confidence_threshold
@@ -150,7 +150,7 @@ class TemplateMatchingStage(ProcessingStage):
         template: np.ndarray,
         height_in_lines: float,
         line_spacing: float,
-        source_line_spacing: float | None = None,
+        source_line_spacing: float = 0.0,
     ) -> np.ndarray | None:
         """Scale template to match the target staff's line spacing.
 

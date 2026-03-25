@@ -146,6 +146,12 @@ async def save_rendered_variant(
     """Save rendered PNG bytes as a new variant for the given template."""
     import uuid
 
+    if not source_line_spacing or source_line_spacing <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="source_line_spacing ist erforderlich und muss > 0 sein",
+        )
+
     template = await get_template_by_id(session, template_id)
     variant_dir = settings.PROJECT_ROOT / "data" / "symbol_library" / str(template_id)
     variant_dir.mkdir(parents=True, exist_ok=True)
@@ -206,6 +212,26 @@ async def capture_template(
     if crop.size == 0:
         raise HTTPException(status_code=400, detail="Ungültiger Ausschnitt")
 
+    # Determine source_line_spacing from the scan's detected staves
+    from mv_hofki.models.detected_staff import DetectedStaff
+
+    staves_result = await session.execute(
+        select(DetectedStaff)
+        .where(DetectedStaff.scan_id == scan_id)
+        .order_by(DetectedStaff.staff_index)
+    )
+    staves = list(staves_result.scalars().all())
+    # Find the staff that contains the capture center
+    capture_center_y = y + height // 2
+    source_line_spacing = 0.0
+    for staff in staves:
+        if staff.y_top <= capture_center_y <= staff.y_bottom:
+            source_line_spacing = staff.line_spacing
+            break
+    if source_line_spacing <= 0 and staves:
+        # Fallback to first staff's spacing
+        source_line_spacing = staves[0].line_spacing
+
     # Find existing template or create new one
     template: SymbolTemplate
     if template_id is not None:
@@ -241,6 +267,7 @@ async def capture_template(
         image_path=str(variant_path.relative_to(settings.PROJECT_ROOT)),
         source="user_capture",
         height_in_lines=height_in_lines,
+        source_line_spacing=source_line_spacing,
     )
     session.add(variant)
     await session.commit()

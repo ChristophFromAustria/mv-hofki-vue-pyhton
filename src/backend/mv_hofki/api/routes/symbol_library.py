@@ -167,7 +167,7 @@ async def render_musicxml_endpoint(
         result.png_data,
         source="rendered_musicxml",
         height_in_lines=result.height_in_lines,
-        source_line_spacing=result.source_line_spacing or 0.0,
+        source_line_spacing=result.source_line_spacing or 0,
     )
 
 
@@ -199,5 +199,5 @@ async def render_lilypond_endpoint(
         result.png_data,
         source="rendered_lilypond",
         height_in_lines=result.height_in_lines,
-        source_line_spacing=result.source_line_spacing or 0.0,
+        source_line_spacing=result.source_line_spacing or 0,
     )

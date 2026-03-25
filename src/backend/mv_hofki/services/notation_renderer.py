@@ -81,12 +81,24 @@ class _StaffAnalysis:
 def _analyze_staff(png_data: bytes) -> _StaffAnalysis:
     """Detect staff line spacing and symbol height in a rendered image."""
     arr = np.frombuffer(png_data, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+    img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
     if img is None:
         return _StaffAnalysis()
 
+    # Handle RGBA: composite onto white background
+    if len(img.shape) == 3 and img.shape[2] == 4:
+        alpha = img[:, :, 3].astype(float) / 255.0
+        bgr = img[:, :, :3].astype(float)
+        white = np.full_like(bgr, 255.0)
+        composited = bgr * alpha[:, :, None] + white * (1 - alpha[:, :, None])
+        gray = cv2.cvtColor(composited.astype(np.uint8), cv2.COLOR_BGR2GRAY)
+    elif len(img.shape) == 3:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = img
+
     # Horizontal projection to find staff lines
-    _, binary = cv2.threshold(img, 200, 255, cv2.THRESH_BINARY_INV)
+    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
     projection = np.sum(binary, axis=1).astype(float)
 
     if projection.max() == 0:
@@ -164,9 +176,8 @@ def render_musicxml(fragment: str) -> RenderResult:
     tk.setOptions(
         {
             "scale": 100,
+            "pageWidth": 800,
             "adjustPageHeight": True,
-            "adjustPageWidth": True,
-            "border": 10,
             "header": "none",
             "footer": "none",
         }
