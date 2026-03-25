@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 
 import cairosvg  # type: ignore[import-not-found]
+import cv2
+import numpy as np
 import verovio  # type: ignore[import-not-found]
 
 
@@ -20,6 +22,44 @@ def _find_lilypond() -> str | None:
     except (ImportError, Exception):
         pass
     return shutil.which("lilypond")
+
+
+def _trim_whitespace(png_data: bytes, padding: int = 10) -> bytes:
+    """Trim white borders from a PNG image, keeping a small padding."""
+    arr = np.frombuffer(png_data, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        return png_data
+
+    # Convert to grayscale for thresholding
+    if len(img.shape) == 3 and img.shape[2] == 4:
+        # RGBA — use alpha channel: transparent = white
+        gray = cv2.cvtColor(img[:, :, :3], cv2.COLOR_BGR2GRAY)
+        alpha = img[:, :, 3]
+        # Treat transparent pixels as white
+        gray[alpha < 128] = 255
+    elif len(img.shape) == 3:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = img
+
+    # Find non-white pixels
+    _, binary = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
+    coords = cv2.findNonZero(binary)
+    if coords is None:
+        return png_data
+
+    x, y, w, h = cv2.boundingRect(coords)
+
+    # Add padding
+    y1 = max(0, y - padding)
+    y2 = min(img.shape[0], y + h + padding)
+    x1 = max(0, x - padding)
+    x2 = min(img.shape[1], x + w + padding)
+
+    cropped = img[y1:y2, x1:x2]
+    _, buf = cv2.imencode(".png", cropped)
+    return bytes(buf)
 
 
 def render_musicxml(fragment: str) -> bytes:
@@ -67,7 +107,7 @@ def render_musicxml(fragment: str) -> bytes:
         raise RuntimeError("Verovio konnte kein SVG erzeugen")
 
     png_bytes: bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"))
-    return png_bytes
+    return _trim_whitespace(png_bytes)
 
 
 def render_lilypond(token: str) -> bytes:
@@ -85,12 +125,14 @@ def render_lilypond(token: str) -> bytes:
             "LilyPond ist nicht installiert. " "Installieren mit: pip install lilypond"
         )
 
+    # Use a generous paper size so nothing gets clipped —
+    # trimming will remove the excess whitespace afterwards
     ly_content = f"""\\version "2.24.0"
 \\header {{ tagline = "" }}
 \\paper {{
   indent = 0
-  paper-width = 30\\mm
-  paper-height = 20\\mm
+  paper-width = 80\\mm
+  paper-height = 60\\mm
 }}
 {{ {token} }}
 """
@@ -123,4 +165,4 @@ def render_lilypond(token: str) -> bytes:
                 raise RuntimeError("LilyPond hat keine PNG-Datei erzeugt")
             png_path = candidates[0]
 
-        return png_path.read_bytes()
+        return _trim_whitespace(png_path.read_bytes())
