@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { RouterLink } from "vue-router";
 import { get, post, put } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
@@ -31,6 +31,7 @@ const captureBox = ref(null);
 const showCaptureDialog = ref(false);
 const heightEditable = ref(false);
 const captureForm = ref({
+  template_id: null,
   name: "",
   category: "note",
   musicxml_element: "",
@@ -153,23 +154,52 @@ function onCaptureBox(box) {
   } else {
     captureForm.value.height_in_lines = 4.0;
   }
+  captureForm.value.template_id = null;
+  captureForm.value.name = "";
+  captureForm.value.category = "note";
+  captureForm.value.musicxml_element = "";
   showCaptureDialog.value = true;
 }
 
+function onTemplateSelect() {
+  if (captureForm.value.template_id !== null) {
+    const tpl = libraryTemplates.value.find((t) => t.id === captureForm.value.template_id);
+    if (tpl) {
+      captureForm.value.category = tpl.category;
+      captureForm.value.musicxml_element = tpl.musicxml_element || "";
+    }
+  }
+}
+
 async function saveCapturedTemplate() {
-  if (!captureBox.value || !captureForm.value.name.trim()) return;
-  await post("/scanner/library/templates/capture", {
+  if (!captureBox.value) return;
+  const isNew = captureForm.value.template_id === null;
+  if (isNew && !captureForm.value.name.trim()) return;
+
+  const payload = {
     scan_id: parseInt(props.scanId),
     ...captureBox.value,
-    name: captureForm.value.name.trim(),
     category: captureForm.value.category,
     musicxml_element: captureForm.value.musicxml_element || null,
     height_in_lines: captureForm.value.height_in_lines,
-  });
+  };
+
+  if (isNew) {
+    payload.name = captureForm.value.name.trim();
+  } else {
+    payload.template_id = captureForm.value.template_id;
+  }
+
+  await post("/scanner/library/templates/capture", payload);
   showCaptureDialog.value = false;
   captureMode.value = false;
-  captureForm.value = { name: "", category: "note", musicxml_element: "", height_in_lines: 4.0 };
-  // Refresh library
+  captureForm.value = {
+    template_id: null,
+    name: "",
+    category: "note",
+    musicxml_element: "",
+    height_in_lines: 4.0,
+  };
   const data = await get("/scanner/library/templates?limit=200");
   libraryTemplates.value = data.items || [];
 }
@@ -194,7 +224,7 @@ async function onCorrect(symbol, template = null) {
   if (!template) {
     // Fetch library for picker
     if (libraryTemplates.value.length === 0) {
-      const data = await get("/scanner/library/templates?limit=50");
+      const data = await get("/scanner/library/templates?limit=200");
       libraryTemplates.value = data.items || [];
     }
     showCorrectPicker.value = true;
@@ -248,10 +278,32 @@ async function onCorrectToAlternative(symbol, alt) {
 
 async function fetchLibraryIfNeeded() {
   if (libraryTemplates.value.length === 0) {
-    const data = await get("/scanner/library/templates?limit=50");
+    const data = await get("/scanner/library/templates?limit=200");
     libraryTemplates.value = data.items || [];
   }
 }
+
+const groupedTemplates = computed(() => {
+  const groups = {};
+  const categoryLabels = {
+    note: "Noten",
+    rest: "Pausen",
+    accidental: "Vorzeichen",
+    clef: "Schlüssel",
+    time_sig: "Taktarten",
+    time_signature: "Taktarten",
+    barline: "Taktstriche",
+    dynamic: "Dynamik",
+    ornament: "Verzierungen",
+    other: "Sonstige",
+  };
+  for (const tpl of libraryTemplates.value) {
+    const label = categoryLabels[tpl.category] || tpl.category;
+    if (!groups[label]) groups[label] = [];
+    groups[label].push(tpl);
+  }
+  return groups;
+});
 
 onMounted(() => {
   fetchScanData();
@@ -377,12 +429,23 @@ onUnmounted(() => {
         <h2>Vorlage erfassen</h2>
         <p class="capture-info">Ausschnitt: {{ captureBox?.width }}×{{ captureBox?.height }} px</p>
         <label>
-          Name
+          Vorlage zuordnen
+          <select v-model="captureForm.template_id" @change="onTemplateSelect">
+            <option :value="null">-- Neue Vorlage erstellen --</option>
+            <optgroup v-for="(tpls, group) in groupedTemplates" :key="group" :label="group">
+              <option v-for="tpl in tpls" :key="tpl.id" :value="tpl.id">
+                {{ tpl.display_name }}
+              </option>
+            </optgroup>
+          </select>
+        </label>
+        <label v-if="captureForm.template_id === null">
+          Name der neuen Vorlage
           <input v-model="captureForm.name" type="text" placeholder="z.B. Viertelnote" />
         </label>
         <label>
           Kategorie
-          <select v-model="captureForm.category">
+          <select v-model="captureForm.category" :disabled="captureForm.template_id !== null">
             <option value="note">Note</option>
             <option value="rest">Pause</option>
             <option value="accidental">Vorzeichen</option>
@@ -429,7 +492,7 @@ onUnmounted(() => {
           <button class="btn" @click="showCaptureDialog = false">Abbrechen</button>
           <button
             class="btn btn-primary"
-            :disabled="!captureForm.name.trim()"
+            :disabled="captureForm.template_id === null && !captureForm.name.trim()"
             @click="saveCapturedTemplate"
           >
             Speichern
