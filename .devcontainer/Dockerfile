@@ -44,3 +44,5 @@ EXPOSE 8000
 ENV DEVCONTAINER=true
 
 USER vscode
+
+CMD ["sleep", "infinity"]

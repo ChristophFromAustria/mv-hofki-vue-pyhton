@@ -1,0 +1,27 @@
+services:
+  devcontainer:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ..:/workspaces/mv_hofki:cached
+      - bashhistory:/commandhistory
+      - claude-config:/home/vscode/.claude
+    environment:
+      CLAUDE_CONFIG_DIR: /home/vscode/.claude
+    expose:
+      - "8000"
+
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    restart: unless-stopped
+    network_mode: "service:devcontainer"
+    depends_on:
+      - devcontainer
+
+volumes:
+  bashhistory:
+  claude-config:
