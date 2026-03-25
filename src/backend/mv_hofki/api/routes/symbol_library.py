@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
@@ -129,22 +130,32 @@ async def capture_template(
     )
 
 
+class RenderRequest(BaseModel):
+    code: str | None = None
+
+
 @router.post(
     "/templates/{template_id}/render-musicxml",
     response_model=SymbolTemplateRead,
 )
 async def render_musicxml_endpoint(
-    template_id: int, db: AsyncSession = Depends(get_db)
+    template_id: int,
+    body: RenderRequest | None = None,
+    db: AsyncSession = Depends(get_db),
 ):
-    """Render the template's MusicXML to a PNG variant."""
+    """Render MusicXML to a PNG variant.
+
+    Uses body.code if provided, else the template's stored field.
+    """
     from fastapi import HTTPException
 
     from mv_hofki.services.notation_renderer import render_musicxml
 
     template = await lib_service.get_template_by_id(db, template_id)
-    if not template.musicxml_element:
+    code = (body.code if body and body.code else None) or template.musicxml_element
+    if not code:
         raise HTTPException(status_code=400, detail="Kein MusicXML-Element vorhanden")
-    result = render_musicxml(template.musicxml_element)
+    result = render_musicxml(code)
     return await lib_service.save_rendered_variant(
         db,
         template_id,
@@ -159,17 +170,23 @@ async def render_musicxml_endpoint(
     response_model=SymbolTemplateRead,
 )
 async def render_lilypond_endpoint(
-    template_id: int, db: AsyncSession = Depends(get_db)
+    template_id: int,
+    body: RenderRequest | None = None,
+    db: AsyncSession = Depends(get_db),
 ):
-    """Render the template's LilyPond token to a PNG variant."""
+    """Render LilyPond to a PNG variant.
+
+    Uses body.code if provided, else the template's stored field.
+    """
     from fastapi import HTTPException
 
     from mv_hofki.services.notation_renderer import render_lilypond
 
     template = await lib_service.get_template_by_id(db, template_id)
-    if not template.lilypond_token:
+    code = (body.code if body and body.code else None) or template.lilypond_token
+    if not code:
         raise HTTPException(status_code=400, detail="Kein LilyPond-Token vorhanden")
-    result = render_lilypond(template.lilypond_token)
+    result = render_lilypond(code)
     return await lib_service.save_rendered_variant(
         db,
         template_id,

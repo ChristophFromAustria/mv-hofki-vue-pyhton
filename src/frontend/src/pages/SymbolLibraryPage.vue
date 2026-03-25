@@ -159,7 +159,9 @@ async function renderMusicxml() {
   if (!editingTemplate.value) return;
   rendering.value = "musicxml";
   try {
-    await post(`/scanner/library/templates/${editingTemplate.value.id}/render-musicxml`);
+    await post(`/scanner/library/templates/${editingTemplate.value.id}/render-musicxml`, {
+      code: editForm.value.musicxml_element,
+    });
     variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
     await fetchTemplates();
   } catch (e) {
@@ -173,7 +175,9 @@ async function renderLilypond() {
   if (!editingTemplate.value) return;
   rendering.value = "lilypond";
   try {
-    await post(`/scanner/library/templates/${editingTemplate.value.id}/render-lilypond`);
+    await post(`/scanner/library/templates/${editingTemplate.value.id}/render-lilypond`, {
+      code: editForm.value.lilypond_token,
+    });
     variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
     await fetchTemplates();
   } catch (e) {
