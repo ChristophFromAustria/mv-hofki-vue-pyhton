@@ -10,6 +10,7 @@ const props = defineProps({
     default: () => ({ brightness: 0, contrast: 1.0, rotation: 0, threshold: 128 }),
   },
   selectedSymbolId: { type: Number, default: null },
+  showStaves: { type: Boolean, default: true },
   captureMode: { type: Boolean, default: false },
 });
 
@@ -19,7 +20,8 @@ const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
 const imageUrl = computed(() => {
   if (!props.imagePath) return null;
-  return `${BASE}/${props.imagePath}`;
+  const relative = props.imagePath.replace(/^data\/scans\//, "");
+  return `${BASE}/scans/${relative}`;
 });
 
 // Natural image dimensions
@@ -41,6 +43,8 @@ function zoomOut() {
 }
 
 function onWheel(e) {
+  if (!e.ctrlKey) return; // only zoom with Ctrl held
+  e.preventDefault();
   if (e.deltaY < 0) zoomIn();
   else zoomOut();
 }
@@ -91,6 +95,22 @@ watch(() => props.imagePath, loadImage);
 watch(() => props.adjustments.threshold, applyThreshold);
 onMounted(loadImage);
 
+// Staff line helpers
+function parseLinePositions(staff) {
+  try {
+    return JSON.parse(staff.line_positions_json || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function findStaffForY(y) {
+  for (const staff of props.staves) {
+    if (y >= staff.y_top && y <= staff.y_bottom) return staff;
+  }
+  return null;
+}
+
 // Symbol helpers
 function symbolColor(symbol) {
   const conf = symbol.confidence ?? 0;
@@ -113,6 +133,12 @@ const drawStart = ref({ x: 0, y: 0 });
 const drawEnd = ref({ x: 0, y: 0 });
 const svgEl = ref(null);
 
+// Persistent selection box (adjustable after initial draw)
+const selBox = ref(null); // { x, y, width, height } or null
+const draggingEdge = ref(null); // "top" | "bottom" | "left" | "right" | "topLeft" | "topRight" | "bottomLeft" | "bottomRight" | null
+
+const HANDLE_SIZE = 8; // size in image coords for edge/corner hit detection
+
 function toImageCoords(e) {
   const svg = svgEl.value;
   if (!svg) return { x: 0, y: 0 };
@@ -122,19 +148,83 @@ function toImageCoords(e) {
   return { x: Math.round(x), y: Math.round(y) };
 }
 
+function hitTestEdge(pt) {
+  if (!selBox.value) return null;
+  const b = selBox.value;
+  const g = HANDLE_SIZE / zoom.value; // scale grip to zoom
+  const inX = pt.x >= b.x - g && pt.x <= b.x + b.width + g;
+  const inY = pt.y >= b.y - g && pt.y <= b.y + b.height + g;
+  const nearLeft = Math.abs(pt.x - b.x) < g;
+  const nearRight = Math.abs(pt.x - (b.x + b.width)) < g;
+  const nearTop = Math.abs(pt.y - b.y) < g;
+  const nearBottom = Math.abs(pt.y - (b.y + b.height)) < g;
+
+  if (nearTop && nearLeft) return "topLeft";
+  if (nearTop && nearRight) return "topRight";
+  if (nearBottom && nearLeft) return "bottomLeft";
+  if (nearBottom && nearRight) return "bottomRight";
+  if (nearTop && inX) return "top";
+  if (nearBottom && inX) return "bottom";
+  if (nearLeft && inY) return "left";
+  if (nearRight && inY) return "right";
+  return null;
+}
+
 function onMouseDown(e) {
   if (!props.captureMode) return;
+  const pt = toImageCoords(e);
+
+  // Check if clicking on an edge of the existing selection box
+  if (selBox.value) {
+    const edge = hitTestEdge(pt);
+    if (edge) {
+      draggingEdge.value = edge;
+      return;
+    }
+  }
+
+  // Start new selection (replaces any existing)
   drawing.value = true;
-  drawStart.value = toImageCoords(e);
-  drawEnd.value = drawStart.value;
+  draggingEdge.value = null;
+  drawStart.value = pt;
+  drawEnd.value = pt;
 }
 
 function onMouseMove(e) {
+  const pt = toImageCoords(e);
+
+  if (draggingEdge.value && selBox.value) {
+    const b = { ...selBox.value };
+    const edge = draggingEdge.value;
+    if (edge.includes("top")) {
+      const newY = Math.min(pt.y, b.y + b.height - 2);
+      b.height += b.y - newY;
+      b.y = newY;
+    }
+    if (edge.includes("bottom")) {
+      b.height = Math.max(2, pt.y - b.y);
+    }
+    if (edge.includes("Left") || edge === "left") {
+      const newX = Math.min(pt.x, b.x + b.width - 2);
+      b.width += b.x - newX;
+      b.x = newX;
+    }
+    if (edge.includes("Right") || edge === "right") {
+      b.width = Math.max(2, pt.x - b.x);
+    }
+    selBox.value = b;
+    return;
+  }
+
   if (!drawing.value) return;
-  drawEnd.value = toImageCoords(e);
+  drawEnd.value = pt;
 }
 
 function onMouseUp() {
+  if (draggingEdge.value) {
+    draggingEdge.value = null;
+    return;
+  }
   if (!drawing.value) return;
   drawing.value = false;
   const x = Math.min(drawStart.value.x, drawEnd.value.x);
@@ -142,13 +232,40 @@ function onMouseUp() {
   const w = Math.abs(drawEnd.value.x - drawStart.value.x);
   const h = Math.abs(drawEnd.value.y - drawStart.value.y);
   if (w > 3 && h > 3) {
-    emit("capture-box", { x, y, width: w, height: h });
+    selBox.value = { x, y, width: w, height: h };
   }
 }
+
+function confirmCapture() {
+  if (!selBox.value) return;
+  const b = selBox.value;
+  const staff = findStaffForY(b.y + b.height / 2);
+  let heightInLines = null;
+  if (staff && staff.line_spacing > 0) {
+    heightInLines = Math.round((b.height / staff.line_spacing) * 10) / 10; // round to 0.1
+  }
+  emit("capture-box", { x: b.x, y: b.y, width: b.width, height: b.height, heightInLines });
+  selBox.value = null;
+}
+
+function cancelCapture() {
+  selBox.value = null;
+}
+
+// Clear selection when capture mode is turned off
+watch(
+  () => props.captureMode,
+  (val) => {
+    if (!val) {
+      selBox.value = null;
+      drawing.value = false;
+    }
+  },
+);
 </script>
 
 <template>
-  <div class="canvas-wrap" @wheel.prevent="onWheel">
+  <div class="canvas-wrap" @wheel="onWheel">
     <div v-if="!imagePath" class="no-image">
       <p>Kein Bild vorhanden</p>
     </div>
@@ -178,20 +295,64 @@ function onMouseUp() {
         @mousemove="onMouseMove"
         @mouseup="onMouseUp"
       >
-        <!-- Staff bounding boxes (subtle blue outline) -->
-        <rect
-          v-for="staff in staves"
-          :key="`staff-${staff.id}`"
-          :x="staff.x"
-          :y="staff.y"
-          :width="staff.width"
-          :height="staff.height"
-          fill="none"
-          stroke="#3b82f6"
-          stroke-width="1.5"
-          stroke-dasharray="4 2"
-          opacity="0.5"
-        />
+        <!-- Staff regions and individual lines -->
+        <template v-if="showStaves">
+          <g v-for="staff in staves" :key="`staff-${staff.id}`">
+            <!-- Staff region background tint -->
+            <rect
+              x="0"
+              :y="staff.y_top"
+              :width="naturalWidth"
+              :height="staff.y_bottom - staff.y_top"
+              fill="#3b82f6"
+              opacity="0.04"
+            />
+            <!-- Individual staff lines -->
+            <line
+              v-for="(lineY, li) in parseLinePositions(staff)"
+              :key="`line-${staff.id}-${li}`"
+              x1="0"
+              :y1="lineY"
+              :x2="naturalWidth"
+              :y2="lineY"
+              stroke="#3b82f6"
+              stroke-width="1.5"
+              opacity="0.5"
+            />
+            <!-- Staff label -->
+            <text
+              x="4"
+              :y="staff.y_top + 14"
+              fill="#3b82f6"
+              font-size="14"
+              font-weight="600"
+              opacity="0.7"
+            >
+              System {{ staff.staff_index + 1 }}
+            </text>
+            <!-- Top/bottom boundary dashes -->
+            <line
+              x1="0"
+              :y1="staff.y_top"
+              :x2="naturalWidth"
+              :y2="staff.y_top"
+              stroke="#3b82f6"
+              stroke-width="1"
+              stroke-dasharray="6 4"
+              opacity="0.3"
+            />
+            <line
+              x1="0"
+              :y1="staff.y_bottom"
+              :x2="naturalWidth"
+              :y2="staff.y_bottom"
+              stroke="#3b82f6"
+              stroke-width="1"
+              stroke-dasharray="6 4"
+              opacity="0.3"
+            />
+          </g>
+        </template>
 
         <!-- Symbol bounding boxes -->
         <g
@@ -224,7 +385,7 @@ function onMouseUp() {
           />
         </g>
 
-        <!-- Drawing rectangle (capture mode) -->
+        <!-- Drawing rectangle (while dragging) -->
         <rect
           v-if="drawing"
           :x="Math.min(drawStart.x, drawEnd.x)"
@@ -236,7 +397,100 @@ function onMouseUp() {
           stroke-width="2"
           stroke-dasharray="6 3"
         />
+
+        <!-- Adjustable selection box (after initial draw) -->
+        <template v-if="selBox && !drawing">
+          <!-- Fill -->
+          <rect
+            :x="selBox.x"
+            :y="selBox.y"
+            :width="selBox.width"
+            :height="selBox.height"
+            fill="rgba(251, 191, 36, 0.12)"
+            stroke="#f59e0b"
+            stroke-width="2"
+          />
+          <!-- Edge handles (invisible wider hit areas) -->
+          <line
+            :x1="selBox.x"
+            :y1="selBox.y"
+            :x2="selBox.x + selBox.width"
+            :y2="selBox.y"
+            stroke="transparent"
+            stroke-width="8"
+            style="cursor: n-resize; pointer-events: all"
+          />
+          <line
+            :x1="selBox.x"
+            :y1="selBox.y + selBox.height"
+            :x2="selBox.x + selBox.width"
+            :y2="selBox.y + selBox.height"
+            stroke="transparent"
+            stroke-width="8"
+            style="cursor: s-resize; pointer-events: all"
+          />
+          <line
+            :x1="selBox.x"
+            :y1="selBox.y"
+            :x2="selBox.x"
+            :y2="selBox.y + selBox.height"
+            stroke="transparent"
+            stroke-width="8"
+            style="cursor: w-resize; pointer-events: all"
+          />
+          <line
+            :x1="selBox.x + selBox.width"
+            :y1="selBox.y"
+            :x2="selBox.x + selBox.width"
+            :y2="selBox.y + selBox.height"
+            stroke="transparent"
+            stroke-width="8"
+            style="cursor: e-resize; pointer-events: all"
+          />
+          <!-- Corner handles (visible dots) -->
+          <circle
+            :cx="selBox.x"
+            :cy="selBox.y"
+            r="4"
+            fill="#f59e0b"
+            style="cursor: nw-resize; pointer-events: all"
+          />
+          <circle
+            :cx="selBox.x + selBox.width"
+            :cy="selBox.y"
+            r="4"
+            fill="#f59e0b"
+            style="cursor: ne-resize; pointer-events: all"
+          />
+          <circle
+            :cx="selBox.x"
+            :cy="selBox.y + selBox.height"
+            r="4"
+            fill="#f59e0b"
+            style="cursor: sw-resize; pointer-events: all"
+          />
+          <circle
+            :cx="selBox.x + selBox.width"
+            :cy="selBox.y + selBox.height"
+            r="4"
+            fill="#f59e0b"
+            style="cursor: se-resize; pointer-events: all"
+          />
+        </template>
       </svg>
+
+      <!-- Confirm/cancel buttons for selection box -->
+      <div
+        v-if="selBox && !drawing"
+        class="capture-confirm"
+        :style="{
+          left: (selBox.x + selBox.width / 2) * zoom - 60 + 'px',
+          top: (selBox.y + selBox.height) * zoom + 8 + 'px',
+        }"
+      >
+        <button class="capture-btn confirm" @click="confirmCapture">Bestätigen</button>
+        <button class="capture-btn cancel" @click="cancelCapture">Verwerfen</button>
+      </div>
 
       <!-- Zoom indicator -->
       <div class="zoom-indicator">{{ Math.round(zoom * 100) }}%</div>
@@ -251,9 +505,6 @@ function onMouseUp() {
   height: 100%;
   overflow: auto;
   background: #1a1a1a;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
 }
 
 .no-image {
@@ -299,5 +550,40 @@ function onMouseUp() {
   border-radius: 4px;
   pointer-events: none;
   user-select: none;
+}
+
+.capture-confirm {
+  position: absolute;
+  display: flex;
+  gap: 0.4rem;
+  z-index: 10;
+  pointer-events: all;
+}
+
+.capture-btn {
+  padding: 0.3rem 0.6rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.capture-btn.confirm {
+  background: #f59e0b;
+  color: #000;
+}
+
+.capture-btn.confirm:hover {
+  background: #d97706;
+}
+
+.capture-btn.cancel {
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+
+.capture-btn.cancel:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 </style>

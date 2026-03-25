@@ -21,6 +21,7 @@ const processing = ref(false);
 const statusMessage = ref("");
 
 const adjustments = ref({ brightness: 0, contrast: 1.0, rotation: 0, threshold: 128 });
+const showStaves = ref(true);
 const selectedSymbol = ref(null);
 const showCorrectPicker = ref(false);
 const libraryTemplates = ref([]);
@@ -28,6 +29,7 @@ const libraryTemplates = ref([]);
 const captureMode = ref(false);
 const captureBox = ref(null);
 const showCaptureDialog = ref(false);
+const heightEditable = ref(false);
 const captureForm = ref({
   name: "",
   category: "note",
@@ -144,6 +146,13 @@ function onAdjust(adj) {
 
 function onCaptureBox(box) {
   captureBox.value = box;
+  heightEditable.value = false;
+  // Pre-fill height_in_lines from auto-calculation if available
+  if (box.heightInLines != null) {
+    captureForm.value.height_in_lines = box.heightInLines;
+  } else {
+    captureForm.value.height_in_lines = 4.0;
+  }
   showCaptureDialog.value = true;
 }
 
@@ -213,6 +222,30 @@ async function onCorrect(symbol, template = null) {
   updateStatus();
 }
 
+async function onCorrectToAlternative(symbol, alt) {
+  // Correct symbol to the alternative template
+  await put(`/scanner/symbols/${symbol.id}/correct`, {
+    symbol_template_id: alt.template_id,
+  });
+  const idx = symbols.value.findIndex((s) => s.id === symbol.id);
+  const corrected = { id: alt.template_id, display_name: alt.display_name };
+  if (idx !== -1) {
+    symbols.value[idx] = {
+      ...symbols.value[idx],
+      user_verified: true,
+      corrected_symbol: corrected,
+    };
+  }
+  if (selectedSymbol.value?.id === symbol.id) {
+    selectedSymbol.value = {
+      ...selectedSymbol.value,
+      user_verified: true,
+      corrected_symbol: corrected,
+    };
+  }
+  updateStatus();
+}
+
 async function fetchLibraryIfNeeded() {
   if (libraryTemplates.value.length === 0) {
     const data = await get("/scanner/library/templates?limit=50");
@@ -252,6 +285,17 @@ onUnmounted(() => {
           <div class="toolbar-extras">
             <button
               class="btn btn-sm"
+              :class="{ 'btn-active': showStaves }"
+              :title="showStaves ? 'Notenlinien ausblenden' : 'Notenlinien einblenden'"
+              @click="showStaves = !showStaves"
+            >
+              {{ showStaves ? "Linien ausblenden" : "Linien einblenden" }}
+            </button>
+            <span v-if="staves.length" class="stave-count"
+              >{{ staves.length }} Systeme erkannt</span
+            >
+            <button
+              class="btn btn-sm"
               :class="{ 'btn-active': captureMode }"
               @click="captureMode = !captureMode"
             >
@@ -264,6 +308,7 @@ onUnmounted(() => {
             :symbols="symbols"
             :adjustments="adjustments"
             :selected-symbol-id="selectedSymbol?.id ?? null"
+            :show-staves="showStaves"
             :capture-mode="captureMode"
             @select-symbol="onSelectSymbol"
             @capture-box="onCaptureBox"
@@ -277,6 +322,7 @@ onUnmounted(() => {
             :templates="libraryTemplates"
             @verify="onVerify"
             @correct="onCorrect"
+            @correct-to-alternative="onCorrectToAlternative"
           />
         </div>
       </template>
@@ -350,13 +396,26 @@ onUnmounted(() => {
         </label>
         <label>
           Höhe in Notenlinien
-          <input
-            v-model.number="captureForm.height_in_lines"
-            type="number"
-            min="0.5"
-            max="10"
-            step="0.5"
-          />
+          <div class="height-input-row">
+            <input
+              v-model.number="captureForm.height_in_lines"
+              type="number"
+              min="0.1"
+              max="10"
+              step="0.1"
+              :readonly="!heightEditable"
+              :class="{ 'input-readonly': !heightEditable }"
+            />
+            <button
+              class="btn btn-sm"
+              :class="{ 'btn-active': heightEditable }"
+              type="button"
+              :title="heightEditable ? 'Berechnet verwenden' : 'Manuell bearbeiten'"
+              @click="heightEditable = !heightEditable"
+            >
+              {{ heightEditable ? "Auto" : "Bearbeiten" }}
+            </button>
+          </div>
         </label>
         <label>
           MusicXML (optional)
@@ -387,6 +446,10 @@ onUnmounted(() => {
   flex-direction: column;
   height: calc(100vh - 60px);
   overflow: hidden;
+  /* Break out of App.vue .container max-width and padding */
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  padding: 0;
 }
 
 .editor-main {
@@ -537,6 +600,12 @@ onUnmounted(() => {
   border-color: var(--color-primary);
 }
 
+.stave-count {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
 .capture-info {
   color: var(--color-muted);
   font-size: 0.85rem;
@@ -562,6 +631,23 @@ onUnmounted(() => {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: inherit;
+}
+
+.height-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
+.height-input-row input {
+  flex: 1;
+  margin-top: 0;
+}
+
+.input-readonly {
+  background: var(--color-bg-soft) !important;
+  color: var(--color-muted) !important;
 }
 
 .modal-actions {

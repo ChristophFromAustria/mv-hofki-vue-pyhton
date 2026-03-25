@@ -6,7 +6,7 @@ const props = defineProps({
   templates: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(["verify", "correct"]);
+const emit = defineEmits(["verify", "correct", "correct-to-alternative"]);
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
@@ -89,7 +89,25 @@ function confidenceLabel(conf) {
         <button class="btn btn-secondary" @click="emit('correct', symbol)">Korrigieren</button>
       </div>
 
-      <!-- Alternatives -->
+      <!-- Alternative detections (from NMS) -->
+      <div v-if="symbol.alternatives && symbol.alternatives.length > 0" class="alternatives">
+        <h4>Weitere Treffer</h4>
+        <div class="alt-list">
+          <button
+            v-for="alt in symbol.alternatives"
+            :key="alt.template_id"
+            class="alt-btn"
+            @click="emit('correct-to-alternative', symbol, alt)"
+          >
+            <span class="alt-name">{{ alt.display_name ?? `#${alt.template_id}` }}</span>
+            <span :class="['alt-conf', confidenceClass(alt.confidence)]">
+              {{ confidenceLabel(alt.confidence) }}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Library templates -->
       <div v-if="templates.length > 0" class="alternatives">
         <h4>Bibliothek (Auswahl)</h4>
         <div class="alt-list">
@@ -232,5 +250,15 @@ function confidenceLabel(conf) {
   background: var(--color-primary-light);
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+.alt-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.alt-conf {
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 </style>

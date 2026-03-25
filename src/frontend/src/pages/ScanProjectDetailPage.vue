@@ -30,10 +30,14 @@ const deleteScanTarget = ref(null);
 // File upload refs keyed by partId
 const fileInputs = ref({});
 
+// Drag state per part
+const dragOver = ref({});
+
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
 function scanImageUrl(imagePath) {
-  return `${BASE}/${imagePath}`;
+  const relative = imagePath.replace(/^data\/scans\//, "");
+  return `${BASE}/scans/${relative}`;
 }
 
 async function fetchData() {
@@ -103,8 +107,7 @@ async function deleteScan() {
   await fetchData();
 }
 
-async function uploadScan(partId, event) {
-  const file = event.target.files[0];
+async function uploadFile(partId, file) {
   if (!file) return;
   const formData = new FormData();
   formData.append("file", file);
@@ -116,9 +119,32 @@ async function uploadScan(partId, event) {
     alert(`Upload fehlgeschlagen: ${text}`);
     return;
   }
-  // Reset file input
-  event.target.value = "";
   await fetchData();
+}
+
+async function uploadScan(partId, event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  await uploadFile(partId, file);
+  event.target.value = "";
+}
+
+function onDrop(partId, event) {
+  dragOver.value[partId] = false;
+  const file = event.dataTransfer.files[0];
+  if (file) uploadFile(partId, file);
+}
+
+function onDragOver(partId) {
+  dragOver.value[partId] = true;
+}
+
+function onDragLeave(partId) {
+  dragOver.value[partId] = false;
+}
+
+function triggerFileInput(partId) {
+  fileInputs.value[partId]?.click();
 }
 
 function navigateToScan(scan) {
@@ -175,20 +201,6 @@ onMounted(fetchData);
           <div class="part-header">
             <h2>{{ part.part_name }}</h2>
             <div class="part-actions">
-              <label class="btn btn-sm btn-secondary upload-label">
-                + Scan hochladen
-                <input
-                  :ref="
-                    (el) => {
-                      if (el) fileInputs[part.id] = el;
-                    }
-                  "
-                  type="file"
-                  accept="image/png,image/jpeg,image/tiff"
-                  style="display: none"
-                  @change="uploadScan(part.id, $event)"
-                />
-              </label>
               <button class="btn btn-sm btn-danger" @click="confirmDeletePart(part)">
                 Teil löschen
               </button>
@@ -196,10 +208,7 @@ onMounted(fetchData);
           </div>
 
           <!-- Scan thumbnails -->
-          <div v-if="part.scans.length === 0" class="no-scans">
-            <p>Noch keine Scans für diesen Teil.</p>
-          </div>
-          <div v-else class="scans-grid">
+          <div v-if="part.scans.length > 0" class="scans-grid">
             <div
               v-for="scan in part.scans"
               :key="scan.id"
@@ -223,6 +232,29 @@ onMounted(fetchData);
                 </button>
               </div>
             </div>
+          </div>
+
+          <!-- Drop zone -->
+          <div
+            :class="['drop-zone', { 'drop-zone-active': dragOver[part.id] }]"
+            @dragover.prevent="onDragOver(part.id)"
+            @dragleave.prevent="onDragLeave(part.id)"
+            @drop.prevent="onDrop(part.id, $event)"
+            @click="triggerFileInput(part.id)"
+          >
+            <input
+              :ref="
+                (el) => {
+                  if (el) fileInputs[part.id] = el;
+                }
+              "
+              type="file"
+              accept="image/png,image/jpeg,image/tiff"
+              style="display: none"
+              @change="uploadScan(part.id, $event)"
+            />
+            <span class="drop-zone-icon">+</span>
+            <span class="drop-zone-text">Scan hierher ziehen oder klicken</span>
           </div>
         </div>
       </div>
@@ -344,14 +376,41 @@ onMounted(fetchData);
   align-items: center;
 }
 
-.upload-label {
+.drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 1rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-muted);
   cursor: pointer;
+  transition:
+    border-color var(--transition),
+    background var(--transition);
 }
 
-.no-scans {
-  color: var(--color-muted);
-  font-size: 0.9rem;
-  padding: 0.5rem 0;
+.drop-zone:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.drop-zone-active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  color: var(--color-primary);
+}
+
+.drop-zone-icon {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.drop-zone-text {
+  font-size: 0.85rem;
 }
 
 .scans-grid {
