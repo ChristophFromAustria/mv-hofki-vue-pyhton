@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
-import { get, put, del } from "../lib/api.js";
+import { get, post, put, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import SymbolCard from "../components/SymbolCard.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
@@ -27,6 +27,9 @@ const total = ref(0);
 const loading = ref(false);
 const error = ref(null);
 
+const showCreate = ref(false);
+const createForm = ref({ name: "", display_name: "", category: "note" });
+
 const editingTemplate = ref(null);
 const editForm = ref({ display_name: "", musicxml_element: "", lilypond_token: "" });
 const variants = ref([]);
@@ -34,6 +37,7 @@ const loadingVariants = ref(false);
 const confirmDeleteOpen = ref(false);
 const confirmVariantDeleteOpen = ref(false);
 const deleteVariantTarget = ref(null);
+const rendering = ref(null); // "musicxml" | "lilypond" | null
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
@@ -69,6 +73,19 @@ function prevPage() {
 
 function nextPage() {
   if (currentPage.value < totalPages.value) currentPage.value++;
+}
+
+async function createTemplate() {
+  if (!createForm.value.display_name.trim()) return;
+  const name = createForm.value.display_name.trim().toLowerCase().replace(/\s+/g, "_");
+  await post("/scanner/library/templates", {
+    category: createForm.value.category,
+    name,
+    display_name: createForm.value.display_name.trim(),
+  });
+  showCreate.value = false;
+  createForm.value = { name: "", display_name: "", category: "note" };
+  await fetchTemplates();
 }
 
 async function openEdit(tpl) {
@@ -125,7 +142,36 @@ async function deleteVariant() {
 }
 
 function variantImageUrl(variant) {
-  return `${BASE}/${variant.image_path}`;
+  const relative = variant.image_path.replace(/^data\/symbol_library\//, "");
+  return `${BASE}/symbol-library/${relative}`;
+}
+
+async function renderMusicxml() {
+  if (!editingTemplate.value) return;
+  rendering.value = "musicxml";
+  try {
+    await post(`/scanner/library/templates/${editingTemplate.value.id}/render-musicxml`);
+    variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
+    await fetchTemplates();
+  } catch (e) {
+    alert(`MusicXML-Rendering fehlgeschlagen: ${e.message}`);
+  } finally {
+    rendering.value = null;
+  }
+}
+
+async function renderLilypond() {
+  if (!editingTemplate.value) return;
+  rendering.value = "lilypond";
+  try {
+    await post(`/scanner/library/templates/${editingTemplate.value.id}/render-lilypond`);
+    variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
+    await fetchTemplates();
+  } catch (e) {
+    alert(`LilyPond-Rendering fehlgeschlagen: ${e.message}`);
+  } finally {
+    rendering.value = null;
+  }
 }
 
 watch([activeCategory, currentPage], fetchTemplates);
@@ -136,7 +182,10 @@ onMounted(fetchTemplates);
   <div>
     <div class="page-header">
       <h1>Symbol-Bibliothek</h1>
-      <span class="total-count">{{ total }} Vorlagen</span>
+      <div class="header-right">
+        <span class="total-count">{{ total }} Vorlagen</span>
+        <button class="btn btn-primary btn-sm" @click="showCreate = true">+ Neue Vorlage</button>
+      </div>
     </div>
 
     <!-- Category filter tabs -->
@@ -185,6 +234,41 @@ onMounted(fetchTemplates);
       </div>
     </template>
 
+    <!-- Create template dialog -->
+    <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false">
+      <div class="modal">
+        <h2>Neue Vorlage erstellen</h2>
+        <label>
+          Name
+          <input v-model="createForm.display_name" type="text" placeholder="z.B. Viertelnote" />
+        </label>
+        <label>
+          Kategorie
+          <select v-model="createForm.category">
+            <option value="note">Note</option>
+            <option value="rest">Pause</option>
+            <option value="accidental">Vorzeichen</option>
+            <option value="clef">Schlüssel</option>
+            <option value="time_sig">Taktart</option>
+            <option value="barline">Taktstrich</option>
+            <option value="dynamic">Dynamik</option>
+            <option value="ornament">Verzierung</option>
+            <option value="other">Sonstiges</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button class="btn" @click="showCreate = false">Abbrechen</button>
+          <button
+            class="btn btn-primary"
+            :disabled="!createForm.display_name.trim()"
+            @click="createTemplate"
+          >
+            Erstellen
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Edit modal -->
     <div v-if="editingTemplate" class="modal-backdrop" @click.self="closeEdit">
       <div class="modal modal-large">
@@ -201,6 +285,24 @@ onMounted(fetchTemplates);
           LilyPond Token
           <input v-model="editForm.lilypond_token" type="text" placeholder="z.B. c4" />
         </label>
+
+        <!-- Render actions -->
+        <div class="render-actions">
+          <button
+            class="btn btn-sm btn-secondary"
+            :disabled="!editForm.musicxml_element.trim() || rendering !== null"
+            @click="renderMusicxml"
+          >
+            {{ rendering === "musicxml" ? "Rendere..." : "MusicXML rendern" }}
+          </button>
+          <button
+            class="btn btn-sm btn-secondary"
+            :disabled="!editForm.lilypond_token.trim() || rendering !== null"
+            @click="renderLilypond"
+          >
+            {{ rendering === "lilypond" ? "Rendere..." : "LilyPond rendern" }}
+          </button>
+        </div>
 
         <!-- Variants -->
         <div class="variants-section">
@@ -262,6 +364,12 @@ onMounted(fetchTemplates);
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .total-count {
@@ -371,6 +479,7 @@ onMounted(fetchTemplates);
 }
 
 .modal input,
+.modal select,
 .modal textarea {
   display: block;
   width: 100%;
@@ -447,5 +556,11 @@ onMounted(fetchTemplates);
 .modal-actions {
   display: flex;
   gap: 0.5rem;
+}
+
+.render-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 </style>
