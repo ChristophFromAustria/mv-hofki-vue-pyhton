@@ -4,6 +4,9 @@ set -euo pipefail
 
 WORKSPACE="$(pwd)"
 
+# Enable mouse scrolling in tmux sessions
+tmux set -g mouse on 2>/dev/null || true
+
 # Start backend server in tmux
 tmux new-session -d -s server \
   "cd $WORKSPACE && PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 --reload"

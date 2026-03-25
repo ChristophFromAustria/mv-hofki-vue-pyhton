@@ -16,7 +16,7 @@ alias server-restart='tmux send-keys -t server C-c && sleep 1 && tmux send-keys 
 # Frontend watcher (vite build --watch in tmux session "frontend")
 alias frontend-logs='tmux capture-pane -t frontend -p -S -500'
 alias frontend-attach='tmux attach -t frontend'
-alias frontend-build='cd src/frontend && VITE_BASE_PATH=${VITE_BASE_PATH:-/} npx vite build'
+alias frontend-build='(cd src/frontend && VITE_BASE_PATH=${VITE_BASE_PATH:-/} npx vite build)'
 alias frontend-restart='tmux send-keys -t frontend C-c && sleep 1 && tmux send-keys -t frontend "cd src/frontend && VITE_BASE_PATH=\${VITE_BASE_PATH:-/} npx vite build --watch" Enter'
 
 # Web terminal (ttyd on port 7681 in tmux session "terminal")

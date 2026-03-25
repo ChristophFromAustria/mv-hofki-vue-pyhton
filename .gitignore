@@ -21,7 +21,7 @@ src/frontend/dist/
 
 # Database
 data/*.db
-
+data/
 # Uploads
 data/uploads/*
 !data/uploads/.gitkeep
