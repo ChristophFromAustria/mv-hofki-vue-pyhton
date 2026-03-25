@@ -38,6 +38,13 @@ const confirmDeleteOpen = ref(false);
 const confirmVariantDeleteOpen = ref(false);
 const deleteVariantTarget = ref(null);
 const rendering = ref(null); // "musicxml" | "lilypond" | null
+const previewVariant = ref(null);
+const previewImageUrl = ref(null);
+const cropDrawing = ref(false);
+const cropStart = ref({ x: 0, y: 0 });
+const cropEnd = ref({ x: 0, y: 0 });
+const cropRect = ref(null);
+const previewImgEl = ref(null);
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
@@ -172,6 +179,89 @@ async function renderLilypond() {
   } finally {
     rendering.value = null;
   }
+}
+
+function openPreview(v) {
+  previewVariant.value = v;
+  previewImageUrl.value = variantImageUrl(v);
+  cropRect.value = null;
+  cropDrawing.value = false;
+}
+
+function closePreview() {
+  previewVariant.value = null;
+  previewImageUrl.value = null;
+  cropRect.value = null;
+}
+
+function toImageCoords(e) {
+  const img = previewImgEl.value;
+  if (!img) return { x: 0, y: 0 };
+  const rect = img.getBoundingClientRect();
+  const x = Math.round(((e.clientX - rect.left) / rect.width) * img.naturalWidth);
+  const y = Math.round(((e.clientY - rect.top) / rect.height) * img.naturalHeight);
+  return { x, y };
+}
+
+function onCropMouseDown(e) {
+  if (e.target !== previewImgEl.value) return;
+  cropDrawing.value = true;
+  cropStart.value = toImageCoords(e);
+  cropEnd.value = cropStart.value;
+  cropRect.value = null;
+}
+
+function onCropMouseMove(e) {
+  if (!cropDrawing.value) return;
+  cropEnd.value = toImageCoords(e);
+}
+
+function onCropMouseUp() {
+  if (!cropDrawing.value) return;
+  cropDrawing.value = false;
+  const x = Math.min(cropStart.value.x, cropEnd.value.x);
+  const y = Math.min(cropStart.value.y, cropEnd.value.y);
+  const w = Math.abs(cropEnd.value.x - cropStart.value.x);
+  const h = Math.abs(cropEnd.value.y - cropStart.value.y);
+  if (w > 3 && h > 3) {
+    cropRect.value = { x, y, width: w, height: h };
+  }
+}
+
+function cropOverlayStyle() {
+  const img = previewImgEl.value;
+  if (!img || !cropDrawing.value) return {};
+  const rect = img.getBoundingClientRect();
+  const sx = Math.min(cropStart.value.x, cropEnd.value.x);
+  const sy = Math.min(cropStart.value.y, cropEnd.value.y);
+  const sw = Math.abs(cropEnd.value.x - cropStart.value.x);
+  const sh = Math.abs(cropEnd.value.y - cropStart.value.y);
+  return {
+    left:
+      (sx / img.naturalWidth) * rect.width +
+      rect.left -
+      img.closest(".lightbox").getBoundingClientRect().left +
+      "px",
+    top:
+      (sy / img.naturalHeight) * rect.height +
+      rect.top -
+      img.closest(".lightbox").getBoundingClientRect().top +
+      "px",
+    width: (sw / img.naturalWidth) * rect.width + "px",
+    height: (sh / img.naturalHeight) * rect.height + "px",
+  };
+}
+
+async function applyCrop() {
+  if (!cropRect.value || !previewVariant.value || !editingTemplate.value) return;
+  await post(
+    `/scanner/library/templates/${editingTemplate.value.id}/variants/${previewVariant.value.id}/crop`,
+    cropRect.value,
+  );
+  // Refresh variants and close preview
+  variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
+  await fetchTemplates();
+  closePreview();
 }
 
 watch([activeCategory, currentPage], fetchTemplates);
@@ -313,7 +403,12 @@ onMounted(fetchTemplates);
           </div>
           <div v-else class="variants-grid">
             <div v-for="v in variants" :key="v.id" class="variant-item">
-              <img :src="variantImageUrl(v)" alt="Variante" class="variant-img" />
+              <img
+                :src="variantImageUrl(v)"
+                alt="Variante"
+                class="variant-img"
+                @click="openPreview(v)"
+              />
               <div class="variant-meta">
                 <span class="variant-source">{{ v.source }}</span>
                 <button class="btn btn-xs btn-danger" @click="confirmDeleteVariant(v)">×</button>
@@ -355,6 +450,35 @@ onMounted(fetchTemplates);
       @confirm="deleteVariant"
       @cancel="confirmVariantDeleteOpen = false"
     />
+
+    <!-- Image preview / crop lightbox -->
+    <div
+      v-if="previewImageUrl"
+      class="lightbox"
+      @mousedown="onCropMouseDown"
+      @mousemove="onCropMouseMove"
+      @mouseup="onCropMouseUp"
+    >
+      <img
+        ref="previewImgEl"
+        :src="previewImageUrl"
+        alt="Vorschau"
+        class="lightbox-img"
+        draggable="false"
+      />
+      <!-- Crop selection rectangle (while drawing) -->
+      <div v-if="cropDrawing" class="crop-rect" :style="cropOverlayStyle()" />
+      <!-- Crop confirm bar -->
+      <div class="lightbox-toolbar">
+        <span class="lightbox-hint">Bereich auswählen zum Zuschneiden</span>
+        <div class="lightbox-actions">
+          <button v-if="cropRect" class="btn btn-sm btn-primary" @click.stop="applyCrop">
+            Zuschneiden ({{ cropRect.width }}×{{ cropRect.height }})
+          </button>
+          <button class="btn btn-sm" @click.stop="closePreview">Schliessen</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -526,6 +650,7 @@ onMounted(fetchTemplates);
   object-fit: contain;
   background: #1a1a1a;
   image-rendering: pixelated;
+  cursor: zoom-in;
 }
 
 .variant-meta {
@@ -562,5 +687,54 @@ onMounted(fetchTemplates);
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 600;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.crop-rect {
+  position: absolute;
+  border: 2px dashed #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+  pointer-events: none;
+}
+
+.lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius);
+}
+
+.lightbox-hint {
+  color: #aaa;
+  font-size: 0.8rem;
+}
+
+.lightbox-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 </style>

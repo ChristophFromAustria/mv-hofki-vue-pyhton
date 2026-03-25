@@ -1,13 +1,9 @@
 {
   "name": "mv_hofki",
   "initializeCommand": "bash .devcontainer/initialize.sh",
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": "..",
-    "args": {
-      "TZ": "${localEnv:TZ:Europe/Berlin}"
-    }
-  },
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "devcontainer",
+  "workspaceFolder": "/workspaces/mv_hofki",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -26,14 +22,9 @@
   },
   "postCreateCommand": "bash ${containerWorkspaceFolder}/.devcontainer/post-create.sh",
   "postStartCommand": "bash ${containerWorkspaceFolder}/.devcontainer/post-start.sh",
-  "mounts": [
-    "source=${localWorkspaceFolderBasename}-bashhistory,target=/commandhistory,type=volume",
-    "source=${localWorkspaceFolderBasename}-claude-config,target=/home/vscode/.claude,type=volume"
-  ],
   "containerEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
   },
-  "runArgs": ["-p", "8000"],
   "forwardPorts": [8000],
   "portsAttributes": {
     "8000": {

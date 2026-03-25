@@ -12,6 +12,7 @@ from mv_hofki.schemas.symbol_template import (
     SymbolTemplateRead,
     SymbolTemplateUpdate,
     TemplateCaptureRequest,
+    VariantCropRequest,
 )
 from mv_hofki.schemas.symbol_variant import SymbolVariantRead
 from mv_hofki.services import symbol_library as lib_service
@@ -72,6 +73,19 @@ async def delete_variant(
     template_id: int, variant_id: int, db: AsyncSession = Depends(get_db)
 ):
     await lib_service.delete_variant(db, template_id, variant_id)
+    return {"status": "ok"}
+
+
+@router.post("/templates/{template_id}/variants/{variant_id}/crop")
+async def crop_variant(
+    template_id: int,
+    variant_id: int,
+    data: VariantCropRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    await lib_service.crop_variant(
+        db, template_id, variant_id, data.x, data.y, data.width, data.height
+    )
     return {"status": "ok"}
 
 

@@ -29,3 +29,7 @@ class SymbolTemplate(Base):
     variants: Mapped[list[SymbolVariant]] = relationship(
         back_populates="template", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    @property
+    def variant_count(self) -> int:
+        return len(self.variants)

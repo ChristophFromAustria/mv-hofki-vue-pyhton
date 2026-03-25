@@ -102,6 +102,39 @@ async def delete_variant(
     await session.commit()
 
 
+async def crop_variant(
+    session: AsyncSession,
+    template_id: int,
+    variant_id: int,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+) -> None:
+    """Crop a variant image in-place."""
+    await get_template_by_id(session, template_id)
+    variant = await session.get(SymbolVariant, variant_id)
+    if not variant or variant.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Variante nicht gefunden")
+
+    file_path = settings.PROJECT_ROOT / variant.image_path
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Bilddatei nicht gefunden")
+
+    img = cv2.imread(str(file_path), cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise HTTPException(status_code=400, detail="Bild konnte nicht geladen werden")
+
+    # Clamp coordinates
+    y2 = min(img.shape[0], y + height)
+    x2 = min(img.shape[1], x + width)
+    cropped = img[max(0, y) : y2, max(0, x) : x2]
+    if cropped.size == 0:
+        raise HTTPException(status_code=400, detail="Ungültiger Ausschnitt")
+
+    cv2.imwrite(str(file_path), cropped)
+
+
 async def save_rendered_variant(
     session: AsyncSession,
     template_id: int,

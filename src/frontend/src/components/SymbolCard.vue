@@ -1,29 +1,51 @@
 <script setup>
-defineProps({
+import { computed } from "vue";
+
+const props = defineProps({
   template: { type: Object, required: true },
 });
 
 const emit = defineEmits(["edit"]);
+
+const variantClass = computed(() => {
+  const c = props.template.variant_count;
+  if (c === 0) return "vc-none";
+  if (c >= 6) return "vc-good";
+  return "vc-few";
+});
+
+const categoryLabels = {
+  note: "Noten",
+  rest: "Pausen",
+  accidental: "Vorzeichen",
+  clef: "Schlüssel",
+  time_sig: "Taktarten",
+  time_signature: "Taktarten",
+  barline: "Taktstriche",
+  dynamic: "Dynamik",
+  ornament: "Verzierungen",
+  other: "Sonstige",
+};
 </script>
 
 <template>
   <div class="symbol-card" @click="emit('edit', template)">
-    <div class="card-header">
-      <span class="display-name">{{ template.display_name }}</span>
-      <span class="category-badge">{{ template.category }}</span>
-    </div>
+    <span class="category-badge">{{ categoryLabels[template.category] || template.category }}</span>
+    <span class="display-name">{{ template.display_name }}</span>
     <div class="card-footer">
-      <span class="variant-count">
+      <span :class="['variant-count', variantClass]">
         {{ template.variant_count }}
         {{ template.variant_count === 1 ? "Variante" : "Varianten" }}
       </span>
-      <span v-if="template.is_seed" class="seed-badge">Vorlage</span>
     </div>
   </div>
 </template>
 
 <style scoped>
 .symbol-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 0.75rem 1rem;
@@ -39,19 +61,6 @@ const emit = defineEmits(["edit"]);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.display-name {
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
 .category-badge {
   font-size: 0.7rem;
   padding: 2px 6px;
@@ -59,27 +68,38 @@ const emit = defineEmits(["edit"]);
   background: var(--color-primary-light);
   color: var(--color-primary);
   font-weight: 600;
-  white-space: nowrap;
-  text-transform: capitalize;
+  align-self: flex-start;
+}
+
+.display-name {
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  margin-top: auto;
 }
 
 .variant-count {
-  font-size: 0.8rem;
-  color: var(--color-muted);
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
 }
 
-.seed-badge {
-  font-size: 0.7rem;
-  padding: 2px 5px;
-  border-radius: 3px;
-  background: #f3f4f6;
-  color: #6b7280;
-  border: 1px solid #d1d5db;
+.vc-none {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.vc-few {
+  background: #fefce8;
+  color: #a16207;
+}
+
+.vc-good {
+  background: #f0fdf4;
+  color: #16a34a;
 }
 </style>

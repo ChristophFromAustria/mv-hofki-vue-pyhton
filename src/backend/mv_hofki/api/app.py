@@ -77,6 +77,14 @@ _scans_dir = settings.PROJECT_ROOT / "data" / "scans"
 _scans_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/scans", StaticFiles(directory=str(_scans_dir)), name="scans")
 
+_symbol_lib_dir = settings.PROJECT_ROOT / "data" / "symbol_library"
+_symbol_lib_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/symbol-library",
+    StaticFiles(directory=str(_symbol_lib_dir)),
+    name="symbol-library",
+)
+
 _frontend_dist = settings.PROJECT_ROOT / "src" / "frontend" / "dist"
 if _frontend_dist.exists():
     _index_html = _frontend_dist / "index.html"

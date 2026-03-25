@@ -49,6 +49,13 @@ class TemplateCaptureRequest(BaseModel):
         return self
 
 
+class VariantCropRequest(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class SymbolTemplateRead(BaseModel):
     id: int
     category: str
