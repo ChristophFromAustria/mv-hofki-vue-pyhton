@@ -10,6 +10,7 @@ from mv_hofki.schemas.pagination import PaginatedResponse
 from mv_hofki.schemas.symbol_template import (
     SymbolTemplateCreate,
     SymbolTemplateRead,
+    SymbolTemplateUpdate,
     TemplateCaptureRequest,
 )
 from mv_hofki.schemas.symbol_variant import SymbolVariantRead
@@ -49,6 +50,29 @@ async def get_template(template_id: int, db: AsyncSession = Depends(get_db)):
 )
 async def list_variants(template_id: int, db: AsyncSession = Depends(get_db)):
     return await lib_service.get_variants(db, template_id)
+
+
+@router.put("/templates/{template_id}", response_model=SymbolTemplateRead)
+async def update_template(
+    template_id: int,
+    data: SymbolTemplateUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    return await lib_service.update_template(db, template_id, data)
+
+
+@router.delete("/templates/{template_id}")
+async def delete_template(template_id: int, db: AsyncSession = Depends(get_db)):
+    await lib_service.delete_template(db, template_id)
+    return {"status": "ok"}
+
+
+@router.delete("/templates/{template_id}/variants/{variant_id}")
+async def delete_variant(
+    template_id: int, variant_id: int, db: AsyncSession = Depends(get_db)
+):
+    await lib_service.delete_variant(db, template_id, variant_id)
+    return {"status": "ok"}
 
 
 @router.post("/templates/capture", response_model=SymbolTemplateRead, status_code=201)

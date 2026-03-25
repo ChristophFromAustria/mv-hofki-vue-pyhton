@@ -15,6 +15,12 @@ class SymbolTemplateCreate(BaseModel):
     lilypond_token: str | None = None
 
 
+class SymbolTemplateUpdate(BaseModel):
+    display_name: str | None = None
+    musicxml_element: str | None = None
+    lilypond_token: str | None = None
+
+
 class TemplateCaptureRequest(BaseModel):
     scan_id: int
     x: int

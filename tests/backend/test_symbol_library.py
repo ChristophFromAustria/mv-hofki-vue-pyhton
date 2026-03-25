@@ -60,6 +60,56 @@ async def test_get_symbol_template(client):
 
 
 @pytest.mark.asyncio
+async def test_update_template(client):
+    resp = await client.post(
+        "/api/v1/scanner/library/templates",
+        json={"category": "note", "name": "test_update", "display_name": "Test Update"},
+    )
+    assert resp.status_code == 201
+    tid = resp.json()["id"]
+    resp = await client.put(
+        f"/api/v1/scanner/library/templates/{tid}",
+        json={
+            "display_name": "Updated Name",
+            "musicxml_element": "<note/>",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "Updated Name"
+    assert resp.json()["musicxml_element"] == "<note/>"
+
+
+@pytest.mark.asyncio
+async def test_delete_template(client):
+    resp = await client.post(
+        "/api/v1/scanner/library/templates",
+        json={"category": "note", "name": "test_delete", "display_name": "Test Delete"},
+    )
+    tid = resp.json()["id"]
+    resp = await client.delete(f"/api/v1/scanner/library/templates/{tid}")
+    assert resp.status_code == 200
+    resp = await client.get(f"/api/v1/scanner/library/templates/{tid}")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_variant(client):
+    resp = await client.post(
+        "/api/v1/scanner/library/templates",
+        json={
+            "category": "note",
+            "name": "test_del_var",
+            "display_name": "Test Del Var",
+        },
+    )
+    tid = resp.json()["id"]
+    resp = await client.delete(
+        f"/api/v1/scanner/library/templates/{tid}/variants/99999"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_seed_data_structure():
     """Verify seed data has required fields."""
     assert len(SYMBOL_TEMPLATES) > 30

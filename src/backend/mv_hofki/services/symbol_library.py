@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+
 import cv2
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -11,7 +13,7 @@ from mv_hofki.core.config import settings
 from mv_hofki.models.sheet_music_scan import SheetMusicScan
 from mv_hofki.models.symbol_template import SymbolTemplate
 from mv_hofki.models.symbol_variant import SymbolVariant
-from mv_hofki.schemas.symbol_template import SymbolTemplateCreate
+from mv_hofki.schemas.symbol_template import SymbolTemplateCreate, SymbolTemplateUpdate
 
 
 async def get_templates(
@@ -64,6 +66,40 @@ async def get_variants(session: AsyncSession, template_id: int) -> list[SymbolVa
     )
     result = await session.execute(query)
     return list(result.scalars().all())
+
+
+async def update_template(
+    session: AsyncSession, template_id: int, data: SymbolTemplateUpdate
+) -> SymbolTemplate:
+    template = await get_template_by_id(session, template_id)
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(template, key, value)
+    await session.commit()
+    await session.refresh(template)
+    return template
+
+
+async def delete_template(session: AsyncSession, template_id: int) -> None:
+    template = await get_template_by_id(session, template_id)
+    variant_dir = settings.PROJECT_ROOT / "data" / "symbol_library" / str(template_id)
+    if variant_dir.exists():
+        shutil.rmtree(variant_dir)
+    await session.delete(template)
+    await session.commit()
+
+
+async def delete_variant(
+    session: AsyncSession, template_id: int, variant_id: int
+) -> None:
+    await get_template_by_id(session, template_id)
+    variant = await session.get(SymbolVariant, variant_id)
+    if not variant or variant.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Variante nicht gefunden")
+    file_path = settings.PROJECT_ROOT / variant.image_path
+    if file_path.exists():
+        file_path.unlink()
+    await session.delete(variant)
+    await session.commit()
 
 
 async def capture_template(
