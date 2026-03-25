@@ -110,7 +110,8 @@ async def capture_template(
     y: int,
     width: int,
     height: int,
-    name: str,
+    template_id: int | None = None,
+    name: str | None = None,
     category: str,
     musicxml_element: str | None,
     height_in_lines: float,
@@ -140,21 +141,27 @@ async def capture_template(
     if crop.size == 0:
         raise HTTPException(status_code=400, detail="Ungültiger Ausschnitt")
 
-    # Create or find template
-    existing = await session.execute(
-        select(SymbolTemplate).where(SymbolTemplate.name == name)
-    )
-    template = existing.scalar_one_or_none()
-    if template is None:
-        template = SymbolTemplate(
-            category=category,
-            name=name,
-            display_name=name,
-            musicxml_element=musicxml_element,
-            is_seed=False,
+    # Find existing template or create new one
+    template: SymbolTemplate
+    if template_id is not None:
+        template = await get_template_by_id(session, template_id)
+    else:
+        existing = await session.execute(
+            select(SymbolTemplate).where(SymbolTemplate.name == name)
         )
-        session.add(template)
-        await session.flush()
+        found = existing.scalar_one_or_none()
+        if found is not None:
+            template = found
+        else:
+            template = SymbolTemplate(
+                category=category,
+                name=name,
+                display_name=name,
+                musicxml_element=musicxml_element,
+                is_seed=False,
+            )
+            session.add(template)
+            await session.flush()
 
     # Save variant image
     variant_dir = settings.PROJECT_ROOT / "data" / "symbol_library" / str(template.id)

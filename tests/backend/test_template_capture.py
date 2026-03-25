@@ -80,3 +80,29 @@ async def test_capture_template_missing_name(client, scan_id):
         },
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_capture_to_existing_template(client, scan_id):
+    """Capture should add variant to existing template when template_id is given."""
+    resp = await client.post(
+        "/api/v1/scanner/library/templates",
+        json={"category": "note", "name": "existing_tpl", "display_name": "Existing"},
+    )
+    tid = resp.json()["id"]
+
+    resp = await client.post(
+        "/api/v1/scanner/library/templates/capture",
+        json={
+            "scan_id": scan_id,
+            "x": 0,
+            "y": 0,
+            "width": 5,
+            "height": 5,
+            "template_id": tid,
+            "category": "note",
+            "height_in_lines": 4.0,
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["id"] == tid

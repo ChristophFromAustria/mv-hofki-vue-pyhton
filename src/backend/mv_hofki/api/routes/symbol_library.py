@@ -86,6 +86,7 @@ async def capture_template(
         y=data.y,
         width=data.width,
         height=data.height,
+        template_id=data.template_id,
         name=data.name,
         category=data.category,
         musicxml_element=data.musicxml_element,
