@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, UploadFile
+from fastapi import APIRouter, Depends, Form, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,6 +98,7 @@ async def crop_variant(
 async def upload_variant(
     template_id: int,
     file: UploadFile,
+    source_line_spacing: float = Form(...),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload an image file as a new variant for the given template."""
@@ -107,7 +108,11 @@ async def upload_variant(
 
         raise HTTPException(status_code=400, detail="Leere Datei")
     return await lib_service.save_rendered_variant(
-        db, template_id, content, source="cropped"
+        db,
+        template_id,
+        content,
+        source="cropped",
+        source_line_spacing=source_line_spacing,
     )
 
 
@@ -162,7 +167,7 @@ async def render_musicxml_endpoint(
         result.png_data,
         source="rendered_musicxml",
         height_in_lines=result.height_in_lines,
-        source_line_spacing=result.source_line_spacing,
+        source_line_spacing=result.source_line_spacing or 0.0,
     )
 
 
@@ -194,5 +199,5 @@ async def render_lilypond_endpoint(
         result.png_data,
         source="rendered_lilypond",
         height_in_lines=result.height_in_lines,
-        source_line_spacing=result.source_line_spacing,
+        source_line_spacing=result.source_line_spacing or 0.0,
     )

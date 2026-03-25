@@ -141,7 +141,7 @@ async def save_rendered_variant(
     png_data: bytes,
     source: str,
     height_in_lines: float | None = None,
-    source_line_spacing: float | None = None,
+    source_line_spacing: float = 0.0,
 ) -> SymbolTemplate:
     """Save rendered PNG bytes as a new variant for the given template."""
     import uuid

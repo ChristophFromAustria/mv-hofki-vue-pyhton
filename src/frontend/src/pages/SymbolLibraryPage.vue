@@ -282,12 +282,13 @@ function updateCropPreview() {
 watch(cropRect, updateCropPreview);
 
 async function applyCrop() {
-  if (!cropPreviewDataUrl.value || !editingTemplate.value) return;
+  if (!cropPreviewDataUrl.value || !editingTemplate.value || !previewVariant.value) return;
   // Convert data URL to blob
   const resp = await fetch(cropPreviewDataUrl.value);
   const blob = await resp.blob();
   const formData = new FormData();
   formData.append("file", blob, "cropped.png");
+  formData.append("source_line_spacing", String(previewVariant.value.source_line_spacing || 0));
 
   const BASE_URL = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
   const url = `${BASE_URL}/api/v1/scanner/library/templates/${editingTemplate.value.id}/variants/upload`;
