@@ -659,10 +659,19 @@ onMounted(fetchTemplates);
   align-items: center;
   padding: 0.2rem 0.4rem;
   font-size: 0.7rem;
+  gap: 0.25rem;
 }
 
 .variant-source {
   color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.variant-meta .btn-xs {
+  flex-shrink: 0;
 }
 
 .btn-xs {
