@@ -40,7 +40,9 @@ class StaveDetectionStage(ProcessingStage):
 
         for i, staff_lines in enumerate(staves):
             spacing = np.mean(np.diff(staff_lines))
-            margin = int(spacing * 2)
+            # Extend region by the full staff height (4× line spacing)
+            # to catch symbols above/below the lines
+            margin = int(spacing * 4)
             ctx.staves.append(
                 StaffData(
                     staff_index=i,

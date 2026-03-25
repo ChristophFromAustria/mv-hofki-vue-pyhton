@@ -35,6 +35,8 @@ class TemplateMatchingStage(ProcessingStage):
         if len(img.shape) == 3:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
+        raw_detections: list[SymbolData] = []
+
         for staff in ctx.staves:
             region = img[staff.y_top : staff.y_bottom, :]
 
@@ -63,7 +65,7 @@ class TemplateMatchingStage(ProcessingStage):
 
                 for pt_y, pt_x in zip(locations[0], locations[1]):
                     confidence = float(result[pt_y, pt_x])
-                    ctx.symbols.append(
+                    raw_detections.append(
                         SymbolData(
                             staff_index=staff.staff_index,
                             x=int(pt_x),
@@ -76,12 +78,61 @@ class TemplateMatchingStage(ProcessingStage):
                         )
                     )
 
+        # Apply NMS: keep best detection per overlap region,
+        # store alternatives from different templates
+        ctx.symbols = self._nms_with_alternatives(raw_detections)
+
         # Sort by staff, then left to right
         ctx.symbols.sort(key=lambda s: (s.staff_index, s.x))
         for i, sym in enumerate(ctx.symbols):
             sym.sequence_order = i
 
         return ctx
+
+    @staticmethod
+    def _iou(a: SymbolData, b: SymbolData) -> float:
+        """Intersection over union of two bounding boxes."""
+        x1 = max(a.x, b.x)
+        y1 = max(a.y, b.y)
+        x2 = min(a.x + a.width, b.x + b.width)
+        y2 = min(a.y + a.height, b.y + b.height)
+        inter = max(0, x2 - x1) * max(0, y2 - y1)
+        if inter == 0:
+            return 0.0
+        area_a = a.width * a.height
+        area_b = b.width * b.height
+        return inter / (area_a + area_b - inter)
+
+    def _nms_with_alternatives(
+        self, detections: list[SymbolData], iou_threshold: float = 0.3
+    ) -> list[SymbolData]:
+        """Non-maximum suppression keeping top hit and alternatives."""
+        # Sort by confidence descending
+        detections.sort(key=lambda d: d.confidence or 0, reverse=True)
+        kept: list[SymbolData] = []
+        suppressed = [False] * len(detections)
+
+        for i, det in enumerate(detections):
+            if suppressed[i]:
+                continue
+            # This detection is the best for its region
+            kept.append(det)
+            # Check remaining detections for overlap
+            for j in range(i + 1, len(detections)):
+                if suppressed[j]:
+                    continue
+                if self._iou(det, detections[j]) >= iou_threshold:
+                    suppressed[j] = True
+                    # Add as alternative if from a different template
+                    other = detections[j]
+                    if other.matched_template_id != det.matched_template_id:
+                        # Avoid duplicate template alternatives
+                        existing_ids = {a[0] for a in det.alternatives}
+                        if other.matched_template_id not in existing_ids:
+                            det.alternatives.append(
+                                (other.matched_template_id or 0, other.confidence or 0)
+                            )
+        return kept
 
     def validate(self, ctx: PipelineContext) -> bool:
         return ctx.image is not None and len(ctx.staves) > 0

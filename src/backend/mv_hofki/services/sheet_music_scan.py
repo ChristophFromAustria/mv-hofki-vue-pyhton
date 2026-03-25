@@ -229,6 +229,10 @@ async def run_pipeline(
                 cv2.imwrite(str(snippet_file), sym_data.snippet)
                 snippet_path = str(snippet_file.relative_to(settings.PROJECT_ROOT))
 
+            alternatives_json = None
+            if sym_data.alternatives:
+                alternatives_json = json.dumps(sym_data.alternatives)
+
             symbol = DetectedSymbol(
                 staff_id=staff.id,
                 x=sym_data.x,
@@ -242,6 +246,7 @@ async def run_pipeline(
                 confidence=sym_data.confidence,
                 user_verified=sym_data.confidence is not None
                 and sym_data.confidence >= 0.85,
+                alternatives_json=alternatives_json,
             )
             session.add(symbol)
 

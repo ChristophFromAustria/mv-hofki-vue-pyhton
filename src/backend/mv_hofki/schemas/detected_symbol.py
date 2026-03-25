@@ -7,6 +7,12 @@ from pydantic import BaseModel
 from mv_hofki.schemas.symbol_template import SymbolTemplateRead
 
 
+class AlternativeMatch(BaseModel):
+    template_id: int
+    confidence: float
+    display_name: str | None = None
+
+
 class DetectedSymbolRead(BaseModel):
     id: int
     staff_id: int
@@ -23,6 +29,7 @@ class DetectedSymbolRead(BaseModel):
     user_corrected_symbol_id: int | None
     matched_symbol: SymbolTemplateRead | None = None
     corrected_symbol: SymbolTemplateRead | None = None
+    alternatives: list[AlternativeMatch] = []
 
     model_config = {"from_attributes": True}
 

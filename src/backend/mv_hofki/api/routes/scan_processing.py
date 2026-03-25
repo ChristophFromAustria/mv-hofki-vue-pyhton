@@ -91,13 +91,17 @@ async def get_detected_staves(scan_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get("/scans/{scan_id}/symbols", response_model=list[DetectedSymbolRead])
 async def get_detected_symbols(scan_id: int, db: AsyncSession = Depends(get_db)):
-    """Get all detected symbols for a scan."""
+    """Get all detected symbols for a scan, including alternative matches."""
+    import json
+
     from sqlalchemy import select
     from sqlalchemy.orm import joinedload
 
     from mv_hofki.models.detected_staff import DetectedStaff
     from mv_hofki.models.detected_symbol import DetectedSymbol
     from mv_hofki.models.sheet_music_scan import SheetMusicScan
+    from mv_hofki.models.symbol_template import SymbolTemplate
+    from mv_hofki.schemas.detected_symbol import AlternativeMatch
 
     scan = await db.get(SheetMusicScan, scan_id)
     if not scan:
@@ -113,7 +117,47 @@ async def get_detected_symbols(scan_id: int, db: AsyncSession = Depends(get_db))
         )
         .order_by(DetectedSymbol.sequence_order)
     )
-    return list(result.scalars().unique().all())
+    symbols = list(result.scalars().unique().all())
+
+    # Collect all template IDs referenced in alternatives
+    alt_template_ids: set[int] = set()
+    for sym in symbols:
+        if sym.alternatives_json:
+            try:
+                for tid, _conf in json.loads(sym.alternatives_json):
+                    alt_template_ids.add(tid)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+    # Resolve template names in bulk
+    template_names: dict[int, str] = {}
+    if alt_template_ids:
+        tpl_result = await db.execute(
+            select(SymbolTemplate.id, SymbolTemplate.display_name).where(
+                SymbolTemplate.id.in_(alt_template_ids)
+            )
+        )
+        template_names = {row[0]: row[1] for row in tpl_result.all()}
+
+    # Build response with resolved alternatives
+    out = []
+    for sym in symbols:
+        data = DetectedSymbolRead.model_validate(sym)
+        if sym.alternatives_json:
+            try:
+                raw = json.loads(sym.alternatives_json)
+                data.alternatives = [
+                    AlternativeMatch(
+                        template_id=tid,
+                        confidence=conf,
+                        display_name=template_names.get(tid),
+                    )
+                    for tid, conf in raw
+                ]
+            except (json.JSONDecodeError, ValueError):
+                pass
+        out.append(data)
+    return out
 
 
 @router.put("/symbols/{symbol_id}/correct")
