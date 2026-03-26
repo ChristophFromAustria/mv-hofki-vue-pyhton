@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import cv2
-import numpy as np
 
+from mv_hofki.services.scanner.deskew import deskew_hough, deskew_projection
 from mv_hofki.services.scanner.stages.base import PipelineContext, ProcessingStage
+
+_DESKEW_STRATEGIES = {
+    "hough": deskew_hough,
+    "projection": deskew_projection,
+}
 
 
 class PreprocessStage(ProcessingStage):
@@ -36,7 +41,6 @@ class PreprocessStage(ProcessingStage):
             _, binary = cv2.threshold(gray, int(threshold_val), 255, cv2.THRESH_BINARY)
         else:
             block_size = ctx.config.get("adaptive_threshold_block_size", 15)
-            # block_size must be odd for adaptiveThreshold
             if block_size % 2 == 0:
                 block_size += 1
             c_val = ctx.config.get("adaptive_threshold_c", 10)
@@ -49,8 +53,14 @@ class PreprocessStage(ProcessingStage):
                 C=c_val,
             )
 
-        # Deskew using Hough line detection
-        binary = self._deskew(binary)
+        # Deskew using configured strategy
+        method = ctx.config.get("deskew_method", "none")
+        deskew_fn = _DESKEW_STRATEGIES.get(method)
+        if deskew_fn is not None:
+            binary = deskew_fn(binary)
+            # Also rotate the grayscale image for frontend preview
+            ctx.corrected_image = deskew_fn(gray)
+            ctx.log(f"Deskew angewendet (Methode: {method})")
 
         # Morphological noise removal
         k_size = ctx.config.get("morphology_kernel_size", 2)
@@ -63,36 +73,3 @@ class PreprocessStage(ProcessingStage):
 
     def validate(self, ctx: PipelineContext) -> bool:
         return ctx.image is not None
-
-    @staticmethod
-    def _deskew(img: np.ndarray) -> np.ndarray:
-        """Detect and correct skew angle using Hough transform."""
-        edges = cv2.Canny(img, 50, 150, apertureSize=3)
-        lines = cv2.HoughLinesP(
-            edges, 1, np.pi / 180, threshold=100, minLineLength=100, maxLineGap=10
-        )
-
-        if lines is None:
-            return img
-
-        angles = []
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
-            if abs(angle) < 5:  # only consider near-horizontal lines
-                angles.append(angle)
-
-        if not angles:
-            return img
-
-        median_angle = np.median(angles)
-        if abs(median_angle) < 0.1:  # skip if nearly straight
-            return img
-
-        h, w = img.shape[:2]
-        center = (w // 2, h // 2)
-        matrix = cv2.getRotationMatrix2D(center, median_angle, 1.0)
-        rotated = cv2.warpAffine(
-            img, matrix, (w, h), flags=cv2.INTER_LINEAR, borderValue=255
-        )
-        return rotated

@@ -48,6 +48,7 @@ class PipelineContext:
     image: np.ndarray | None
     original_image: np.ndarray | None = None
     processed_image: np.ndarray | None = None
+    corrected_image: np.ndarray | None = None
     staves: list[StaffData] = field(default_factory=list)
     symbols: list[SymbolData] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)

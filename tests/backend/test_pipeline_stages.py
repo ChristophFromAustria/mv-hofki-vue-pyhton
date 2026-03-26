@@ -325,3 +325,30 @@ def test_preprocess_global_threshold():
     # With global threshold=128: pixels at 180 → white, pixels at 40 → black
     assert result.processed_image[50, 50] == 0  # dark area → black
     assert result.processed_image[5, 5] == 255  # light area → white
+
+
+def test_preprocess_uses_configured_deskew_method():
+    """PreprocessStage should delegate to the deskew method set in config."""
+    from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
+
+    # Create a slightly tilted image with staff-like lines
+    img = np.full((300, 600, 3), 255, dtype=np.uint8)
+    for y in [100, 120, 140, 160, 180]:
+        cv2.line(img, (0, y + 5), (600, y - 5), 0, 2)  # ~1° tilt
+
+    # Test with projection method
+    ctx = PipelineContext(image=img.copy(), config={"deskew_method": "projection"})
+    stage = PreprocessStage()
+    result = stage.process(ctx)
+    assert result.corrected_image is not None
+    assert result.corrected_image.shape[:2] == img.shape[:2]
+
+    # Test with hough method
+    ctx2 = PipelineContext(image=img.copy(), config={"deskew_method": "hough"})
+    result2 = stage.process(ctx2)
+    assert result2.corrected_image is not None
+
+    # Test default (none = skip deskew, backward compatible)
+    ctx3 = PipelineContext(image=img.copy(), config={"deskew_method": "none"})
+    result3 = stage.process(ctx3)
+    assert result3.corrected_image is None
