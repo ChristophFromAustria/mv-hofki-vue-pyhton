@@ -65,6 +65,102 @@ async def trigger_processing(
     return ScanStatusRead(status=scan.status, current_stage=None, progress=1.0)
 
 
+@router.get("/scans/{scan_id}/process-stream")
+async def stream_processing(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """SSE endpoint: run the pipeline and stream log events in real time.
+
+    Event types:
+      - ``log``  — pipeline progress message (data: text)
+      - ``done`` — pipeline finished successfully (data: JSON status)
+      - ``error``— pipeline failed (data: error message)
+    """
+    import asyncio
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    from mv_hofki.models.scan_part import ScanPart
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+
+    scan = await db.get(SheetMusicScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+
+    if scan.status == "processing":
+        raise HTTPException(status_code=409, detail="Scan wird bereits verarbeitet")
+
+    part = await db.get(ScanPart, scan.part_id)
+    if not part:
+        raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
+    actual_project_id = part.project_id
+    actual_part_id = part.id
+
+    scan.status = "processing"
+    await db.commit()
+
+    # Parse optional config overrides from query param
+    from mv_hofki.schemas.scanner_config import ScannerConfigUpdate as _CfgUpdate
+
+    config_overrides: _CfgUpdate | None = None
+
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    def log_callback(message: str) -> None:
+        """Called from pipeline (possibly in a worker thread)."""
+        queue.put_nowait(message)
+
+    async def run_and_signal() -> None:
+        try:
+            await scan_service.run_pipeline(
+                db,
+                actual_project_id,
+                actual_part_id,
+                scan_id,
+                config_overrides=config_overrides,
+                log_callback=log_callback,
+            )
+            queue.put_nowait(None)  # sentinel: success
+        except Exception as exc:
+            queue.put_nowait(f"__ERROR__:{exc}")
+
+    async def event_generator():
+        task = asyncio.create_task(run_and_signal())
+        try:
+            while True:
+                msg = await queue.get()
+                if msg is None:
+                    # Pipeline finished successfully
+                    await db.refresh(scan)
+                    yield (
+                        f"event: done\n"
+                        f"data: {_json.dumps({'status': scan.status})}\n\n"
+                    )
+                    break
+                if msg.startswith("__ERROR__:"):
+                    error_text = msg[len("__ERROR__:") :]
+                    scan.status = "uploaded"
+                    await db.commit()
+                    yield f"event: error\ndata: {error_text}\n\n"
+                    break
+                yield f"event: log\ndata: {msg}\n\n"
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/scans/{scan_id}/status", response_model=ScanStatusRead)
 async def get_processing_status(scan_id: int, db: AsyncSession = Depends(get_db)):
     """Poll processing status."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -52,6 +53,12 @@ class PipelineContext:
     metadata: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
     completed_stages: list[str] = field(default_factory=list)
+    log_callback: Callable[[str], None] | None = None
+
+    def log(self, message: str) -> None:
+        """Emit a log message via the callback if one is set."""
+        if self.log_callback is not None:
+            self.log_callback(message)
 
 
 class ProcessingStage(ABC):

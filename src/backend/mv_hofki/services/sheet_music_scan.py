@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -134,6 +135,7 @@ async def run_pipeline(
     part_id: int,
     scan_id: int,
     config_overrides: ScannerConfigUpdate | None = None,
+    log_callback: Callable[[str], None] | None = None,
 ) -> None:
     import json
 
@@ -207,10 +209,21 @@ async def run_pipeline(
 
     import asyncio
 
-    ctx = PipelineContext(image=img, config=config)
+    if log_callback:
+        log_callback(f"Bild geladen ({img.shape[1]}x{img.shape[0]} px)")
+        log_callback(f"{len(variant_images)} Vorlagen geladen")
+
+    ctx = PipelineContext(image=img, config=config, log_callback=log_callback)
     pipeline = Pipeline(stages=stages)
     # Run CPU-heavy pipeline in a thread to avoid blocking the async event loop
     ctx = await asyncio.to_thread(pipeline.run, ctx)
+
+    if log_callback:
+        log_callback(
+            f"Pipeline abgeschlossen: {len(ctx.staves)} Systeme, "
+            f"{len(ctx.symbols)} Symbole erkannt"
+        )
+        log_callback("Ergebnisse werden gespeichert...")
 
     # Clear previous detection results
     staff_ids_q = sa_select(DetectedStaff.id).where(DetectedStaff.scan_id == scan_id)

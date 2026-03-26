@@ -17,19 +17,26 @@ class Pipeline:
 
     def run(self, ctx: PipelineContext) -> PipelineContext:
         disabled = set(ctx.config.get("disabled_stages", []))
+        total = len(self.stages)
 
-        for stage in self.stages:
+        for idx, stage in enumerate(self.stages, 1):
             if stage.name in disabled:
                 logger.info("Skipping disabled stage: %s", stage.name)
+                ctx.log(f"Stufe '{stage.name}' übersprungen (deaktiviert)")
                 continue
 
             if not stage.validate(ctx):
                 logger.warning("Stage %s validation failed, skipping", stage.name)
+                ctx.log(
+                    f"Stufe '{stage.name}' übersprungen (Validierung fehlgeschlagen)"
+                )
                 continue
 
             logger.info("Running stage: %s", stage.name)
+            ctx.log(f"[{idx}/{total}] Stufe '{stage.name}' gestartet...")
             ctx = stage.process(ctx)
             ctx.completed_stages.append(stage.name)
             logger.info("Stage %s completed", stage.name)
+            ctx.log(f"[{idx}/{total}] Stufe '{stage.name}' abgeschlossen")
 
         return ctx

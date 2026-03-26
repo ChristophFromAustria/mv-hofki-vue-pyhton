@@ -7,6 +7,7 @@ import ImageAdjustBar from "../components/ImageAdjustBar.vue";
 import ScanCanvas from "../components/ScanCanvas.vue";
 import SymbolPanel from "../components/SymbolPanel.vue";
 import ScannerConfigModal from "../components/ScannerConfigModal.vue";
+import AnalysisLogModal from "../components/AnalysisLogModal.vue";
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -30,6 +31,8 @@ const libraryTemplates = ref([]);
 
 const showConfig = ref(false);
 const sessionConfig = ref(null);
+const showAnalysisLog = ref(false);
+const analysisLogRef = ref(null);
 
 const captureMode = ref(false);
 const captureBox = ref(null);
@@ -42,8 +45,6 @@ const captureForm = ref({
   musicxml_element: "",
   height_in_lines: 4.0,
 });
-
-let pollTimer = null;
 
 async function fetchScanData() {
   loading.value = true;
@@ -121,29 +122,30 @@ async function startAnalysis() {
         }
       }
     }
-    await post(`/scanner/scans/${props.scanId}/process`, sessionConfig.value || {});
-    // Poll for completion
-    pollTimer = setInterval(async () => {
-      try {
-        const status = await get(`/scanner/scans/${props.scanId}/status`);
-        if (status.status !== "processing") {
-          clearInterval(pollTimer);
-          pollTimer = null;
-          processing.value = false;
-          await fetchScanData();
-        } else {
-          statusMessage.value = "Verarbeitung läuft...";
-        }
-      } catch {
-        clearInterval(pollTimer);
-        pollTimer = null;
-        processing.value = false;
-      }
-    }, 2000);
+    // Open the log modal and start SSE stream
+    showAnalysisLog.value = true;
+    // Wait for the component to mount before calling startStream
+    await new Promise((r) => setTimeout(r, 50));
+    if (analysisLogRef.value) {
+      analysisLogRef.value.startStream(props.scanId);
+    }
   } catch (e) {
     processing.value = false;
     statusMessage.value = `Fehler: ${e.message}`;
   }
+}
+
+async function onAnalysisDone() {
+  processing.value = false;
+  await fetchScanData();
+}
+
+function onAnalysisLogClose() {
+  showAnalysisLog.value = false;
+  if (!processing.value) return;
+  // If still running when user closes modal, just let it finish in background
+  processing.value = false;
+  statusMessage.value = "Analyse läuft im Hintergrund...";
 }
 
 function onAdjust(adj) {
@@ -320,7 +322,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer);
+  // AnalysisLogModal handles its own EventSource cleanup
 });
 </script>
 
@@ -464,6 +466,14 @@ onUnmounted(() => {
       :open="showConfig"
       @close="showConfig = false"
       @apply-session="onApplySessionConfig"
+    />
+
+    <!-- Analysis log modal -->
+    <AnalysisLogModal
+      ref="analysisLogRef"
+      :open="showAnalysisLog"
+      @close="onAnalysisLogClose"
+      @done="onAnalysisDone"
     />
 
     <!-- Capture dialog -->
