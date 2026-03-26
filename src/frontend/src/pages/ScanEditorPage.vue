@@ -31,6 +31,7 @@ const libraryTemplates = ref([]);
 
 const showConfig = ref(false);
 const sessionConfig = ref(null);
+const imageInfo = ref(null); // { width, height, type }
 const showAnalysisLog = ref(false);
 const analysisLogRef = ref(null);
 
@@ -69,6 +70,12 @@ async function fetchScanData() {
     staves.value = stavesData || [];
     symbols.value = symbolsData || [];
 
+    // Resolve image info (dimensions + file type)
+    if (foundScan?.image_path) {
+      const ext = foundScan.original_filename?.split(".").pop()?.toUpperCase() || "?";
+      loadImageDimensions(foundScan.image_path, ext);
+    }
+
     if (foundScan?.adjustments_json) {
       try {
         adjustments.value = JSON.parse(foundScan.adjustments_json);
@@ -83,6 +90,15 @@ async function fetchScanData() {
   } finally {
     loading.value = false;
   }
+}
+
+function loadImageDimensions(imagePath, ext) {
+  const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
+  const img = new Image();
+  img.onload = () => {
+    imageInfo.value = { width: img.naturalWidth, height: img.naturalHeight, type: ext };
+  };
+  img.src = `${BASE}/scans/${imagePath.replace(/^data\/scans\//, "")}`;
 }
 
 function updateStatus() {
@@ -418,6 +434,10 @@ onUnmounted(() => {
       >
         ← Zurück
       </RouterLink>
+      <span v-if="imageInfo" class="status-meta">
+        {{ imageInfo.width }}×{{ imageInfo.height }} px · {{ imageInfo.type }}
+      </span>
+      <span v-if="imageInfo" class="status-divider">|</span>
       <span class="status-text">
         <span v-if="processing" class="processing-indicator">⟳ </span>
         {{ statusMessage }}
@@ -616,6 +636,17 @@ onUnmounted(() => {
 
 .status-back:hover {
   text-decoration: underline;
+}
+
+.status-meta {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.status-divider {
+  color: var(--color-border);
 }
 
 .status-text {
