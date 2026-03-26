@@ -20,6 +20,7 @@ def _find_project_root() -> Path:
 class Settings(BaseSettings):
     APP_NAME: str = "mv_hofki"
     DEBUG: bool = True
+    SQL_ECHO: bool = False
     API_V1_PREFIX: str = "/api/v1"
     BASE_PATH: str = "/"
 
