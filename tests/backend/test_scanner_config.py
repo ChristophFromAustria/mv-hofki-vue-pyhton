@@ -85,3 +85,30 @@ async def test_get_effective_config_with_overrides(db_session: AsyncSession):
     assert effective["confidence_threshold"] == 0.9
     # Non-overridden values come from global
     assert effective["edge_matching_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_api_get_config(client):
+    """GET /api/v1/scanner/config should return defaults."""
+    resp = await client.get("/api/v1/scanner/config")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["confidence_threshold"] == 0.6
+    assert data["matching_method"] == "TM_CCOEFF_NORMED"
+
+
+@pytest.mark.asyncio
+async def test_api_update_config(client):
+    """PUT /api/v1/scanner/config should update and return new values."""
+    resp = await client.put(
+        "/api/v1/scanner/config",
+        json={"confidence_threshold": 0.7, "edge_matching_enabled": True},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["confidence_threshold"] == 0.7
+    assert data["edge_matching_enabled"] is True
+
+    # Verify persistence
+    resp2 = await client.get("/api/v1/scanner/config")
+    assert resp2.json()["confidence_threshold"] == 0.7
