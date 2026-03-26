@@ -41,10 +41,11 @@ def test_template_matching_finds_exact_match():
         variant_images=[template_img],
         variant_template_ids=[42],
         variant_heights=[height_in_lines],
-        confidence_threshold=0.5,
     )
 
-    ctx = PipelineContext(image=img, staves=[staff])
+    ctx = PipelineContext(
+        image=img, staves=[staff], config={"confidence_threshold": 0.5}
+    )
     result = stage.process(ctx)
 
     assert len(result.symbols) > 0
@@ -70,10 +71,11 @@ def test_template_matching_respects_threshold():
         variant_images=[template],
         variant_template_ids=[1],
         variant_heights=[2.0],
-        confidence_threshold=0.99,
     )
 
-    ctx = PipelineContext(image=img, staves=[staff])
+    ctx = PipelineContext(
+        image=img, staves=[staff], config={"confidence_threshold": 0.99}
+    )
     result = stage.process(ctx)
     assert len(result.symbols) == 0
 

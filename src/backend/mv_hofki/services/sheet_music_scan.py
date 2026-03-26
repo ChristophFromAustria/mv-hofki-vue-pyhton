@@ -195,7 +195,6 @@ async def run_pipeline(
             variant_template_ids=variant_template_ids,
             variant_heights=variant_heights,
             variant_line_spacings=variant_line_spacings,
-            confidence_threshold=config.get("confidence_threshold", 0.6),
         ),
     ]
 
