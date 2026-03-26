@@ -33,6 +33,7 @@ const showConfig = ref(false);
 const sessionConfig = ref(null);
 const imageInfo = ref(null); // { width, height, type }
 const showAnalysisLog = ref(false);
+const viewMode = ref("original");
 const analysisLogRef = ref(null);
 
 const captureMode = ref(false);
@@ -381,6 +382,31 @@ onUnmounted(() => {
             <span v-if="staves.length" class="stave-count"
               >{{ staves.length }} Systeme erkannt</span
             >
+            <div class="view-toggle">
+              <button
+                class="btn btn-sm"
+                :class="{ 'btn-active': viewMode === 'original' }"
+                @click="viewMode = 'original'"
+              >
+                Original
+              </button>
+              <button
+                class="btn btn-sm"
+                :class="{ 'btn-active': viewMode === 'corrected' }"
+                :disabled="!scan?.corrected_image_path"
+                @click="viewMode = 'corrected'"
+              >
+                Korrigiert
+              </button>
+              <button
+                class="btn btn-sm"
+                :class="{ 'btn-active': viewMode === 'binary' }"
+                :disabled="!scan?.processed_image_path"
+                @click="viewMode = 'binary'"
+              >
+                Binär
+              </button>
+            </div>
             <button
               class="btn btn-sm"
               :class="{ 'btn-active': captureMode }"
@@ -401,6 +427,8 @@ onUnmounted(() => {
           </div>
           <ScanCanvas
             :image-path="scan?.image_path ?? null"
+            :corrected-image-path="scan?.corrected_image_path ?? null"
+            :processed-image-path="scan?.processed_image_path ?? null"
             :staves="staves"
             :symbols="symbols"
             :adjustments="adjustments"
@@ -408,6 +436,7 @@ onUnmounted(() => {
             :show-staves="showStaves"
             :show-symbols="showSymbols"
             :capture-mode="captureMode"
+            :view-mode="viewMode"
             @select-symbol="onSelectSymbol"
             @capture-box="onCaptureBox"
           />
@@ -745,6 +774,24 @@ onUnmounted(() => {
   background: var(--color-primary);
   color: #fff;
   border-color: var(--color-primary);
+}
+
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-left: 0.5rem;
+}
+
+.view-toggle .btn {
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--color-border);
+}
+
+.view-toggle .btn:last-child {
+  border-right: none;
 }
 
 .stave-count {

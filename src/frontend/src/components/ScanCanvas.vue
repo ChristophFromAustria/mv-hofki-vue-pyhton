@@ -3,6 +3,8 @@ import { computed, ref, onMounted, watch } from "vue";
 
 const props = defineProps({
   imagePath: { type: String, default: null },
+  correctedImagePath: { type: String, default: null },
+  processedImagePath: { type: String, default: null },
   staves: { type: Array, default: () => [] },
   symbols: { type: Array, default: () => [] },
   adjustments: {
@@ -11,17 +13,29 @@ const props = defineProps({
   },
   selectedSymbolId: { type: Number, default: null },
   showStaves: { type: Boolean, default: true },
+  showSymbols: { type: Boolean, default: true },
   captureMode: { type: Boolean, default: false },
+  viewMode: { type: String, default: "original" },
 });
 
 const emit = defineEmits(["select-symbol", "capture-box"]);
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
-const imageUrl = computed(() => {
-  if (!props.imagePath) return null;
-  const relative = props.imagePath.replace(/^data\/scans\//, "");
+function resolveImageUrl(path) {
+  if (!path) return null;
+  const relative = path.replace(/^data\/scans\//, "");
   return `${BASE}/scans/${relative}`;
+}
+
+const activeImageUrl = computed(() => {
+  if (props.viewMode === "corrected" && props.correctedImagePath) {
+    return resolveImageUrl(props.correctedImagePath);
+  }
+  if (props.viewMode === "binary" && props.processedImagePath) {
+    return resolveImageUrl(props.processedImagePath);
+  }
+  return resolveImageUrl(props.imagePath);
 });
 
 // Natural image dimensions
@@ -54,7 +68,7 @@ const previewCanvas = ref(null);
 const imgData = ref(null); // cached original ImageData
 
 function loadImage() {
-  if (!imageUrl.value) return;
+  if (!activeImageUrl.value) return;
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.onload = () => {
@@ -67,9 +81,12 @@ function loadImage() {
     const ctx = canvas.getContext("2d");
     ctx.drawImage(img, 0, 0);
     imgData.value = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    applyThreshold();
+    // Only apply client-side threshold on original view
+    if (props.viewMode === "original") {
+      applyThreshold();
+    }
   };
-  img.src = imageUrl.value;
+  img.src = activeImageUrl.value;
 }
 
 function applyThreshold() {
@@ -91,8 +108,13 @@ function applyThreshold() {
   ctx.putImageData(dst, 0, 0);
 }
 
-watch(() => props.imagePath, loadImage);
-watch(() => props.adjustments.threshold, applyThreshold);
+watch(() => activeImageUrl.value, loadImage);
+watch(
+  () => props.adjustments.threshold,
+  () => {
+    if (props.viewMode === "original") applyThreshold();
+  },
+);
 onMounted(loadImage);
 
 // Staff line helpers
@@ -355,35 +377,37 @@ watch(
         </template>
 
         <!-- Symbol bounding boxes -->
-        <g
-          v-for="symbol in symbols"
-          :key="`sym-${symbol.id}`"
-          class="symbol-box"
-          style="cursor: pointer; pointer-events: all"
-          @click="selectSymbol(symbol)"
-        >
-          <rect
-            :x="symbol.x"
-            :y="symbol.y"
-            :width="symbol.width"
-            :height="symbol.height"
-            fill="none"
-            :stroke="symbolColor(symbol)"
-            :stroke-width="isSelected(symbol) ? 3 : 1.5"
-            :opacity="isSelected(symbol) ? 1 : 0.7"
-          />
-          <rect
-            v-if="isSelected(symbol)"
-            :x="symbol.x - 2"
-            :y="symbol.y - 2"
-            :width="symbol.width + 4"
-            :height="symbol.height + 4"
-            fill="none"
-            stroke="#fff"
-            stroke-width="1"
-            opacity="0.8"
-          />
-        </g>
+        <template v-if="showSymbols">
+          <g
+            v-for="symbol in symbols"
+            :key="`sym-${symbol.id}`"
+            class="symbol-box"
+            style="cursor: pointer; pointer-events: all"
+            @click="selectSymbol(symbol)"
+          >
+            <rect
+              :x="symbol.x"
+              :y="symbol.y"
+              :width="symbol.width"
+              :height="symbol.height"
+              fill="none"
+              :stroke="symbolColor(symbol)"
+              :stroke-width="isSelected(symbol) ? 3 : 1.5"
+              :opacity="isSelected(symbol) ? 1 : 0.7"
+            />
+            <rect
+              v-if="isSelected(symbol)"
+              :x="symbol.x - 2"
+              :y="symbol.y - 2"
+              :width="symbol.width + 4"
+              :height="symbol.height + 4"
+              fill="none"
+              stroke="#fff"
+              stroke-width="1"
+              opacity="0.8"
+            />
+          </g>
+        </template>
 
         <!-- Drawing rectangle (while dragging) -->
         <rect
