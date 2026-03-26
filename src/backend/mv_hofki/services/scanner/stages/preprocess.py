@@ -35,20 +35,26 @@ class PreprocessStage(ProcessingStage):
         if threshold_val is not None:
             _, binary = cv2.threshold(gray, int(threshold_val), 255, cv2.THRESH_BINARY)
         else:
+            block_size = ctx.config.get("adaptive_threshold_block_size", 15)
+            # block_size must be odd for adaptiveThreshold
+            if block_size % 2 == 0:
+                block_size += 1
+            c_val = ctx.config.get("adaptive_threshold_c", 10)
             binary = cv2.adaptiveThreshold(
                 gray,
                 255,
                 cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                 cv2.THRESH_BINARY,
-                blockSize=15,
-                C=10,
+                blockSize=block_size,
+                C=c_val,
             )
 
         # Deskew using Hough line detection
         binary = self._deskew(binary)
 
         # Morphological noise removal
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+        k_size = ctx.config.get("morphology_kernel_size", 2)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))
         binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
 
         ctx.processed_image = binary

@@ -286,6 +286,29 @@ def test_matching_finds_best_match():
     assert confidence > 0.8
 
 
+def test_preprocess_reads_adaptive_params_from_config():
+    """Preprocessing should use adaptive threshold params from config."""
+    from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
+
+    img = np.full((200, 200), 180, dtype=np.uint8)
+    img[50:150, 50:150] = 40
+
+    ctx = PipelineContext(
+        image=img,
+        config={
+            "adaptive_threshold_block_size": 25,
+            "adaptive_threshold_c": 5,
+            "morphology_kernel_size": 3,
+        },
+    )
+    stage = PreprocessStage()
+    result = stage.process(ctx)
+
+    assert result.processed_image is not None
+    unique = np.unique(result.processed_image)
+    assert all(v in (0, 255) for v in unique)
+
+
 def test_preprocess_global_threshold():
     from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
 
