@@ -57,6 +57,9 @@ onMounted(fetchProjects);
     <div class="page-header">
       <h1>Scan-Projekte</h1>
       <div class="header-actions">
+        <RouterLink to="/notenscanner/konfiguration" class="btn btn-secondary">
+          Konfiguration
+        </RouterLink>
         <RouterLink to="/notenscanner/bibliothek" class="btn btn-secondary">
           Vorlagen verwalten
         </RouterLink>

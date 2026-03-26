@@ -6,6 +6,7 @@ import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ImageAdjustBar from "../components/ImageAdjustBar.vue";
 import ScanCanvas from "../components/ScanCanvas.vue";
 import SymbolPanel from "../components/SymbolPanel.vue";
+import ScannerConfigModal from "../components/ScannerConfigModal.vue";
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -22,9 +23,13 @@ const statusMessage = ref("");
 
 const adjustments = ref({ brightness: 0, contrast: 1.0, rotation: 0, threshold: 128 });
 const showStaves = ref(true);
+const showSymbols = ref(true);
 const selectedSymbol = ref(null);
 const showCorrectPicker = ref(false);
 const libraryTemplates = ref([]);
+
+const showConfig = ref(false);
+const sessionConfig = ref(null);
 
 const captureMode = ref(false);
 const captureBox = ref(null);
@@ -116,7 +121,7 @@ async function startAnalysis() {
         }
       }
     }
-    await post(`/scanner/scans/${props.scanId}/process`, {});
+    await post(`/scanner/scans/${props.scanId}/process`, sessionConfig.value || {});
     // Poll for completion
     pollTimer = setInterval(async () => {
       try {
@@ -276,6 +281,10 @@ async function onCorrectToAlternative(symbol, alt) {
   updateStatus();
 }
 
+function onApplySessionConfig(cfg) {
+  sessionConfig.value = cfg;
+}
+
 async function fetchLibraryIfNeeded() {
   if (libraryTemplates.value.length === 0) {
     const data = await get("/scanner/library/templates?limit=200");
@@ -343,6 +352,14 @@ onUnmounted(() => {
             >
               {{ showStaves ? "Linien ausblenden" : "Linien einblenden" }}
             </button>
+            <button
+              class="btn btn-sm"
+              :class="{ 'btn-active': showSymbols }"
+              :title="showSymbols ? 'Symbole ausblenden' : 'Symbole einblenden'"
+              @click="showSymbols = !showSymbols"
+            >
+              {{ showSymbols ? "Symbole ausblenden" : "Symbole einblenden" }}
+            </button>
             <span v-if="staves.length" class="stave-count"
               >{{ staves.length }} Systeme erkannt</span
             >
@@ -353,6 +370,16 @@ onUnmounted(() => {
             >
               {{ captureMode ? "Erfassung beenden" : "Vorlage erfassen" }}
             </button>
+            <button
+              class="btn btn-sm"
+              :class="{ 'btn-active': sessionConfig !== null }"
+              :title="
+                sessionConfig ? 'Konfiguration (Sitzungsparameter aktiv)' : 'Scanner-Konfiguration'
+              "
+              @click="showConfig = true"
+            >
+              {{ sessionConfig ? "Konfig. *" : "Konfig." }}
+            </button>
           </div>
           <ScanCanvas
             :image-path="scan?.image_path ?? null"
@@ -361,6 +388,7 @@ onUnmounted(() => {
             :adjustments="adjustments"
             :selected-symbol-id="selectedSymbol?.id ?? null"
             :show-staves="showStaves"
+            :show-symbols="showSymbols"
             :capture-mode="captureMode"
             @select-symbol="onSelectSymbol"
             @capture-box="onCaptureBox"
@@ -393,6 +421,14 @@ onUnmounted(() => {
         {{ statusMessage }}
       </span>
       <div class="status-actions">
+        <span
+          v-if="sessionConfig"
+          class="session-badge"
+          title="Klicken zum Zurücksetzen"
+          @click="sessionConfig = null"
+        >
+          Sitzungsparameter aktiv ✕
+        </span>
         <button
           v-if="scan?.status === 'review' || scan?.status === 'completed'"
           class="btn btn-primary btn-sm"
@@ -423,6 +459,13 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+    <!-- Scanner config modal -->
+    <ScannerConfigModal
+      :open="showConfig"
+      @close="showConfig = false"
+      @apply-session="onApplySessionConfig"
+    />
+
     <!-- Capture dialog -->
     <div v-if="showCaptureDialog" class="modal-backdrop" @click.self="showCaptureDialog = false">
       <div class="modal">
@@ -718,5 +761,25 @@ onUnmounted(() => {
   gap: 0.5rem;
   justify-content: flex-end;
   margin-top: 1rem;
+}
+
+.session-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.session-badge:hover {
+  background: var(--color-primary);
+  color: #fff;
 }
 </style>

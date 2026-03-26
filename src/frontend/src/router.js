@@ -68,6 +68,11 @@ const routes = [
     component: () => import("./pages/SymbolLibraryPage.vue"),
   },
   {
+    path: "/notenscanner/konfiguration",
+    name: "scanner-config",
+    component: () => import("./pages/ScannerConfigPage.vue"),
+  },
+  {
     path: "/notenscanner/:id",
     name: "scanner-project-detail",
     component: () => import("./pages/ScanProjectDetailPage.vue"),
