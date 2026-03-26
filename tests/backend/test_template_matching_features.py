@@ -198,3 +198,36 @@ def test_nms_iou_threshold_affects_suppression():
 
     # With high threshold, more detections should survive
     assert len(result_high.symbols) >= len(result_low.symbols)
+
+
+# ------------------------------------------------------------------
+# Staff removal before matching
+# ------------------------------------------------------------------
+
+
+def test_staff_removal_before_matching_config():
+    """Verify staff removal stage exists and can process."""
+    from mv_hofki.services.scanner.stages.staff_removal import StaffRemovalStage
+
+    img = np.full((200, 400), 255, dtype=np.uint8)
+    # Draw staff lines
+    for i in range(5):
+        y = 30 + i * 20
+        img[y : y + 2, 20:380] = 0
+
+    staff = StaffData(
+        staff_index=0,
+        y_top=0,
+        y_bottom=180,
+        line_positions=[30, 50, 70, 90, 110],
+        line_spacing=20.0,
+    )
+    ctx = PipelineContext(image=img.copy(), staves=[staff])
+    stage = StaffRemovalStage()
+    result = stage.process(ctx)
+
+    # Lines should be mostly removed
+    for line_y in [30, 50, 70, 90, 110]:
+        row_black_after = np.sum(result.image[line_y : line_y + 2, :] == 0)
+        row_black_before = np.sum(img[line_y : line_y + 2, :] == 0)
+        assert row_black_after < row_black_before

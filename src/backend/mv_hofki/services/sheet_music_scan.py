@@ -147,6 +147,7 @@ async def run_pipeline(
     from mv_hofki.services.scanner.pipeline import Pipeline
     from mv_hofki.services.scanner.stages.base import PipelineContext
     from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
+    from mv_hofki.services.scanner.stages.staff_removal import StaffRemovalStage
     from mv_hofki.services.scanner.stages.stave_detection import StaveDetectionStage
     from mv_hofki.services.scanner.stages.template_matching import TemplateMatchingStage
     from mv_hofki.services.scanner_config import get_effective_config
@@ -190,13 +191,19 @@ async def run_pipeline(
     stages = [
         PreprocessStage(),
         StaveDetectionStage(),
+    ]
+
+    if config.get("staff_removal_before_matching", False):
+        stages.append(StaffRemovalStage())
+
+    stages.append(
         TemplateMatchingStage(
             variant_images=variant_images,
             variant_template_ids=variant_template_ids,
             variant_heights=variant_heights,
             variant_line_spacings=variant_line_spacings,
         ),
-    ]
+    )
 
     import asyncio
 
