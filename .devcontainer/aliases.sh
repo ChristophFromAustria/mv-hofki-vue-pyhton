@@ -12,6 +12,7 @@ alias server-logs='tmux capture-pane -t server -p -S -500'
 alias server-attach='tmux attach -t server'
 alias server-start='tmux new-session -d -s server "PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 --reload"'
 alias server-restart='tmux send-keys -t server C-c && sleep 1 && tmux send-keys -t server "PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 --reload" Enter'
+sql-echo() { curl -s -X PUT "http://localhost:8000/debug/sql-echo?enabled=${1:-true}" | python -m json.tool; }
 
 # Frontend watcher (vite build --watch in tmux session "frontend")
 alias frontend-logs='tmux capture-pane -t frontend -p -S -500'

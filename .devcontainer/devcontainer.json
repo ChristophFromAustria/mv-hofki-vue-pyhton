@@ -25,10 +25,15 @@
   "containerEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
   },
-  "forwardPorts": [8000],
+  "forwardPorts": [8000, 7681],
   "portsAttributes": {
     "8000": {
       "label": "mv_hofki API + Frontend",
+      "onAutoForward": "notify",
+      "protocol": "http"
+    },
+    "7681": {
+      "label": "Web Terminal (ttyd)",
       "onAutoForward": "notify",
       "protocol": "http"
     }

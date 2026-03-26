@@ -10,6 +10,7 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list
 # System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
+    libcairo2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Pre-install Python dependencies for faster rebuilds
