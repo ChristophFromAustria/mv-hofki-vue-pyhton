@@ -24,6 +24,7 @@ class ScannerConfigRead(BaseModel):
     adaptive_threshold_block_size: int
     adaptive_threshold_c: int
     morphology_kernel_size: int
+    deskew_method: str
     auto_verify_confidence: float
 
     model_config = {"from_attributes": True}
@@ -53,4 +54,5 @@ class ScannerConfigUpdate(BaseModel):
     adaptive_threshold_block_size: int | None = Field(None, ge=3, le=99)
     adaptive_threshold_c: int | None = Field(None, ge=0, le=50)
     morphology_kernel_size: int | None = Field(None, ge=1, le=10)
+    deskew_method: str | None = Field(None, pattern="^(none|hough|projection)$")
     auto_verify_confidence: float | None = Field(None, ge=0.0, le=1.0)

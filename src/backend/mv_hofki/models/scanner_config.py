@@ -65,6 +65,11 @@ class ScannerConfig(Base):
         Integer, nullable=False, default=2
     )
 
+    # Deskew
+    deskew_method: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="projection"
+    )
+
     # Auto-verify
     auto_verify_confidence: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.85
