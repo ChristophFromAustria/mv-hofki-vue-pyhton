@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.models.currency import Currency
 from mv_hofki.models.instrument_type import InstrumentType
+from mv_hofki.models.scanner_config import ScannerConfig
 from mv_hofki.models.sheet_music_genre import SheetMusicGenre
 from mv_hofki.models.symbol_template import SymbolTemplate
 from mv_hofki.services.scanner.library.seed import SYMBOL_TEMPLATES
@@ -98,5 +99,10 @@ async def seed_data(session: AsyncSession) -> None:
                     existing.musicxml_element = t["musicxml_element"]
                 if t.get("lilypond_token") and not existing.lilypond_token:
                     existing.lilypond_token = t["lilypond_token"]
+
+    # Seed default scanner config if not present
+    result = await session.execute(select(ScannerConfig).limit(1))
+    if result.scalar_one_or_none() is None:
+        session.add(ScannerConfig())
 
     await session.commit()

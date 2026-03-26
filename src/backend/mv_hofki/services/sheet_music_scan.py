@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import func, select
@@ -13,6 +14,9 @@ from mv_hofki.core.config import settings
 from mv_hofki.models.sheet_music_scan import SheetMusicScan
 from mv_hofki.schemas.sheet_music_scan import SheetMusicScanUpdate
 from mv_hofki.services import scan_part as part_service
+
+if TYPE_CHECKING:
+    from mv_hofki.schemas.scanner_config import ScannerConfigUpdate
 
 ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/tiff"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -129,6 +133,7 @@ async def run_pipeline(
     project_id: int,
     part_id: int,
     scan_id: int,
+    config_overrides: ScannerConfigUpdate | None = None,
 ) -> None:
     import json
 
@@ -144,6 +149,7 @@ async def run_pipeline(
     from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
     from mv_hofki.services.scanner.stages.stave_detection import StaveDetectionStage
     from mv_hofki.services.scanner.stages.template_matching import TemplateMatchingStage
+    from mv_hofki.services.scanner_config import get_effective_config
 
     scan = await get_by_id(session, project_id, part_id, scan_id)
     img_path = settings.PROJECT_ROOT / scan.image_path
@@ -151,11 +157,11 @@ async def run_pipeline(
     if img is None:
         raise HTTPException(status_code=400, detail="Bild konnte nicht geladen werden")
 
-    # Load variants with scaling info
+    # Load variants with valid scaling info (source_line_spacing > 0)
     result = await session.execute(
         sa_select(SymbolVariant).where(
-            (SymbolVariant.height_in_lines.isnot(None))
-            | (SymbolVariant.source_line_spacing.isnot(None))
+            SymbolVariant.source_line_spacing.isnot(None),
+            SymbolVariant.source_line_spacing > 0,
         )
     )
     variants = list(result.scalars().all())
@@ -173,9 +179,11 @@ async def run_pipeline(
             variant_heights.append(v.height_in_lines or 4.0)
             variant_line_spacings.append(v.source_line_spacing)
 
-    # Pass the user's threshold into the pipeline config
+    # Load global scanner config, merge any per-request overrides
+    config = await get_effective_config(session, overrides=config_overrides)
+
+    # Merge scan-level adjustments (user threshold from UI)
     adjustments = json.loads(scan.adjustments_json) if scan.adjustments_json else {}
-    config = json.loads(scan.pipeline_config_json) if scan.pipeline_config_json else {}
     if "threshold" in adjustments:
         config["threshold"] = adjustments["threshold"]
 
@@ -191,9 +199,12 @@ async def run_pipeline(
         ),
     ]
 
+    import asyncio
+
     ctx = PipelineContext(image=img, config=config)
     pipeline = Pipeline(stages=stages)
-    ctx = pipeline.run(ctx)
+    # Run CPU-heavy pipeline in a thread to avoid blocking the async event loop
+    ctx = await asyncio.to_thread(pipeline.run, ctx)
 
     # Clear previous detection results
     staff_ids_q = sa_select(DetectedStaff.id).where(DetectedStaff.scan_id == scan_id)
@@ -251,7 +262,7 @@ async def run_pipeline(
                 matched_symbol_id=sym_data.matched_template_id,
                 confidence=sym_data.confidence,
                 user_verified=sym_data.confidence is not None
-                and sym_data.confidence >= 0.85,
+                and sym_data.confidence >= config.get("auto_verify_confidence", 0.85),
                 alternatives_json=alternatives_json,
             )
             session.add(symbol)

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mv_hofki.api.deps import get_db
 from mv_hofki.schemas.detected_staff import DetectedStaffRead
 from mv_hofki.schemas.detected_symbol import DetectedSymbolRead, SymbolCorrectionRequest
+from mv_hofki.schemas.scanner_config import ScannerConfigUpdate
 from mv_hofki.schemas.sheet_music_scan import ScanStatusRead
 from mv_hofki.services import sheet_music_scan as scan_service
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 @router.post("/scans/{scan_id}/process", response_model=ScanStatusRead)
 async def trigger_processing(
     scan_id: int,
+    config_overrides: ScannerConfigUpdate | None = None,
     project_id: int | None = None,
     part_id: int | None = None,
     db: AsyncSession = Depends(get_db),
@@ -47,7 +49,13 @@ async def trigger_processing(
     await db.commit()
 
     try:
-        await scan_service.run_pipeline(db, actual_project_id, actual_part_id, scan_id)
+        await scan_service.run_pipeline(
+            db,
+            actual_project_id,
+            actual_part_id,
+            scan_id,
+            config_overrides=config_overrides,
+        )
     except Exception:
         scan.status = "uploaded"
         await db.commit()
@@ -167,6 +175,7 @@ async def correct_symbol(
     db: AsyncSession = Depends(get_db),
 ):
     """Correct a symbol's match — sets user_corrected_symbol_id and user_verified."""
+    from mv_hofki.models.detected_staff import DetectedStaff
     from mv_hofki.models.detected_symbol import DetectedSymbol
     from mv_hofki.models.symbol_variant import SymbolVariant
 
@@ -179,12 +188,24 @@ async def correct_symbol(
 
     # Feedback loop: add snippet as new variant of the corrected template
     if symbol.snippet_path:
-        variant = SymbolVariant(
-            template_id=data.symbol_template_id,
-            image_path=symbol.snippet_path,
-            source="user_correction",
-        )
-        db.add(variant)
+        staff = await db.get(DetectedStaff, symbol.staff_id)
+        source_line_spacing = staff.line_spacing if staff else 0.0
+
+        if source_line_spacing > 5:
+            variant = SymbolVariant(
+                template_id=data.symbol_template_id,
+                image_path=symbol.snippet_path,
+                source="user_correction",
+                source_line_spacing=source_line_spacing,
+            )
+            db.add(variant)
+        else:
+            logger.warning(
+                "Skipping variant creation for symbol %d: "
+                "source_line_spacing=%.1f is too low",
+                symbol_id,
+                source_line_spacing,
+            )
 
     await db.commit()
     return {"status": "ok"}
