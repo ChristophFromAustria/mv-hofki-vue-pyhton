@@ -164,6 +164,17 @@ export const SCANNER_CONFIG_FIELDS = [
     max: 10,
     step: 1,
   },
+  {
+    key: "deskew_method",
+    label: "Deskew-Methode",
+    group: "Vorverarbeitung",
+    type: "select",
+    options: [
+      { value: "none", label: "Keine Korrektur" },
+      { value: "hough", label: "Hough-Linien (schnell)" },
+      { value: "projection", label: "Projektions-Optimierung (genau)" },
+    ],
+  },
 ];
 
 /**
