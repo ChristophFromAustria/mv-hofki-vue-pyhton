@@ -150,3 +150,51 @@ def test_matching_method_ccorr():
     assert len(result.symbols) > 0
     xs = [s.x for s in result.symbols]
     assert any(90 <= x <= 130 for x in xs), f"Expected match near x=100, got {xs}"
+
+
+# ------------------------------------------------------------------
+# NMS IoU threshold
+# ------------------------------------------------------------------
+
+
+def test_nms_iou_threshold_affects_suppression():
+    """A very high IoU threshold keeps more overlapping detections."""
+    # Two symbols placed close together (slight overlap)
+    img = np.full((200, 400), 255, dtype=np.uint8)
+    symbol = np.full((40, 20), 255, dtype=np.uint8)
+    cv2.circle(symbol, (10, 20), 8, 0, -1)
+    # Place at x=100 and x=112 (12px apart, 20px wide → significant overlap)
+    img[30:70, 100:120] = symbol
+    img[30:70, 112:132] = symbol
+
+    staff = _make_staff(20)
+    template = symbol.copy()
+
+    # Low IoU threshold → aggressive suppression → fewer detections
+    stage = TemplateMatchingStage(
+        variant_images=[template],
+        variant_template_ids=[1],
+        variant_heights=[2.0],
+    )
+    ctx_low = PipelineContext(
+        image=img.copy(),
+        staves=[staff],
+        config={"confidence_threshold": 0.5, "nms_iou_threshold": 0.1},
+    )
+    result_low = stage.process(ctx_low)
+
+    # High IoU threshold → relaxed suppression → more detections
+    stage2 = TemplateMatchingStage(
+        variant_images=[template],
+        variant_template_ids=[1],
+        variant_heights=[2.0],
+    )
+    ctx_high = PipelineContext(
+        image=img.copy(),
+        staves=[staff],
+        config={"confidence_threshold": 0.5, "nms_iou_threshold": 0.95},
+    )
+    result_high = stage2.process(ctx_high)
+
+    # With high threshold, more detections should survive
+    assert len(result_high.symbols) >= len(result_low.symbols)

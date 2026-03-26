@@ -137,6 +137,10 @@ class TemplateMatchingStage(ProcessingStage):
                     method_to_use = cv_method
                     mask: np.ndarray | None = None
 
+                    # Per-iteration sqdiff flag — may differ from outer
+                    # is_sqdiff when masked matching overrides the method.
+                    iter_sqdiff = is_sqdiff
+
                     if edge_matching_enabled and edge_region is not None:
                         match_region = edge_region
                         match_template = cv2.Canny(scaled, canny_low, canny_high)
@@ -148,7 +152,6 @@ class TemplateMatchingStage(ProcessingStage):
                         # Force TM_SQDIFF — OpenCV masks only work
                         # reliably with TM_SQDIFF / TM_CCORR (not normed)
                         method_to_use = cv2.TM_SQDIFF
-                        is_sqdiff = True
 
                     # Run template matching
                     if mask is not None:
@@ -163,14 +166,14 @@ class TemplateMatchingStage(ProcessingStage):
                             result = 1.0 - (result - rmin) / (rmax - rmin)
                         else:
                             result = np.ones_like(result)
-                        is_sqdiff = False  # already normalised as confidence
+                        iter_sqdiff = False  # already normalised as confidence
                     else:
                         result = cv2.matchTemplate(
                             match_region, match_template, method_to_use
                         )
 
                     # Threshold logic (inverted for SQDIFF_NORMED)
-                    if is_sqdiff:
+                    if iter_sqdiff:
                         locations = np.where(result <= (1 - confidence_threshold))
                     else:
                         locations = np.where(result >= confidence_threshold)
@@ -188,7 +191,7 @@ class TemplateMatchingStage(ProcessingStage):
                             _MAX_HITS_PER_VARIANT,
                         )
                         confidences = result[locations]
-                        if is_sqdiff:
+                        if iter_sqdiff:
                             # Lower is better for SQDIFF
                             top_indices = np.argpartition(
                                 confidences, _MAX_HITS_PER_VARIANT
@@ -204,7 +207,7 @@ class TemplateMatchingStage(ProcessingStage):
 
                     for pt_y, pt_x in zip(locations[0], locations[1]):
                         score = float(result[pt_y, pt_x])
-                        confidence = (1.0 - score) if is_sqdiff else score
+                        confidence = (1.0 - score) if iter_sqdiff else score
                         raw_detections.append(
                             SymbolData(
                                 staff_index=staff.staff_index,
