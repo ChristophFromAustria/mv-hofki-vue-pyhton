@@ -26,6 +26,7 @@ class SheetMusicScan(Base):
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     image_path: Mapped[str] = mapped_column(String(500), nullable=False)
     processed_image_path: Mapped[str | None] = mapped_column(String(500))
+    corrected_image_path: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploaded")
     adjustments_json: Mapped[str | None] = mapped_column(Text)
     pipeline_config_json: Mapped[str | None] = mapped_column(Text)

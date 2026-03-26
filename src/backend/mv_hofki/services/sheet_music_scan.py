@@ -294,5 +294,13 @@ async def run_pipeline(
             processed_path.relative_to(settings.PROJECT_ROOT)
         )
 
+    # Save corrected (rotated grayscale) image for frontend preview
+    if ctx.corrected_image is not None:
+        corrected_path = _scan_dir(project_id, part_id, scan_id) / "corrected.png"
+        cv2.imwrite(str(corrected_path), ctx.corrected_image)
+        scan.corrected_image_path = str(
+            corrected_path.relative_to(settings.PROJECT_ROOT)
+        )
+
     scan.status = "review"
     await session.commit()

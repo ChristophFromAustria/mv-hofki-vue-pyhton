@@ -14,6 +14,7 @@ class SheetMusicScanRead(BaseModel):
     original_filename: str
     image_path: str
     processed_image_path: str | None
+    corrected_image_path: str | None
     status: str
     adjustments_json: str | None
     pipeline_config_json: str | None
