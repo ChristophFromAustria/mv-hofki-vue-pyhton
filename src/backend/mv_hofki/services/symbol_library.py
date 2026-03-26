@@ -146,10 +146,10 @@ async def save_rendered_variant(
     """Save rendered PNG bytes as a new variant for the given template."""
     import uuid
 
-    if not source_line_spacing or source_line_spacing <= 0:
+    if not source_line_spacing or source_line_spacing <= 5:
         raise HTTPException(
             status_code=400,
-            detail="source_line_spacing ist erforderlich und muss > 0 sein",
+            detail="source_line_spacing ist erforderlich und muss > 5 sein",
         )
 
     template = await get_template_by_id(session, template_id)
@@ -231,6 +231,15 @@ async def capture_template(
     if source_line_spacing <= 0 and staves:
         # Fallback to first staff's spacing
         source_line_spacing = staves[0].line_spacing
+
+    if source_line_spacing <= 5:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "source_line_spacing konnte nicht ermittelt werden oder ist zu "
+                f"niedrig ({source_line_spacing:.1f}). Mindestens 5 px erforderlich."
+            ),
+        )
 
     # Find existing template or create new one
     template: SymbolTemplate

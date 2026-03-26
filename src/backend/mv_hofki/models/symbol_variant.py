@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import CheckConstraint, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mv_hofki.db.base import Base
@@ -16,6 +16,12 @@ if TYPE_CHECKING:
 
 class SymbolVariant(Base):
     __tablename__ = "symbol_variants"
+    __table_args__ = (
+        CheckConstraint(
+            "source_line_spacing > 5",
+            name="ck_symbol_variants_source_line_spacing_min",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     template_id: Mapped[int] = mapped_column(
@@ -26,9 +32,7 @@ class SymbolVariant(Base):
     feature_vector_json: Mapped[str | None] = mapped_column(Text)
     usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     height_in_lines: Mapped[float | None] = mapped_column(Float)
-    source_line_spacing: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.0
-    )
+    source_line_spacing: Mapped[float] = mapped_column(Float, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     template: Mapped[SymbolTemplate] = relationship(back_populates="variants")
