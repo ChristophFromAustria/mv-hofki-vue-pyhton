@@ -65,6 +65,10 @@ class ScannerConfig(Base):
         Integer, nullable=False, default=2
     )
 
+    # Dewarp (bent staff line correction)
+    dewarp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dewarp_smoothing: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+
     # Deskew
     deskew_method: Mapped[str] = mapped_column(
         String(20), nullable=False, default="projection"

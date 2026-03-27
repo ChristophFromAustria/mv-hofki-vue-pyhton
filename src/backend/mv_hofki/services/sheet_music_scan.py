@@ -190,10 +190,15 @@ async def run_pipeline(
     if "threshold" in adjustments:
         config["threshold"] = adjustments["threshold"]
 
+    from mv_hofki.services.scanner.stages.dewarp import DewarpStage
+
     stages = [
         PreprocessStage(),
         StaveDetectionStage(),
     ]
+
+    if config.get("dewarp_enabled", False):
+        stages.append(DewarpStage())
 
     if config.get("staff_removal_before_matching", False):
         stages.append(StaffRemovalStage())

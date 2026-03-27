@@ -98,6 +98,23 @@ export const SCANNER_CONFIG_FIELDS = [
     type: "toggle",
   },
 
+  // ── Dewarp (bent staff lines) ────────────────────────────────────────
+  {
+    key: "dewarp_enabled",
+    label: "Krümmungskorrektur",
+    group: "Krümmungskorrektur",
+    type: "toggle",
+  },
+  {
+    key: "dewarp_smoothing",
+    label: "Glättung (px)",
+    group: "Krümmungskorrektur",
+    type: "number",
+    min: 5,
+    max: 200,
+    step: 5,
+  },
+
   // ── Masked Matching ────────────────────────────────────────────────
   {
     key: "masked_matching_enabled",
