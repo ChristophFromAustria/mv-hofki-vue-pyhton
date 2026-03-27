@@ -161,6 +161,150 @@ async def stream_processing(
     )
 
 
+@router.get("/batch-process-stream")
+async def batch_process_stream(
+    project_id: int | None = None,
+    status_filter: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """SSE endpoint: run the pipeline on multiple scans sequentially.
+
+    Query params:
+      - ``project_id`` — only process scans in this project (all if omitted)
+      - ``status_filter`` — only process scans with this status (e.g. "uploaded")
+
+    Event types:
+      - ``log``   — progress message (data: text)
+      - ``scan``  — starting a new scan (data: JSON with scan info)
+      - ``done``  — single scan finished (data: JSON {scan_id, status})
+      - ``error`` — single scan failed (data: JSON {scan_id, error})
+      - ``batch_done`` — all scans processed (data: JSON {total, ok, failed})
+    """
+    import asyncio
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.orm import joinedload
+
+    from mv_hofki.models.scan_part import ScanPart
+    from mv_hofki.models.scan_project import ScanProject
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+
+    # Build query for scans to process
+    query = (
+        sa_select(SheetMusicScan)
+        .join(ScanPart)
+        .join(ScanProject)
+        .options(joinedload(SheetMusicScan.part).joinedload(ScanPart.project))
+        .order_by(ScanProject.name, ScanPart.part_name, SheetMusicScan.page_number)
+    )
+    if project_id is not None:
+        query = query.where(ScanProject.id == project_id)
+    if status_filter:
+        query = query.where(SheetMusicScan.status == status_filter)
+
+    result = await db.execute(query)
+    scans = list(result.scalars().unique().all())
+
+    if not scans:
+        raise HTTPException(status_code=404, detail="Keine Scans gefunden")
+
+    queue: asyncio.Queue[str] = asyncio.Queue()
+
+    async def run_batch() -> None:
+        total = len(scans)
+        ok_count = 0
+        fail_count = 0
+
+        for idx, scan in enumerate(scans, 1):
+            part = scan.part
+            project = part.project
+
+            scan_label = f"{project.name} / {part.part_name} (Scan {scan.id})"
+
+            scan_info = {
+                "scan_id": scan.id,
+                "project": project.name,
+                "part": part.part_name,
+                "index": idx,
+                "total": total,
+            }
+            queue.put_nowait(f"__SCAN__:{_json.dumps(scan_info)}")
+
+            if scan.status == "processing":
+                queue.put_nowait(
+                    f"  ⏭ {scan_label}: wird bereits verarbeitet, übersprungen"
+                )
+                fail_count += 1
+                continue
+
+            scan.status = "processing"
+            await db.commit()
+
+            def make_log_cb(label: str):
+                def cb(msg: str) -> None:
+                    queue.put_nowait(f"  {msg}")
+
+                return cb
+
+            try:
+                await scan_service.run_pipeline(
+                    db,
+                    project.id,
+                    part.id,
+                    scan.id,
+                    log_callback=make_log_cb(scan_label),
+                )
+                ok_count += 1
+                await db.refresh(scan)
+                done_info = {"scan_id": scan.id, "status": scan.status}
+                queue.put_nowait(f"__DONE__:{_json.dumps(done_info)}")
+            except Exception as exc:
+                fail_count += 1
+                scan.status = "uploaded"
+                await db.commit()
+                err_info = {"scan_id": scan.id, "error": str(exc)}
+                queue.put_nowait(f"__ERROR__:{_json.dumps(err_info)}")
+
+        batch_info = {
+            "total": total,
+            "ok": ok_count,
+            "failed": fail_count,
+        }
+        queue.put_nowait(f"__BATCH_DONE__:{_json.dumps(batch_info)}")
+
+    async def event_generator():
+        task = asyncio.create_task(run_batch())
+        try:
+            while True:
+                msg = await queue.get()
+                if msg.startswith("__SCAN__:"):
+                    yield f"event: scan\ndata: {msg[9:]}\n\n"
+                elif msg.startswith("__DONE__:"):
+                    yield f"event: done\ndata: {msg[9:]}\n\n"
+                elif msg.startswith("__ERROR__:"):
+                    yield f"event: error\ndata: {msg[10:]}\n\n"
+                elif msg.startswith("__BATCH_DONE__:"):
+                    yield f"event: batch_done\ndata: {msg[15:]}\n\n"
+                    break
+                else:
+                    yield f"event: log\ndata: {msg}\n\n"
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/scans/{scan_id}/status", response_model=ScanStatusRead)
 async def get_processing_status(scan_id: int, db: AsyncSession = Depends(get_db)):
     """Poll processing status."""

@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from "vue-router";
 import { get, post, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import BatchAnalysisModal from "../components/BatchAnalysisModal.vue";
 
 const router = useRouter();
 const projects = ref([]);
@@ -13,6 +14,9 @@ const newName = ref("");
 const newComposer = ref("");
 const confirmOpen = ref(false);
 const deleteTarget = ref(null);
+const showBatch = ref(false);
+const batchRef = ref(null);
+const batchFilter = ref({ projectId: null, statusFilter: "" });
 
 async function fetchProjects() {
   loading.value = true;
@@ -47,6 +51,17 @@ async function deleteProject() {
   deleteTarget.value = null;
   confirmOpen.value = false;
   await fetchProjects();
+}
+
+async function startBatchAnalysis() {
+  showBatch.value = true;
+  await new Promise((r) => setTimeout(r, 50));
+  if (batchRef.value) {
+    batchRef.value.startBatch(
+      batchFilter.value.projectId || null,
+      batchFilter.value.statusFilter || null,
+    );
+  }
 }
 
 onMounted(fetchProjects);
@@ -109,6 +124,33 @@ onMounted(fetchProjects);
         </div>
       </div>
     </div>
+
+    <!-- Batch analysis controls -->
+    <div v-if="projects.length > 0" class="batch-section">
+      <h2>Massenanalyse</h2>
+      <div class="batch-controls">
+        <label class="batch-filter">
+          Projekt
+          <select v-model="batchFilter.projectId">
+            <option :value="null">Alle Projekte</option>
+            <option v-for="p in projects" :key="p.id" :value="p.id">
+              {{ p.name }}
+            </option>
+          </select>
+        </label>
+        <label class="batch-filter">
+          Status
+          <select v-model="batchFilter.statusFilter">
+            <option value="">Alle</option>
+            <option value="uploaded">Nur hochgeladen</option>
+            <option value="review">Nur Review</option>
+          </select>
+        </label>
+        <button class="btn btn-primary" @click="startBatchAnalysis">Analyse starten</button>
+      </div>
+    </div>
+
+    <BatchAnalysisModal ref="batchRef" :open="showBatch" @close="showBatch = false" />
 
     <ConfirmDialog
       :open="confirmOpen"
@@ -219,5 +261,41 @@ onMounted(fetchProjects);
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.batch-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.batch-section h2 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.batch-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.batch-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.batch-filter select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
 }
 </style>
