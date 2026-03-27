@@ -230,6 +230,11 @@ class TemplateMatchingStage(ProcessingStage):
         else:
             ctx.symbols = self._nms_with_alternatives(raw_detections, nms_iou_threshold)
 
+        # Snap bounding boxes to actual ink content
+        snap_enabled = bool(self._cfg(ctx, "snap_bboxes", True))
+        if snap_enabled:
+            self._snap_bounding_boxes(ctx.symbols, img)
+
         # Sort by staff, then left to right
         ctx.symbols.sort(key=lambda s: (s.staff_index, s.x))
         for i, sym in enumerate(ctx.symbols):
@@ -372,6 +377,71 @@ class TemplateMatchingStage(ProcessingStage):
                                 (other.matched_template_id or 0, other.confidence or 0)
                             )
         return kept
+
+    # ------------------------------------------------------------------
+    # Bounding box refinement
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _snap_bounding_boxes(
+        symbols: list[SymbolData],
+        img: np.ndarray,
+        pad: int = 2,
+    ) -> None:
+        """Tighten each detection box to the actual ink content.
+
+        Looks at the image region around each detection, binarises it,
+        and shrinks the box to the tight bounding rect of dark pixels.
+        A small *pad* is kept so the box doesn't clip right at the ink edge.
+        Modifies *symbols* in place.
+        """
+        h, w = img.shape[:2]
+
+        for sym in symbols:
+            # Expand the search area slightly beyond the current box
+            # so we can find ink that was cut off by the offset
+            margin = max(sym.width, sym.height) // 4
+            x0 = max(0, sym.x - margin)
+            y0 = max(0, sym.y - margin)
+            x1 = min(w, sym.x + sym.width + margin)
+            y1 = min(h, sym.y + sym.height + margin)
+
+            roi = img[y0:y1, x0:x1]
+            if roi.size == 0:
+                continue
+
+            # Binarise: ink pixels are dark (< Otsu threshold)
+            _, binary = cv2.threshold(
+                roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+            )
+
+            ink_rows, ink_cols = np.where(binary > 0)
+            if len(ink_rows) == 0:
+                continue
+
+            # Tight bbox within the ROI
+            r_top = int(ink_rows.min())
+            r_bot = int(ink_rows.max())
+            c_left = int(ink_cols.min())
+            c_right = int(ink_cols.max())
+
+            # Convert back to image coordinates with padding
+            new_x = max(0, x0 + c_left - pad)
+            new_y = max(0, y0 + r_top - pad)
+            new_w = min(w - new_x, (c_right - c_left) + 1 + 2 * pad)
+            new_h = min(h - new_y, (r_bot - r_top) + 1 + 2 * pad)
+
+            # Only apply if the snapped box isn't drastically different
+            # (guards against snapping to staff lines or other noise)
+            orig_area = sym.width * sym.height
+            new_area = new_w * new_h
+            if new_area < orig_area * 0.2 or new_area > orig_area * 3.0:
+                continue
+
+            sym.x = new_x
+            sym.y = new_y
+            sym.width = new_w
+            sym.height = new_h
 
     def validate(self, ctx: PipelineContext) -> bool:
         return ctx.image is not None and len(ctx.staves) > 0
