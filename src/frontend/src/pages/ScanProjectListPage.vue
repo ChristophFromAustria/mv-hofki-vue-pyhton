@@ -82,6 +82,31 @@ onMounted(fetchProjects);
       </div>
     </div>
 
+    <!-- Batch analysis controls -->
+    <div v-if="!loading && projects.length > 0" class="batch-section">
+      <h2>Massenanalyse</h2>
+      <div class="batch-controls">
+        <label class="batch-filter">
+          Projekt
+          <select v-model="batchFilter.projectId">
+            <option :value="null">Alle Projekte</option>
+            <option v-for="p in projects" :key="p.id" :value="p.id">
+              {{ p.name }}
+            </option>
+          </select>
+        </label>
+        <label class="batch-filter">
+          Status
+          <select v-model="batchFilter.statusFilter">
+            <option value="">Alle</option>
+            <option value="uploaded">Nur hochgeladen</option>
+            <option value="review">Nur Review</option>
+          </select>
+        </label>
+        <button class="btn btn-primary" @click="startBatchAnalysis">Analyse starten</button>
+      </div>
+    </div>
+
     <LoadingSpinner v-if="loading" />
 
     <div v-else-if="projects.length === 0" class="empty-state">
@@ -122,31 +147,6 @@ onMounted(fetchProjects);
             Erstellen
           </button>
         </div>
-      </div>
-    </div>
-
-    <!-- Batch analysis controls -->
-    <div v-if="projects.length > 0" class="batch-section">
-      <h2>Massenanalyse</h2>
-      <div class="batch-controls">
-        <label class="batch-filter">
-          Projekt
-          <select v-model="batchFilter.projectId">
-            <option :value="null">Alle Projekte</option>
-            <option v-for="p in projects" :key="p.id" :value="p.id">
-              {{ p.name }}
-            </option>
-          </select>
-        </label>
-        <label class="batch-filter">
-          Status
-          <select v-model="batchFilter.statusFilter">
-            <option value="">Alle</option>
-            <option value="uploaded">Nur hochgeladen</option>
-            <option value="review">Nur Review</option>
-          </select>
-        </label>
-        <button class="btn btn-primary" @click="startBatchAnalysis">Analyse starten</button>
       </div>
     </div>
 
@@ -264,9 +264,9 @@ onMounted(fetchProjects);
 }
 
 .batch-section {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--color-border);
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .batch-section h2 {
