@@ -85,6 +85,11 @@ async function fetchScanData() {
       }
     }
 
+    // Default to binary view if analysis results exist
+    if (foundScan?.processed_image_path) {
+      viewMode.value = "binary";
+    }
+
     updateStatus();
   } catch (e) {
     error.value = e.message;
@@ -155,6 +160,10 @@ async function startAnalysis() {
 async function onAnalysisDone() {
   processing.value = false;
   await fetchScanData();
+  // Switch to binary view after analysis completes
+  if (scan.value?.processed_image_path) {
+    viewMode.value = "binary";
+  }
 }
 
 function onAnalysisLogClose() {

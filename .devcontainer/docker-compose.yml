@@ -5,14 +5,17 @@ services:
       dockerfile: .devcontainer/Dockerfile
       args:
         TZ: ${TZ:-Europe/Berlin}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     volumes:
       - ..:/workspaces/mv_hofki:cached
       - bashhistory:/commandhistory
       - claude-config:/home/vscode/.claude
     environment:
       CLAUDE_CONFIG_DIR: /home/vscode/.claude
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
 
   cloudflare-tunnel:
     image: cloudflare/cloudflared:latest

@@ -249,7 +249,14 @@ def render_lilypond(token: str) -> RenderResult:
         if not png_path.exists():
             candidates = list(Path(tmpdir).glob("output*.png"))
             if not candidates:
-                raise RuntimeError("LilyPond hat keine PNG-Datei erzeugt")
+                stderr = result.stderr.decode(errors="replace")
+                hint = ""
+                if "zero-duration" in stderr:
+                    hint = (
+                        " Das Token hat keine Dauer — "
+                        "füge z.B. eine unsichtbare Pause hinzu (s1)."
+                    )
+                raise RuntimeError(f"LilyPond hat keine PNG-Datei erzeugt.{hint}")
             png_path = candidates[0]
 
         raw = png_path.read_bytes()

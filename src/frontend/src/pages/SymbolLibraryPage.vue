@@ -38,6 +38,7 @@ const confirmDeleteOpen = ref(false);
 const confirmVariantDeleteOpen = ref(false);
 const deleteVariantTarget = ref(null);
 const rendering = ref(null); // "musicxml" | "lilypond" | null
+const renderError = ref(null);
 const previewVariant = ref(null);
 const previewImageUrl = ref(null);
 const previewNatW = ref(0);
@@ -104,6 +105,7 @@ async function openEdit(tpl) {
     musicxml_element: tpl.musicxml_element || "",
     lilypond_token: tpl.lilypond_token || "",
   };
+  renderError.value = null;
   loadingVariants.value = true;
   try {
     variants.value = await get(`/scanner/library/templates/${tpl.id}/variants`);
@@ -158,6 +160,7 @@ function variantImageUrl(variant) {
 async function renderMusicxml() {
   if (!editingTemplate.value) return;
   rendering.value = "musicxml";
+  renderError.value = null;
   try {
     await post(`/scanner/library/templates/${editingTemplate.value.id}/render-musicxml`, {
       code: editForm.value.musicxml_element,
@@ -165,7 +168,7 @@ async function renderMusicxml() {
     variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
     await fetchTemplates();
   } catch (e) {
-    alert(`MusicXML-Rendering fehlgeschlagen: ${e.message}`);
+    renderError.value = `MusicXML-Rendering fehlgeschlagen: ${e.message}`;
   } finally {
     rendering.value = null;
   }
@@ -174,6 +177,7 @@ async function renderMusicxml() {
 async function renderLilypond() {
   if (!editingTemplate.value) return;
   rendering.value = "lilypond";
+  renderError.value = null;
   try {
     await post(`/scanner/library/templates/${editingTemplate.value.id}/render-lilypond`, {
       code: editForm.value.lilypond_token,
@@ -181,7 +185,7 @@ async function renderLilypond() {
     variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
     await fetchTemplates();
   } catch (e) {
-    alert(`LilyPond-Rendering fehlgeschlagen: ${e.message}`);
+    renderError.value = `LilyPond-Rendering fehlgeschlagen: ${e.message}`;
   } finally {
     rendering.value = null;
   }
@@ -431,6 +435,11 @@ onMounted(fetchTemplates);
           >
             {{ rendering === "lilypond" ? "Rendere..." : "LilyPond rendern" }}
           </button>
+        </div>
+
+        <div v-if="renderError" class="render-error">
+          <span>{{ renderError }}</span>
+          <button class="render-error-close" @click="renderError = null">&times;</button>
         </div>
 
         <!-- Variants -->
@@ -758,6 +767,36 @@ onMounted(fetchTemplates);
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+.render-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-danger-light, #3a1c1c);
+  border: 1px solid var(--color-danger, #e74c3c);
+  border-radius: var(--radius);
+  color: var(--color-danger, #e74c3c);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.render-error-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.render-error-close:hover {
+  opacity: 1;
 }
 
 .lightbox {

@@ -25,7 +25,15 @@ async function request(method, path, body = null) {
   const response = await fetch(url, options);
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`API ${method} ${path} failed (${response.status}): ${text}`);
+    // Try to extract FastAPI's "detail" field for a human-readable message
+    let detail = text;
+    try {
+      const json = JSON.parse(text);
+      if (json.detail) detail = json.detail;
+    } catch {
+      // keep raw text
+    }
+    throw new Error(detail);
   }
 
   const contentType = response.headers.get("content-type");
