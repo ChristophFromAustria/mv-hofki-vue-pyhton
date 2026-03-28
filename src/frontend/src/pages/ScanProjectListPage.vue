@@ -101,6 +101,7 @@ onMounted(fetchProjects);
             <option value="">Alle</option>
             <option value="uploaded">Nur hochgeladen</option>
             <option value="review">Nur Review</option>
+            <option value="error">Nur Fehler</option>
           </select>
         </label>
         <button class="btn btn-primary" @click="startBatchAnalysis">Analyse starten</button>
@@ -137,8 +138,11 @@ onMounted(fetchProjects);
           <span v-if="p.status_processing" class="badge badge-blue" title="Wird verarbeitet">
             {{ p.status_processing }} Läuft
           </span>
+          <span v-if="p.status_error" class="badge badge-red" title="Fehler bei Analyse">
+            {{ p.status_error }} Fehler
+          </span>
           <span
-            v-if="p.scan_count && !p.status_uploaded && !p.status_processing"
+            v-if="p.scan_count && !p.status_uploaded && !p.status_processing && !p.status_error"
             class="badge badge-done"
             title="Alle analysiert"
           >
@@ -256,6 +260,11 @@ onMounted(fetchProjects);
 .badge-blue {
   color: var(--color-primary);
   background: var(--color-primary-light);
+}
+
+.badge-red {
+  color: var(--color-danger);
+  background: rgba(220, 38, 38, 0.1);
 }
 
 .badge-done {

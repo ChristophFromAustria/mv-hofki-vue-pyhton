@@ -37,6 +37,12 @@ const viewMode = ref("original");
 const analysisLogRef = ref(null);
 
 const captureMode = ref(false);
+
+const avgLineThickness = computed(() => {
+  const thicknesses = staves.value.map((s) => s.line_thickness).filter((t) => t != null);
+  if (!thicknesses.length) return null;
+  return Math.round(thicknesses.reduce((a, b) => a + b, 0) / thicknesses.length);
+});
 const captureBox = ref(null);
 const showCaptureDialog = ref(false);
 const heightEditable = ref(false);
@@ -116,6 +122,7 @@ function updateStatus() {
     processing: "Wird verarbeitet...",
     review: "Bereit zur Überprüfung",
     completed: "Abgeschlossen",
+    error: "Fehler bei der Analyse",
   };
   const label = statusLabels[scan.value.status] || scan.value.status;
   if (total > 0) {
@@ -473,7 +480,8 @@ onUnmounted(() => {
         ← Zurück
       </RouterLink>
       <span v-if="imageInfo" class="status-meta">
-        {{ imageInfo.width }}×{{ imageInfo.height }} px · {{ imageInfo.type }}
+        {{ imageInfo.width }}×{{ imageInfo.height }} px · {{ imageInfo.type
+        }}<template v-if="avgLineThickness"> · Liniendicke {{ avgLineThickness }} px</template>
       </span>
       <span v-if="imageInfo" class="status-divider">|</span>
       <span class="status-text">

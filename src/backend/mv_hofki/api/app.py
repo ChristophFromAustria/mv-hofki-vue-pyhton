@@ -40,7 +40,28 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 async def lifespan(app: FastAPI):
     async with async_session_factory() as session:
         await seed_data(session)
+        # Reset any scans stuck in "processing" from a previous crash
+        await _reset_stale_processing(session)
     yield
+
+
+async def _reset_stale_processing(session):
+    """Reset scans stuck in 'processing' to 'error' on startup."""
+    from sqlalchemy import update
+
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+
+    result = await session.execute(
+        update(SheetMusicScan)
+        .where(SheetMusicScan.status == "processing")
+        .values(status="error")
+    )
+    if result.rowcount:  # type: ignore[union-attr]
+        logging.getLogger(__name__).warning(
+            "Reset %d scan(s) from 'processing' to 'error' (stale from previous run)",
+            result.rowcount,
+        )
+        await session.commit()
 
 
 app = FastAPI(

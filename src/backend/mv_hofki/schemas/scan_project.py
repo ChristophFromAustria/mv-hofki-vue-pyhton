@@ -45,5 +45,6 @@ class ScanProjectRead(BaseModel):
     status_uploaded: int = 0
     status_review: int = 0
     status_processing: int = 0
+    status_error: int = 0
 
     model_config = {"from_attributes": True}

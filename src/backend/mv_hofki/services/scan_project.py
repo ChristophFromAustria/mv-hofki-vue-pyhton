@@ -42,6 +42,9 @@ async def get_list(
             func.sum(case((SheetMusicScan.status == "processing", 1), else_=0)).label(
                 "status_processing"
             ),
+            func.sum(case((SheetMusicScan.status == "error", 1), else_=0)).label(
+                "status_error"
+            ),
         )
         .outerjoin(ScanPart, ScanPart.project_id == ScanProject.id)
         .outerjoin(SheetMusicScan, SheetMusicScan.part_id == ScanPart.id)
@@ -63,6 +66,7 @@ async def get_list(
         project.status_uploaded = row.status_uploaded or 0
         project.status_review = row.status_review or 0
         project.status_processing = row.status_processing or 0
+        project.status_error = row.status_error or 0
         items.append(project)
 
     return items, total

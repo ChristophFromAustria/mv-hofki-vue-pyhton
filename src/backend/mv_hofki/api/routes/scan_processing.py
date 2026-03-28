@@ -57,7 +57,7 @@ async def trigger_processing(
             config_overrides=config_overrides,
         )
     except Exception:
-        scan.status = "uploaded"
+        scan.status = "error"
         await db.commit()
         raise
 
@@ -132,7 +132,6 @@ async def stream_processing(
             while True:
                 msg = await queue.get()
                 if msg is None:
-                    # Pipeline finished successfully
                     await db.refresh(scan)
                     yield (
                         f"event: done\n"
@@ -141,13 +140,16 @@ async def stream_processing(
                     break
                 if msg.startswith("__ERROR__:"):
                     error_text = msg[len("__ERROR__:") :]
-                    scan.status = "uploaded"
+                    scan.status = "error"
                     await db.commit()
                     yield f"event: error\ndata: {error_text}\n\n"
                     break
                 yield f"event: log\ndata: {msg}\n\n"
         except asyncio.CancelledError:
             task.cancel()
+            # Connection dropped — reset status so it doesn't stay stuck
+            scan.status = "error"
+            await db.commit()
             raise
 
     return StreamingResponse(
@@ -262,7 +264,7 @@ async def batch_process_stream(
                 queue.put_nowait(f"__DONE__:{_json.dumps(done_info)}")
             except Exception as exc:
                 fail_count += 1
-                scan.status = "uploaded"
+                scan.status = "error"
                 await db.commit()
                 err_info = {"scan_id": scan.id, "error": str(exc)}
                 queue.put_nowait(f"__ERROR__:{_json.dumps(err_info)}")
@@ -315,6 +317,26 @@ async def get_processing_status(scan_id: int, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=404, detail="Scan nicht gefunden")
 
     return ScanStatusRead(status=scan.status)
+
+
+@router.put("/scans/{scan_id}/reset-status")
+async def reset_scan_status(scan_id: int, db: AsyncSession = Depends(get_db)):
+    """Reset a stuck or errored scan back to 'uploaded' so it can be re-processed."""
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+
+    scan = await db.get(SheetMusicScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+
+    if scan.status not in ("processing", "error"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Status '{scan.status}' kann nicht zurückgesetzt werden",
+        )
+
+    scan.status = "uploaded"
+    await db.commit()
+    return {"status": "ok", "new_status": "uploaded"}
 
 
 @router.get("/scans/{scan_id}/staves", response_model=list[DetectedStaffRead])
