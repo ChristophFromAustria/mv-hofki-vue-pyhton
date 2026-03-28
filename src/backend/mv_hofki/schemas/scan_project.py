@@ -10,6 +10,8 @@ from pydantic import BaseModel, field_validator
 class ScanProjectCreate(BaseModel):
     name: str
     composer: str | None = None
+    category: str | None = None
+    catalog_number: int | None = None
     notes: str | None = None
 
     @field_validator("name")
@@ -23,6 +25,8 @@ class ScanProjectCreate(BaseModel):
 class ScanProjectUpdate(BaseModel):
     name: str | None = None
     composer: str | None = None
+    category: str | None = None
+    catalog_number: int | None = None
     notes: str | None = None
 
     @field_validator("name")
@@ -37,6 +41,8 @@ class ScanProjectRead(BaseModel):
     id: int
     name: str
     composer: str | None
+    category: str | None
+    catalog_number: int | None
     notes: str | None
     created_at: datetime
     updated_at: datetime

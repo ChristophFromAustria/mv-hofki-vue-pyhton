@@ -10,9 +10,12 @@ const router = useRouter();
 const projects = ref([]);
 const loading = ref(true);
 const search = ref("");
+const sortBy = ref("name");
 const showCreate = ref(false);
 const newName = ref("");
 const newComposer = ref("");
+const newCategory = ref("Marschbuch");
+const newCatalogNumber = ref(null);
 const confirmOpen = ref(false);
 const deleteTarget = ref(null);
 const showBatch = ref(false);
@@ -34,10 +37,14 @@ async function createProject() {
   const project = await post("/scanner/projects", {
     name: newName.value.trim(),
     composer: newComposer.value.trim() || null,
+    category: newCategory.value.trim() || null,
+    catalog_number: newCatalogNumber.value || null,
   });
   showCreate.value = false;
   newName.value = "";
   newComposer.value = "";
+  newCategory.value = "Marschbuch";
+  newCatalogNumber.value = null;
   router.push({ name: "scanner-project-detail", params: { id: project.id } });
 }
 
@@ -60,10 +67,20 @@ const filteredProjects = computed(() => {
     const q = search.value.trim().toLowerCase();
     list = list.filter(
       (p) =>
-        p.name.toLowerCase().includes(q) || (p.composer && p.composer.toLowerCase().includes(q)),
+        p.name.toLowerCase().includes(q) ||
+        (p.composer && p.composer.toLowerCase().includes(q)) ||
+        (p.category && p.category.toLowerCase().includes(q)) ||
+        (p.catalog_number != null && String(p.catalog_number).includes(q)),
     );
   }
-  return [...list].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  return [...list].sort((a, b) => {
+    if (sortBy.value === "catalog_number") {
+      const na = a.catalog_number ?? Infinity;
+      const nb = b.catalog_number ?? Infinity;
+      return na - nb || a.name.localeCompare(b.name, "de");
+    }
+    return a.name.localeCompare(b.name, "de");
+  });
 });
 
 async function startBatchAnalysis() {
@@ -129,13 +146,17 @@ onMounted(fetchProjects);
     </div>
 
     <template v-else>
-      <div class="search-bar">
+      <div class="list-toolbar">
         <input
           v-model="search"
           type="text"
           placeholder="Projekte durchsuchen..."
           class="search-input"
         />
+        <select v-model="sortBy" class="sort-select">
+          <option value="name">A-Z</option>
+          <option value="catalog_number">Nr.</option>
+        </select>
       </div>
 
       <div class="project-list">
@@ -146,8 +167,17 @@ onMounted(fetchProjects);
           class="project-card"
         >
           <div class="project-info">
-            <strong>{{ p.name }}</strong>
-            <span v-if="p.composer" class="composer">{{ p.composer }}</span>
+            <strong>
+              <span v-if="p.catalog_number != null" class="catalog-nr"
+                >{{ p.catalog_number }}.</span
+              >
+              {{ p.name }}
+            </strong>
+            <span class="project-meta">
+              <span v-if="p.composer">{{ p.composer }}</span>
+              <span v-if="p.composer && p.category" class="meta-sep">&middot;</span>
+              <span v-if="p.category" class="category-tag">{{ p.category }}</span>
+            </span>
           </div>
           <div class="project-stats">
             <span class="stat" title="Stimmen">{{ p.part_count }} Stimmen</span>
@@ -192,6 +222,14 @@ onMounted(fetchProjects);
           Komponist (optional)
           <input v-model="newComposer" type="text" placeholder="z.B. J. Brunner" />
         </label>
+        <label>
+          Kategorie
+          <input v-model="newCategory" type="text" placeholder="z.B. Marschbuch" />
+        </label>
+        <label>
+          Nr. im Inhaltsverzeichnis (optional)
+          <input v-model.number="newCatalogNumber" type="number" min="1" placeholder="z.B. 14" />
+        </label>
         <div class="modal-actions">
           <button class="btn" @click="showCreate = false">Abbrechen</button>
           <button class="btn btn-primary" :disabled="!newName.trim()" @click="createProject">
@@ -227,12 +265,14 @@ onMounted(fetchProjects);
   gap: 0.75rem;
 }
 
-.search-bar {
+.list-toolbar {
+  display: flex;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
 .search-input {
-  width: 100%;
+  flex: 1;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -244,6 +284,17 @@ onMounted(fetchProjects);
 
 .search-input::placeholder {
   color: var(--color-muted);
+}
+
+.sort-select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  min-width: 70px;
 }
 
 .project-card {
@@ -268,9 +319,30 @@ onMounted(fetchProjects);
   min-width: 0;
 }
 
-.composer {
+.catalog-nr {
   color: var(--color-muted);
-  font-size: 0.9rem;
+  font-weight: 400;
+  margin-right: 0.15rem;
+}
+
+.project-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.meta-sep {
+  color: var(--color-border);
+}
+
+.category-tag {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius);
+  background: var(--color-bg-soft);
+  color: var(--color-muted);
 }
 
 .project-stats {
