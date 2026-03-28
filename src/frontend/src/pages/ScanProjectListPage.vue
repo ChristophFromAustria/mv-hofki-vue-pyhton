@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { get, post, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
@@ -9,6 +9,7 @@ import BatchAnalysisModal from "../components/BatchAnalysisModal.vue";
 const router = useRouter();
 const projects = ref([]);
 const loading = ref(true);
+const search = ref("");
 const showCreate = ref(false);
 const newName = ref("");
 const newComposer = ref("");
@@ -52,6 +53,18 @@ async function deleteProject() {
   confirmOpen.value = false;
   await fetchProjects();
 }
+
+const filteredProjects = computed(() => {
+  let list = projects.value;
+  if (search.value.trim()) {
+    const q = search.value.trim().toLowerCase();
+    list = list.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) || (p.composer && p.composer.toLowerCase().includes(q)),
+    );
+  }
+  return [...list].sort((a, b) => a.name.localeCompare(b.name, "de"));
+});
 
 async function startBatchAnalysis() {
   showBatch.value = true;
@@ -115,43 +128,57 @@ onMounted(fetchProjects);
       <button class="btn btn-primary" @click="showCreate = true">Erstes Projekt erstellen</button>
     </div>
 
-    <div v-else class="project-list">
-      <RouterLink
-        v-for="p in projects"
-        :key="p.id"
-        :to="{ name: 'scanner-project-detail', params: { id: p.id } }"
-        class="project-card"
-      >
-        <div class="project-info">
-          <strong>{{ p.name }}</strong>
-          <span v-if="p.composer" class="composer">{{ p.composer }}</span>
-        </div>
-        <div class="project-stats">
-          <span class="stat" title="Stimmen">{{ p.part_count }} Stimmen</span>
-          <span class="stat" title="Notenblätter">{{ p.scan_count }} Scans</span>
-          <span v-if="p.status_review" class="badge badge-green" title="Bereit zur Überprüfung">
-            {{ p.status_review }} Review
-          </span>
-          <span v-if="p.status_uploaded" class="badge badge-gray" title="Noch nicht analysiert">
-            {{ p.status_uploaded }} Offen
-          </span>
-          <span v-if="p.status_processing" class="badge badge-blue" title="Wird verarbeitet">
-            {{ p.status_processing }} Läuft
-          </span>
-          <span v-if="p.status_error" class="badge badge-red" title="Fehler bei Analyse">
-            {{ p.status_error }} Fehler
-          </span>
-          <span
-            v-if="p.scan_count && !p.status_uploaded && !p.status_processing && !p.status_error"
-            class="badge badge-done"
-            title="Alle analysiert"
-          >
-            Fertig
-          </span>
-        </div>
-        <button class="btn btn-danger btn-sm" @click.prevent="confirmDelete(p)">Löschen</button>
-      </RouterLink>
-    </div>
+    <template v-else>
+      <div class="search-bar">
+        <input
+          v-model="search"
+          type="text"
+          placeholder="Projekte durchsuchen..."
+          class="search-input"
+        />
+      </div>
+
+      <div class="project-list">
+        <RouterLink
+          v-for="p in filteredProjects"
+          :key="p.id"
+          :to="{ name: 'scanner-project-detail', params: { id: p.id } }"
+          class="project-card"
+        >
+          <div class="project-info">
+            <strong>{{ p.name }}</strong>
+            <span v-if="p.composer" class="composer">{{ p.composer }}</span>
+          </div>
+          <div class="project-stats">
+            <span class="stat" title="Stimmen">{{ p.part_count }} Stimmen</span>
+            <span class="stat" title="Notenblätter">{{ p.scan_count }} Scans</span>
+            <span v-if="p.status_review" class="badge badge-green" title="Bereit zur Überprüfung">
+              {{ p.status_review }} Review
+            </span>
+            <span v-if="p.status_uploaded" class="badge badge-gray" title="Noch nicht analysiert">
+              {{ p.status_uploaded }} Offen
+            </span>
+            <span v-if="p.status_processing" class="badge badge-blue" title="Wird verarbeitet">
+              {{ p.status_processing }} Läuft
+            </span>
+            <span v-if="p.status_error" class="badge badge-red" title="Fehler bei Analyse">
+              {{ p.status_error }} Fehler
+            </span>
+            <span
+              v-if="p.scan_count && !p.status_uploaded && !p.status_processing && !p.status_error"
+              class="badge badge-done"
+              title="Alle analysiert"
+            >
+              Fertig
+            </span>
+          </div>
+          <div class="project-actions">
+            <button class="btn btn-danger btn-sm" @click.prevent="confirmDelete(p)">Löschen</button>
+          </div>
+        </RouterLink>
+        <p v-if="filteredProjects.length === 0" class="no-results">Keine Projekte gefunden.</p>
+      </div>
+    </template>
 
     <!-- Create dialog -->
     <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false">
@@ -200,10 +227,30 @@ onMounted(fetchProjects);
   gap: 0.75rem;
 }
 
+.search-bar {
+  margin-bottom: 1rem;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.search-input::placeholder {
+  color: var(--color-muted);
+}
+
 .project-card {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
+  gap: 1rem;
   padding: 1rem 1.25rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -218,6 +265,7 @@ onMounted(fetchProjects);
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .composer {
@@ -228,8 +276,20 @@ onMounted(fetchProjects);
 .project-stats {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.project-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.no-results {
+  text-align: center;
+  color: var(--color-muted);
+  padding: 1.5rem;
 }
 
 .stat {
