@@ -294,7 +294,7 @@ onMounted(fetchProjects);
   color: var(--color-text);
   font-family: inherit;
   font-size: 0.85rem;
-  min-width: 70px;
+  width: 5rem;
 }
 
 .project-card {
