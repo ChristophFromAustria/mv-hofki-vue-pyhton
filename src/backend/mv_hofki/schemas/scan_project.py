@@ -42,6 +42,8 @@ class ScanProjectRead(BaseModel):
     updated_at: datetime
     part_count: int = 0
     scan_count: int = 0
-    completed_count: int = 0
+    status_uploaded: int = 0
+    status_review: int = 0
+    status_processing: int = 0
 
     model_config = {"from_attributes": True}

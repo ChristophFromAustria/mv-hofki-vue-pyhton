@@ -125,6 +125,26 @@ onMounted(fetchProjects);
           <strong>{{ p.name }}</strong>
           <span v-if="p.composer" class="composer">{{ p.composer }}</span>
         </div>
+        <div class="project-stats">
+          <span class="stat" title="Stimmen">{{ p.part_count }} Stimmen</span>
+          <span class="stat" title="Notenblätter">{{ p.scan_count }} Scans</span>
+          <span v-if="p.status_review" class="badge badge-green" title="Bereit zur Überprüfung">
+            {{ p.status_review }} Review
+          </span>
+          <span v-if="p.status_uploaded" class="badge badge-gray" title="Noch nicht analysiert">
+            {{ p.status_uploaded }} Offen
+          </span>
+          <span v-if="p.status_processing" class="badge badge-blue" title="Wird verarbeitet">
+            {{ p.status_processing }} Läuft
+          </span>
+          <span
+            v-if="p.scan_count && !p.status_uploaded && !p.status_processing"
+            class="badge badge-done"
+            title="Alle analysiert"
+          >
+            Fertig
+          </span>
+        </div>
         <button class="btn btn-danger btn-sm" @click.prevent="confirmDelete(p)">Löschen</button>
       </RouterLink>
     </div>
@@ -199,6 +219,48 @@ onMounted(fetchProjects);
 .composer {
   color: var(--color-muted);
   font-size: 0.9rem;
+}
+
+.project-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stat {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+.badge-green {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+}
+
+.badge-gray {
+  color: var(--color-muted);
+  background: var(--color-bg-soft);
+}
+
+.badge-blue {
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.badge-done {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
 }
 
 .empty-state {

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.models.scan_part import ScanPart
 from mv_hofki.models.scan_project import ScanProject
+from mv_hofki.models.sheet_music_scan import SheetMusicScan
 from mv_hofki.schemas.scan_project import ScanProjectCreate, ScanProjectUpdate
 
 
@@ -16,20 +18,54 @@ async def get_list(
     limit: int = 50,
     offset: int = 0,
     search: str | None = None,
-) -> tuple[list[ScanProject], int]:
-    query = select(ScanProject)
+) -> tuple[list, int]:
     count_query = select(func.count()).select_from(ScanProject)
 
     if search:
         pattern = f"%{search}%"
-        search_filter = ScanProject.name.ilike(pattern)
-        query = query.where(search_filter)
-        count_query = count_query.where(search_filter)
+        count_query = count_query.where(ScanProject.name.ilike(pattern))
 
     total = (await session.execute(count_query)).scalar_one()
+
+    # Build query with aggregated stats
+    query = (
+        select(
+            ScanProject,
+            func.count(func.distinct(ScanPart.id)).label("part_count"),
+            func.count(SheetMusicScan.id).label("scan_count"),
+            func.sum(case((SheetMusicScan.status == "uploaded", 1), else_=0)).label(
+                "status_uploaded"
+            ),
+            func.sum(case((SheetMusicScan.status == "review", 1), else_=0)).label(
+                "status_review"
+            ),
+            func.sum(case((SheetMusicScan.status == "processing", 1), else_=0)).label(
+                "status_processing"
+            ),
+        )
+        .outerjoin(ScanPart, ScanPart.project_id == ScanProject.id)
+        .outerjoin(SheetMusicScan, SheetMusicScan.part_id == ScanPart.id)
+        .group_by(ScanProject.id)
+    )
+
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(ScanProject.name.ilike(pattern))
+
     query = query.order_by(ScanProject.updated_at.desc()).limit(limit).offset(offset)
-    result = await session.execute(query)
-    return list(result.scalars().all()), total
+    rows = (await session.execute(query)).all()
+
+    items = []
+    for row in rows:
+        project = row[0]
+        project.part_count = row.part_count or 0
+        project.scan_count = row.scan_count or 0
+        project.status_uploaded = row.status_uploaded or 0
+        project.status_review = row.status_review or 0
+        project.status_processing = row.status_processing or 0
+        items.append(project)
+
+    return items, total
 
 
 async def get_by_id(session: AsyncSession, project_id: int) -> ScanProject:
