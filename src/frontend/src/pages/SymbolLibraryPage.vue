@@ -152,9 +152,10 @@ async function deleteVariant() {
   variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
 }
 
+const _cacheBust = Date.now();
 function variantImageUrl(variant) {
   const relative = variant.image_path.replace(/^data\/symbol_library\//, "");
-  return `${BASE}/symbol-library/${relative}`;
+  return `${BASE}/symbol-library/${relative}?v=${_cacheBust}`;
 }
 
 async function renderMusicxml() {
