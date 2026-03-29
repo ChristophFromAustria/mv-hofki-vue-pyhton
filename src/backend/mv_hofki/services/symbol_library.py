@@ -10,10 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.core.config import settings
-from mv_hofki.models.sheet_music_scan import SheetMusicScan
 from mv_hofki.models.symbol_template import SymbolTemplate
 from mv_hofki.models.symbol_variant import SymbolVariant
 from mv_hofki.schemas.symbol_template import SymbolTemplateCreate, SymbolTemplateUpdate
+from mv_hofki.services.notation_renderer import _trim_whitespace
 
 
 async def get_templates(
@@ -135,6 +135,33 @@ async def crop_variant(
     cv2.imwrite(str(file_path), cropped)
 
 
+async def find_or_create_template(
+    session: AsyncSession,
+    *,
+    name: str,
+    category: str,
+    musicxml_element: str | None = None,
+) -> SymbolTemplate:
+    """Find an existing template by name, or create a new one."""
+    existing = await session.execute(
+        select(SymbolTemplate).where(SymbolTemplate.name == name)
+    )
+    found = existing.scalar_one_or_none()
+    if found is not None:
+        return found
+
+    template = SymbolTemplate(
+        category=category,
+        name=name,
+        display_name=name,
+        musicxml_element=musicxml_element,
+        is_seed=False,
+    )
+    session.add(template)
+    await session.flush()
+    return template
+
+
 async def save_rendered_variant(
     session: AsyncSession,
     template_id: int,
@@ -152,6 +179,9 @@ async def save_rendered_variant(
             detail="source_line_spacing ist erforderlich und muss > 5 sein",
         )
 
+    # Auto-crop whitespace from the template image
+    png_data = _trim_whitespace(png_data)
+
     template = await get_template_by_id(session, template_id)
     variant_dir = settings.PROJECT_ROOT / "data" / "symbol_library" / str(template_id)
     variant_dir.mkdir(parents=True, exist_ok=True)
@@ -164,117 +194,6 @@ async def save_rendered_variant(
         template_id=template_id,
         image_path=str(variant_path.relative_to(settings.PROJECT_ROOT)),
         source=source,
-        height_in_lines=height_in_lines,
-        source_line_spacing=source_line_spacing,
-    )
-    session.add(variant)
-    await session.commit()
-    await session.refresh(template)
-    return template
-
-
-async def capture_template(
-    session: AsyncSession,
-    *,
-    scan_id: int,
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-    template_id: int | None = None,
-    name: str | None = None,
-    category: str,
-    musicxml_element: str | None,
-    height_in_lines: float,
-) -> SymbolTemplate:
-    """Capture a template from a scan region."""
-    import json
-    import uuid
-
-    scan = await session.get(SheetMusicScan, scan_id)
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
-
-    # Load the scan image
-    img_path = settings.PROJECT_ROOT / scan.image_path
-    img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        raise HTTPException(status_code=400, detail="Bild konnte nicht geladen werden")
-
-    # Apply threshold if stored in adjustments
-    adjustments = json.loads(scan.adjustments_json) if scan.adjustments_json else {}
-    threshold_val = adjustments.get("threshold")
-    if threshold_val is not None:
-        _, img = cv2.threshold(img, int(threshold_val), 255, cv2.THRESH_BINARY)
-
-    # Crop the region
-    crop = img[y : y + height, x : x + width]
-    if crop.size == 0:
-        raise HTTPException(status_code=400, detail="Ungültiger Ausschnitt")
-
-    # Determine source_line_spacing from the scan's detected staves
-    from mv_hofki.models.detected_staff import DetectedStaff
-
-    staves_result = await session.execute(
-        select(DetectedStaff)
-        .where(DetectedStaff.scan_id == scan_id)
-        .order_by(DetectedStaff.staff_index)
-    )
-    staves = list(staves_result.scalars().all())
-    # Find the staff that contains the capture center
-    capture_center_y = y + height // 2
-    source_line_spacing = 0.0
-    for staff in staves:
-        if staff.y_top <= capture_center_y <= staff.y_bottom:
-            source_line_spacing = staff.line_spacing
-            break
-    if source_line_spacing <= 0 and staves:
-        # Fallback to first staff's spacing
-        source_line_spacing = staves[0].line_spacing
-
-    if source_line_spacing <= 5:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "source_line_spacing konnte nicht ermittelt werden oder ist zu "
-                f"niedrig ({source_line_spacing:.1f}). Mindestens 5 px erforderlich."
-            ),
-        )
-
-    # Find existing template or create new one
-    template: SymbolTemplate
-    if template_id is not None:
-        template = await get_template_by_id(session, template_id)
-    else:
-        existing = await session.execute(
-            select(SymbolTemplate).where(SymbolTemplate.name == name)
-        )
-        found = existing.scalar_one_or_none()
-        if found is not None:
-            template = found
-        else:
-            template = SymbolTemplate(
-                category=category,
-                name=name,
-                display_name=name,
-                musicxml_element=musicxml_element,
-                is_seed=False,
-            )
-            session.add(template)
-            await session.flush()
-
-    # Save variant image
-    variant_dir = settings.PROJECT_ROOT / "data" / "symbol_library" / str(template.id)
-    variant_dir.mkdir(parents=True, exist_ok=True)
-
-    variant_filename = f"{uuid.uuid4().hex}.png"
-    variant_path = variant_dir / variant_filename
-    cv2.imwrite(str(variant_path), crop)
-
-    variant = SymbolVariant(
-        template_id=template.id,
-        image_path=str(variant_path.relative_to(settings.PROJECT_ROOT)),
-        source="user_capture",
         height_in_lines=height_in_lines,
         source_line_spacing=source_line_spacing,
     )

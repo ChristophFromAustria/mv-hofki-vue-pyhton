@@ -12,7 +12,6 @@ from mv_hofki.schemas.symbol_template import (
     SymbolTemplateCreate,
     SymbolTemplateRead,
     SymbolTemplateUpdate,
-    TemplateCaptureRequest,
     VariantCropRequest,
 )
 from mv_hofki.schemas.symbol_variant import SymbolVariantRead
@@ -99,39 +98,61 @@ async def upload_variant(
     template_id: int,
     file: UploadFile,
     source_line_spacing: float = Form(...),
+    source: str = Form("cropped"),
+    height_in_lines: float | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload an image file as a new variant for the given template."""
+    from fastapi import HTTPException
+
     content = await file.read()
     if not content:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=400, detail="Leere Datei")
     return await lib_service.save_rendered_variant(
         db,
         template_id,
         content,
-        source="cropped",
+        source=source,
+        height_in_lines=height_in_lines,
         source_line_spacing=source_line_spacing,
     )
 
 
-@router.post("/templates/capture", response_model=SymbolTemplateRead, status_code=201)
-async def capture_template(
-    data: TemplateCaptureRequest, db: AsyncSession = Depends(get_db)
+@router.post(
+    "/templates/upload-new",
+    response_model=SymbolTemplateRead,
+    status_code=201,
+)
+async def upload_variant_new_template(
+    file: UploadFile,
+    source_line_spacing: float = Form(...),
+    name: str = Form(...),
+    category: str = Form(...),
+    source: str = Form("user_capture"),
+    height_in_lines: float | None = Form(None),
+    musicxml_element: str | None = Form(None),
+    db: AsyncSession = Depends(get_db),
 ):
-    return await lib_service.capture_template(
+    """Upload an image as the first variant of a new template (created inline)."""
+    from fastapi import HTTPException
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Leere Datei")
+
+    template = await lib_service.find_or_create_template(
         db,
-        scan_id=data.scan_id,
-        x=data.x,
-        y=data.y,
-        width=data.width,
-        height=data.height,
-        template_id=data.template_id,
-        name=data.name,
-        category=data.category,
-        musicxml_element=data.musicxml_element,
-        height_in_lines=data.height_in_lines,
+        name=name,
+        category=category,
+        musicxml_element=musicxml_element,
+    )
+    return await lib_service.save_rendered_variant(
+        db,
+        template.id,
+        content,
+        source=source,
+        height_in_lines=height_in_lines,
+        source_line_spacing=source_line_spacing,
     )
 
 
