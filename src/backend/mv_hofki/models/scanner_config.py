@@ -41,6 +41,12 @@ class ScannerConfig(Base):
     staff_removal_before_matching: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    staff_removal_thickness_pct: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=100
+    )
+    staff_removal_symbol_padding: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
 
     # Masked template matching
     masked_matching_enabled: Mapped[bool] = mapped_column(

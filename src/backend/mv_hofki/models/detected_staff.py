@@ -26,6 +26,7 @@ class DetectedStaff(Base):
     y_bottom: Mapped[int] = mapped_column(Integer, nullable=False)
     line_positions_json: Mapped[str] = mapped_column(Text, nullable=False)
     line_spacing: Mapped[float] = mapped_column(Float, nullable=False)
+    line_thickness: Mapped[int | None] = mapped_column(Integer)
     clef: Mapped[str | None] = mapped_column(String(20))
     key_signature: Mapped[str | None] = mapped_column(String(50))
     time_signature: Mapped[str | None] = mapped_column(String(20))

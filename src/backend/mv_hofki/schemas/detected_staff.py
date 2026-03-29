@@ -13,6 +13,7 @@ class DetectedStaffRead(BaseModel):
     y_bottom: int
     line_positions_json: str
     line_spacing: float
+    line_thickness: int | None
     clef: str | None
     key_signature: str | None
     time_signature: str | None

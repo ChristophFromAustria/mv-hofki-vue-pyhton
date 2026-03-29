@@ -17,6 +17,8 @@ class ScannerConfigRead(BaseModel):
     canny_low: int
     canny_high: int
     staff_removal_before_matching: bool
+    staff_removal_thickness_pct: int
+    staff_removal_symbol_padding: int
     masked_matching_enabled: bool
     mask_threshold: int
     nms_iou_threshold: float
@@ -49,6 +51,8 @@ class ScannerConfigUpdate(BaseModel):
     canny_low: int | None = Field(None, ge=0, le=500)
     canny_high: int | None = Field(None, ge=0, le=500)
     staff_removal_before_matching: bool | None = None
+    staff_removal_thickness_pct: int | None = Field(None, ge=50, le=300)
+    staff_removal_symbol_padding: int | None = Field(None, ge=0, le=50)
     masked_matching_enabled: bool | None = None
     mask_threshold: int | None = Field(None, ge=0, le=255)
     nms_iou_threshold: float | None = Field(None, ge=0.0, le=1.0)

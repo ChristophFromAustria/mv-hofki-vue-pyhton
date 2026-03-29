@@ -251,6 +251,7 @@ async def run_pipeline(
             y_bottom=staff_data.y_bottom,
             line_positions_json=json.dumps(staff_data.line_positions),
             line_spacing=staff_data.line_spacing,
+            line_thickness=staff_data.line_thickness,
             clef=staff_data.clef,
             key_signature=staff_data.key_signature,
             time_signature=staff_data.time_signature,

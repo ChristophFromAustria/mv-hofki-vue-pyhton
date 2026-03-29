@@ -97,6 +97,24 @@ export const SCANNER_CONFIG_FIELDS = [
     group: "Notenlinien-Entfernung",
     type: "toggle",
   },
+  {
+    key: "staff_removal_thickness_pct",
+    label: "Liniendicke-Korrektur (%)",
+    group: "Notenlinien-Entfernung",
+    type: "number",
+    min: 50,
+    max: 300,
+    step: 10,
+  },
+  {
+    key: "staff_removal_symbol_padding",
+    label: "Symbol-Abstand (px)",
+    group: "Notenlinien-Entfernung",
+    type: "number",
+    min: 0,
+    max: 50,
+    step: 1,
+  },
 
   // ── Dewarp (bent staff lines) ────────────────────────────────────────
   {
