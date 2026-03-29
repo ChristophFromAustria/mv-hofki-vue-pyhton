@@ -1,7 +1,11 @@
 <script setup>
 import { ref, watch } from "vue";
 
-const emit = defineEmits(["adjust", "analyze"]);
+defineProps({
+  zoomLevel: { type: Number, default: 1.0 },
+});
+
+const emit = defineEmits(["adjust", "analyze", "zoom-in", "zoom-out"]);
 
 const brightness = ref(0);
 const contrast = ref(1.0);
@@ -85,6 +89,19 @@ watch([brightness, contrast, threshold], emitAdjust);
       </div>
     </div>
 
+    <div class="adjust-group adjust-zoom">
+      <label class="adjust-label">Zoom</label>
+      <div class="rotate-btns">
+        <button class="btn btn-sm btn-secondary" title="Verkleinern" @click="emit('zoom-out')">
+          −
+        </button>
+        <span class="adjust-value">{{ Math.round(zoomLevel * 100) }}%</span>
+        <button class="btn btn-sm btn-secondary" title="Vergrößern" @click="emit('zoom-in')">
+          +
+        </button>
+      </div>
+    </div>
+
     <div class="adjust-spacer"></div>
 
     <button class="btn btn-primary" @click="emit('analyze')">Analyse starten</button>
@@ -126,7 +143,8 @@ watch([brightness, contrast, threshold], emitAdjust);
   accent-color: var(--color-primary);
 }
 
-.adjust-rotate {
+.adjust-rotate,
+.adjust-zoom {
   min-width: auto;
 }
 

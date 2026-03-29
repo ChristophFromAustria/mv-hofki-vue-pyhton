@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { RouterLink } from "vue-router";
-import { get, post, put } from "../lib/api.js";
+import { get, put } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ImageAdjustBar from "../components/ImageAdjustBar.vue";
 import ScanCanvas from "../components/ScanCanvas.vue";
@@ -37,6 +37,8 @@ const viewMode = ref("original");
 const analysisLogRef = ref(null);
 
 const captureMode = ref(false);
+const scanCanvasRef = ref(null);
+const panelCollapsed = ref(false);
 
 const avgLineThickness = computed(() => {
   const thicknesses = staves.value.map((s) => s.line_thickness).filter((t) => t != null);
@@ -185,6 +187,16 @@ function onAdjust(adj) {
   adjustments.value = adj;
 }
 
+const currentZoom = computed(() => scanCanvasRef.value?.zoom ?? 1.0);
+
+function onZoomIn() {
+  scanCanvasRef.value?.zoomIn();
+}
+
+function onZoomOut() {
+  scanCanvasRef.value?.zoomOut();
+}
+
 function onCaptureBox(box) {
   captureBox.value = box;
   heightEditable.value = false;
@@ -212,25 +224,65 @@ function onTemplateSelect() {
 }
 
 async function saveCapturedTemplate() {
-  if (!captureBox.value) return;
+  if (!captureBox.value || !scanCanvasRef.value) return;
   const isNew = captureForm.value.template_id === null;
   if (isNew && !captureForm.value.name.trim()) return;
 
-  const payload = {
-    scan_id: parseInt(props.scanId),
-    ...captureBox.value,
-    category: captureForm.value.category,
-    musicxml_element: captureForm.value.musicxml_element || null,
-    height_in_lines: captureForm.value.height_in_lines,
-  };
+  const box = captureBox.value;
 
-  if (isNew) {
-    payload.name = captureForm.value.name.trim();
-  } else {
-    payload.template_id = captureForm.value.template_id;
+  // Determine source_line_spacing from staves data
+  const captureCenter = box.y + box.height / 2;
+  let sourceLineSpacing = 0;
+  for (const staff of staves.value) {
+    if (staff.y_top <= captureCenter && captureCenter <= staff.y_bottom) {
+      sourceLineSpacing = staff.line_spacing;
+      break;
+    }
+  }
+  if (sourceLineSpacing <= 0 && staves.value.length > 0) {
+    sourceLineSpacing = staves.value[0].line_spacing;
+  }
+  if (sourceLineSpacing <= 5) {
+    alert("Linienabstand konnte nicht ermittelt werden oder ist zu niedrig.");
+    return;
   }
 
-  await post("/scanner/library/templates/capture", payload);
+  // Crop from the already-rendered canvas (threshold already applied)
+  let blob;
+  try {
+    blob = await scanCanvasRef.value.cropRegion(box);
+  } catch (e) {
+    alert(`Ausschnitt fehlgeschlagen: ${e.message}`);
+    return;
+  }
+
+  // Build FormData and upload
+  const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
+  const formData = new FormData();
+  formData.append("file", blob, "captured.png");
+  formData.append("source_line_spacing", String(sourceLineSpacing));
+  formData.append("source", "user_capture");
+  formData.append("height_in_lines", String(captureForm.value.height_in_lines));
+
+  let url;
+  if (isNew) {
+    url = `${BASE}/api/v1/scanner/library/templates/upload-new`;
+    formData.append("name", captureForm.value.name.trim());
+    formData.append("category", captureForm.value.category);
+    if (captureForm.value.musicxml_element) {
+      formData.append("musicxml_element", captureForm.value.musicxml_element);
+    }
+  } else {
+    url = `${BASE}/api/v1/scanner/library/templates/${captureForm.value.template_id}/variants/upload`;
+  }
+
+  const resp = await fetch(url, { method: "POST", body: formData });
+  if (!resp.ok) {
+    const text = await resp.text();
+    alert(`Fehler beim Speichern: ${text}`);
+    return;
+  }
+
   showCaptureDialog.value = false;
   captureMode.value = false;
   captureForm.value = {
@@ -362,7 +414,13 @@ onUnmounted(() => {
 <template>
   <div class="editor-layout">
     <!-- Top toolbar -->
-    <ImageAdjustBar @adjust="onAdjust" @analyze="startAnalysis" />
+    <ImageAdjustBar
+      :zoom-level="currentZoom"
+      @adjust="onAdjust"
+      @analyze="startAnalysis"
+      @zoom-in="onZoomIn"
+      @zoom-out="onZoomOut"
+    />
 
     <!-- Main area -->
     <div class="editor-main">
@@ -379,6 +437,16 @@ onUnmounted(() => {
         <!-- Canvas area -->
         <div class="canvas-area">
           <div class="toolbar-extras">
+            <RouterLink
+              :to="{ name: 'scanner-project-detail', params: { id: projectId } }"
+              class="btn btn-sm"
+            >
+              ← Zurück
+            </RouterLink>
+            <RouterLink :to="{ name: 'symbol-library' }" class="btn btn-sm">
+              Bibliothek
+            </RouterLink>
+            <span class="toolbar-separator"></span>
             <button
               class="btn btn-sm"
               :class="{ 'btn-active': showStaves }"
@@ -442,6 +510,7 @@ onUnmounted(() => {
             </button>
           </div>
           <ScanCanvas
+            ref="scanCanvasRef"
             :image-path="scan?.image_path ?? null"
             :corrected-image-path="scan?.corrected_image_path ?? null"
             :processed-image-path="scan?.processed_image_path ?? null"
@@ -459,7 +528,31 @@ onUnmounted(() => {
         </div>
 
         <!-- Right panel -->
-        <div class="panel-area">
+        <button
+          class="panel-toggle"
+          :title="panelCollapsed ? 'Panel einblenden' : 'Panel ausblenden'"
+          @click="panelCollapsed = !panelCollapsed"
+        >
+          {{ panelCollapsed ? "◀" : "▶" }}
+        </button>
+        <div v-if="!panelCollapsed" class="panel-area">
+          <div class="scan-info">
+            <h3 class="scan-info-title">Scan-Informationen</h3>
+            <div class="scan-info-grid">
+              <span class="scan-info-label">Auflösung</span>
+              <span class="scan-info-value">{{
+                imageInfo ? `${imageInfo.width} × ${imageInfo.height}` : "–"
+              }}</span>
+              <span class="scan-info-label">Linienstärke</span>
+              <span class="scan-info-value">{{
+                avgLineThickness != null ? `${avgLineThickness} px` : "–"
+              }}</span>
+              <span class="scan-info-label">Systeme</span>
+              <span class="scan-info-value">{{ staves.length }}</span>
+              <span class="scan-info-label">Symbole</span>
+              <span class="scan-info-value">{{ symbols.length }}</span>
+            </div>
+          </div>
           <SymbolPanel
             :symbol="selectedSymbol"
             :templates="libraryTemplates"
@@ -781,10 +874,64 @@ onUnmounted(() => {
 
 .toolbar-extras {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   background: var(--color-bg-soft);
   border-bottom: 1px solid var(--color-border);
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 1.2rem;
+  background: var(--color-border);
+}
+
+.panel-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+  color: var(--color-muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+.panel-toggle:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.scan-info {
+  padding: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.scan-info-title {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.scan-info-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.scan-info-label {
+  color: var(--color-muted);
+}
+
+.scan-info-value {
+  font-weight: 500;
+  font-family: var(--font-mono);
 }
 
 .btn-active {

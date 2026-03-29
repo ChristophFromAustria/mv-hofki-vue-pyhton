@@ -64,8 +64,26 @@ function onWheel(e) {
 }
 
 // Threshold preview via canvas
+const wrapEl = ref(null);
 const previewCanvas = ref(null);
 const imgData = ref(null); // cached original ImageData
+
+function fitZoomToContainer(imgW, imgH) {
+  const el = wrapEl.value;
+  if (!el || !imgW || !imgH) return;
+  const availW = el.clientWidth;
+  const availH = el.clientHeight;
+  const scaleW = availW / imgW;
+  const scaleH = availH / imgH;
+  const fitScale = Math.min(scaleW, scaleH);
+  // Pick the largest ZOOM_STEPS entry that still fits, or fall back to the smallest
+  let best = ZOOM_STEPS[0];
+  for (const step of ZOOM_STEPS) {
+    if (step <= fitScale) best = step;
+    else break;
+  }
+  zoom.value = best;
+}
 
 function loadImage() {
   if (!activeImageUrl.value) return;
@@ -74,6 +92,7 @@ function loadImage() {
   img.onload = () => {
     naturalWidth.value = img.naturalWidth;
     naturalHeight.value = img.naturalHeight;
+    fitZoomToContainer(img.naturalWidth, img.naturalHeight);
     const canvas = previewCanvas.value;
     if (!canvas) return;
     canvas.width = img.naturalWidth;
@@ -284,10 +303,34 @@ watch(
     }
   },
 );
+
+/**
+ * Crop a region from the current canvas (with threshold already applied)
+ * and return it as a PNG Blob.
+ */
+function cropRegion(box) {
+  const canvas = previewCanvas.value;
+  if (!canvas) return Promise.reject(new Error("Canvas nicht verfügbar"));
+
+  const tmp = document.createElement("canvas");
+  tmp.width = box.width;
+  tmp.height = box.height;
+  const ctx = tmp.getContext("2d");
+  ctx.drawImage(canvas, box.x, box.y, box.width, box.height, 0, 0, box.width, box.height);
+
+  return new Promise((resolve, reject) => {
+    tmp.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("Canvas export fehlgeschlagen"))),
+      "image/png",
+    );
+  });
+}
+
+defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
 </script>
 
 <template>
-  <div class="canvas-wrap" @wheel="onWheel">
+  <div ref="wrapEl" class="canvas-wrap" @wheel="onWheel">
     <div v-if="!imagePath" class="no-image">
       <p>Kein Bild vorhanden</p>
     </div>
