@@ -30,6 +30,8 @@ class DetectedSymbolRead(BaseModel):
     matched_symbol: SymbolTemplateRead | None = None
     corrected_symbol: SymbolTemplateRead | None = None
     alternatives: list[AlternativeMatch] = []
+    filtered: bool = False
+    filter_reason: str | None = None
 
     model_config = {"from_attributes": True}
 
