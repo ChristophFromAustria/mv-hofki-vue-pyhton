@@ -6,6 +6,7 @@ import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ImageAdjustBar from "../components/ImageAdjustBar.vue";
 import ScanCanvas from "../components/ScanCanvas.vue";
 import SymbolPanel from "../components/SymbolPanel.vue";
+import FilterDropdown from "../components/FilterDropdown.vue";
 import ScannerConfigModal from "../components/ScannerConfigModal.vue";
 import AnalysisLogModal from "../components/AnalysisLogModal.vue";
 
@@ -24,7 +25,8 @@ const statusMessage = ref("");
 
 const adjustments = ref({ brightness: 0, contrast: 1.0, rotation: 0, threshold: 128 });
 const showStaves = ref(true);
-const showSymbols = ref(true);
+const hideFiltered = ref(true);
+const hiddenCategories = ref(new Set());
 const selectedSymbol = ref(null);
 const showCorrectPicker = ref(false);
 const libraryTemplates = ref([]);
@@ -128,7 +130,9 @@ function updateStatus() {
   };
   const label = statusLabels[scan.value.status] || scan.value.status;
   if (total > 0) {
-    statusMessage.value = `${label} · ${verified} / ${total} Symbole verifiziert`;
+    const visible = filteredSymbols.value.length;
+    const visibleInfo = visible < total ? ` · ${visible} / ${total} sichtbar` : "";
+    statusMessage.value = `${label} · ${verified} / ${total} verifiziert${visibleInfo}`;
   } else {
     statusMessage.value = label;
   }
@@ -379,6 +383,15 @@ async function fetchLibraryIfNeeded() {
   }
 }
 
+const filteredSymbols = computed(() => {
+  return symbols.value.filter((sym) => {
+    if (hideFiltered.value && sym.filtered) return false;
+    const cat = sym.matched_symbol?.category ?? sym.corrected_symbol?.category;
+    if (cat && hiddenCategories.value.has(cat)) return false;
+    return true;
+  });
+});
+
 const groupedTemplates = computed(() => {
   const groups = {};
   const categoryLabels = {
@@ -447,22 +460,15 @@ onUnmounted(() => {
               Bibliothek
             </RouterLink>
             <span class="toolbar-separator"></span>
-            <button
-              class="btn btn-sm"
-              :class="{ 'btn-active': showStaves }"
-              :title="showStaves ? 'Notenlinien ausblenden' : 'Notenlinien einblenden'"
-              @click="showStaves = !showStaves"
-            >
-              {{ showStaves ? "Linien ausblenden" : "Linien einblenden" }}
-            </button>
-            <button
-              class="btn btn-sm"
-              :class="{ 'btn-active': showSymbols }"
-              :title="showSymbols ? 'Symbole ausblenden' : 'Symbole einblenden'"
-              @click="showSymbols = !showSymbols"
-            >
-              {{ showSymbols ? "Symbole ausblenden" : "Symbole einblenden" }}
-            </button>
+            <FilterDropdown
+              :show-staves="showStaves"
+              :hide-filtered="hideFiltered"
+              :symbols="symbols"
+              :hidden-categories="hiddenCategories"
+              @update:show-staves="showStaves = $event"
+              @update:hide-filtered="hideFiltered = $event"
+              @update:hidden-categories="hiddenCategories = $event"
+            />
             <span v-if="staves.length" class="stave-count"
               >{{ staves.length }} Systeme erkannt</span
             >
@@ -515,11 +521,11 @@ onUnmounted(() => {
             :corrected-image-path="scan?.corrected_image_path ?? null"
             :processed-image-path="scan?.processed_image_path ?? null"
             :staves="staves"
-            :symbols="symbols"
+            :symbols="filteredSymbols"
             :adjustments="adjustments"
             :selected-symbol-id="selectedSymbol?.id ?? null"
             :show-staves="showStaves"
-            :show-symbols="showSymbols"
+            :show-symbols="true"
             :capture-mode="captureMode"
             :view-mode="viewMode"
             @select-symbol="onSelectSymbol"
