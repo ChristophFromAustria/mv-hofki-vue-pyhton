@@ -50,7 +50,10 @@ class BarlineFilter(PostMatchingOperation):
         for sym in ctx.symbols:
             if sym.filtered:
                 continue
-            dn = display_names.get(sym.matched_template_id or -1, "")
+            dn = display_names.get(
+                sym.matched_template_id if sym.matched_template_id is not None else -1,
+                "",
+            )
             if dn != _SINGLE_BARLINE_DISPLAY_NAME:
                 continue
             staff = staff_map.get(sym.staff_index)
@@ -80,8 +83,18 @@ class BarlineFilter(PostMatchingOperation):
                 if not self._boxes_overlap(sym_a, sym_b):
                     continue
 
-                dn_a = display_names.get(sym_a.matched_template_id or -1, "")
-                dn_b = display_names.get(sym_b.matched_template_id or -1, "")
+                dn_a = display_names.get(
+                    sym_a.matched_template_id
+                    if sym_a.matched_template_id is not None
+                    else -1,
+                    "",
+                )
+                dn_b = display_names.get(
+                    sym_b.matched_template_id
+                    if sym_b.matched_template_id is not None
+                    else -1,
+                    "",
+                )
 
                 a_is_single = dn_a == _SINGLE_BARLINE_DISPLAY_NAME
                 b_is_single = dn_b == _SINGLE_BARLINE_DISPLAY_NAME

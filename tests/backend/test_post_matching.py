@@ -3,6 +3,7 @@
 import numpy as np
 
 from mv_hofki.services.scanner.stages.base import PipelineContext, StaffData, SymbolData
+from mv_hofki.services.scanner.stages.post_matching import PostMatchingStage
 from mv_hofki.services.scanner.stages.template_matching import TemplateMatchingStage
 
 
@@ -36,11 +37,6 @@ def test_template_matching_exposes_display_names():
     ctx = PipelineContext(image=img, staves=[staff], config={})
     result = stage.process(ctx)
     assert result.metadata["template_display_names"] == {42: "Einfacher Taktstrich"}
-
-
-from mv_hofki.services.scanner.stages.post_matching import (  # noqa: E402
-    PostMatchingStage,
-)
 
 
 def _make_ctx(symbols, staves=None, display_names=None):
