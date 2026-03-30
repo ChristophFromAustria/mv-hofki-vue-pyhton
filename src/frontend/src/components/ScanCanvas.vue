@@ -436,7 +436,8 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               fill="none"
               :stroke="symbolColor(symbol)"
               :stroke-width="isSelected(symbol) ? 3 : 1.5"
-              :opacity="isSelected(symbol) ? 1 : 0.7"
+              :stroke-dasharray="symbol.filtered ? '4,3' : 'none'"
+              :opacity="symbol.filtered ? 0.4 : isSelected(symbol) ? 1 : 0.7"
             />
             <rect
               v-if="isSelected(symbol)"
