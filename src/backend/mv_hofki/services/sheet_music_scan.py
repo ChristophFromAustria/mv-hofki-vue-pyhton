@@ -182,6 +182,13 @@ async def run_pipeline(
             variant_heights.append(v.height_in_lines or 4.0)
             variant_line_spacings.append(v.source_line_spacing)
 
+    from mv_hofki.models.symbol_template import SymbolTemplate
+
+    # Build template_id → display_name mapping for post-matching filters
+    tmpl_result = await session.execute(sa_select(SymbolTemplate))
+    all_templates = list(tmpl_result.scalars().all())
+    template_display_names = {t.id: t.display_name for t in all_templates}
+
     # Load global scanner config, merge any per-request overrides
     config = await get_effective_config(session, overrides=config_overrides)
 
@@ -209,6 +216,7 @@ async def run_pipeline(
             variant_template_ids=variant_template_ids,
             variant_heights=variant_heights,
             variant_line_spacings=variant_line_spacings,
+            template_display_names=template_display_names,
         ),
     )
 

@@ -38,6 +38,7 @@ class TemplateMatchingStage(ProcessingStage):
         variant_template_ids: list[int],
         variant_heights: list[float],
         variant_line_spacings: list[float] | None = None,
+        template_display_names: dict[int, str] | None = None,
     ) -> None:
         self._variant_images = variant_images
         self._variant_template_ids = variant_template_ids
@@ -45,6 +46,7 @@ class TemplateMatchingStage(ProcessingStage):
         self._variant_line_spacings = variant_line_spacings or [0.0] * len(
             variant_images
         )
+        self._template_display_names = template_display_names or {}
 
     # ------------------------------------------------------------------
     # Config helpers
@@ -60,6 +62,7 @@ class TemplateMatchingStage(ProcessingStage):
 
     def process(self, ctx: PipelineContext) -> PipelineContext:  # noqa: C901
         assert ctx.image is not None
+        ctx.metadata["template_display_names"] = self._template_display_names
         img = ctx.image
         if len(img.shape) == 3:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
