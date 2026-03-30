@@ -148,6 +148,7 @@ async def run_pipeline(
     from mv_hofki.models.symbol_variant import SymbolVariant
     from mv_hofki.services.scanner.pipeline import Pipeline
     from mv_hofki.services.scanner.stages.base import PipelineContext
+    from mv_hofki.services.scanner.stages.post_matching import PostMatchingStage
     from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
     from mv_hofki.services.scanner.stages.staff_removal import StaffRemovalStage
     from mv_hofki.services.scanner.stages.stave_detection import StaveDetectionStage
@@ -219,6 +220,8 @@ async def run_pipeline(
             template_display_names=template_display_names,
         ),
     )
+
+    stages.append(PostMatchingStage())
 
     import asyncio
 
@@ -297,6 +300,8 @@ async def run_pipeline(
                 user_verified=sym_data.confidence is not None
                 and sym_data.confidence >= config.get("auto_verify_confidence", 0.85),
                 alternatives_json=alternatives_json,
+                filtered=sym_data.filtered,
+                filter_reason=sym_data.filter_reason,
             )
             session.add(symbol)
 
