@@ -153,7 +153,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 0.75rem;
-  min-width: 220px;
+  width: 240px;
   z-index: 100;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -186,6 +186,8 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
 
 .filter-item input[type="checkbox"] {
   accent-color: var(--color-primary);
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .filter-count {
