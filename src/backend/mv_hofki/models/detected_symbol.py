@@ -37,6 +37,8 @@ class DetectedSymbol(Base):
         ForeignKey("symbol_templates.id", ondelete="SET NULL")
     )
     alternatives_json: Mapped[str | None] = mapped_column(String(2000))
+    filtered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    filter_reason: Mapped[str | None] = mapped_column(String(200))
 
     staff: Mapped[DetectedStaff] = relationship(back_populates="symbols")
     matched_symbol: Mapped[SymbolTemplate | None] = relationship(
