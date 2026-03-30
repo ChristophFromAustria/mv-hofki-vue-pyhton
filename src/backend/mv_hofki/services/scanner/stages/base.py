@@ -40,6 +40,8 @@ class SymbolData:
     matched_template_id: int | None = None
     confidence: float | None = None
     alternatives: list[tuple[int, float]] = field(default_factory=list)
+    filtered: bool = False
+    filter_reason: str | None = None
 
 
 @dataclass
