@@ -224,3 +224,119 @@ def test_no_overlap_no_filter():
     result = stage.process(ctx)
     assert result.symbols[0].filtered is False
     assert result.symbols[1].filtered is False
+
+
+def test_post_matching_validate_with_no_symbols():
+    """PostMatchingStage.validate should return False with no symbols."""
+    ctx = PipelineContext(
+        image=np.full((200, 400), 255, dtype=np.uint8),
+        staves=[],
+        symbols=[],
+        metadata={},
+        config={},
+    )
+    stage = PostMatchingStage()
+    assert stage.validate(ctx) is False
+
+
+def test_post_matching_validate_with_symbols():
+    """PostMatchingStage.validate should return True with symbols."""
+    ctx = _make_ctx(
+        symbols=[SymbolData(staff_index=0, x=10, y=100, width=5, height=40)],
+        display_names={},
+    )
+    stage = PostMatchingStage()
+    assert stage.validate(ctx) is True
+
+
+def test_barline_filter_ignores_non_barline_symbols():
+    """Non-barline symbols should not be affected by the barline filter."""
+    note = SymbolData(
+        staff_index=0,
+        x=50,
+        y=10,
+        width=20,
+        height=40,
+        matched_template_id=2,
+        confidence=0.8,
+    )
+    ctx = _make_ctx(
+        symbols=[note],
+        display_names={2: "Viertelnote"},
+    )
+    stage = PostMatchingStage()
+    result = stage.process(ctx)
+    assert result.symbols[0].filtered is False
+
+
+def test_barline_position_at_boundary():
+    """A barline right at the line_spacing boundary should NOT be filtered."""
+    # Staff y_top=100, y_bottom=200, line_spacing=25
+    # Allowed range: 75 to 225
+    # Symbol center at y=75 (exactly at boundary)
+    sym = SymbolData(
+        staff_index=0,
+        x=50,
+        y=55,
+        width=5,
+        height=40,
+        matched_template_id=1,
+        confidence=0.8,
+    )
+    ctx = _make_ctx(
+        symbols=[sym],
+        display_names={1: "Einfacher Taktstrich"},
+    )
+    stage = PostMatchingStage()
+    result = stage.process(ctx)
+    # center_y = 55 + 20 = 75 which equals allowed_top → NOT filtered
+    assert result.symbols[0].filtered is False
+
+
+def test_multiple_staves():
+    """Filter should work correctly across multiple staves."""
+    staves = [
+        StaffData(
+            staff_index=0,
+            y_top=50,
+            y_bottom=150,
+            line_positions=[50, 75, 100, 125, 150],
+            line_spacing=25.0,
+        ),
+        StaffData(
+            staff_index=1,
+            y_top=250,
+            y_bottom=350,
+            line_positions=[250, 275, 300, 325, 350],
+            line_spacing=25.0,
+        ),
+    ]
+    # Barline on staff 0 — valid position
+    b0 = SymbolData(
+        staff_index=0,
+        x=100,
+        y=70,
+        width=5,
+        height=60,
+        matched_template_id=1,
+        confidence=0.8,
+    )
+    # Barline on staff 1 — way outside
+    b1 = SymbolData(
+        staff_index=1,
+        x=100,
+        y=10,
+        width=5,
+        height=40,
+        matched_template_id=1,
+        confidence=0.8,
+    )
+    ctx = _make_ctx(
+        symbols=[b0, b1],
+        staves=staves,
+        display_names={1: "Einfacher Taktstrich"},
+    )
+    stage = PostMatchingStage()
+    result = stage.process(ctx)
+    assert result.symbols[0].filtered is False  # valid on staff 0
+    assert result.symbols[1].filtered is True  # outside staff 1
