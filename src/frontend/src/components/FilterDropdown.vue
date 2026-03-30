@@ -56,6 +56,13 @@ const sortedCategories = computed(() => {
   );
 });
 
+const allHidden = computed(() => {
+  return (
+    sortedCategories.value.length > 0 &&
+    sortedCategories.value.every((c) => props.hiddenCategories.has(c))
+  );
+});
+
 function toggleCategory(cat) {
   const next = new Set(props.hiddenCategories);
   if (next.has(cat)) {
@@ -64,6 +71,14 @@ function toggleCategory(cat) {
     next.add(cat);
   }
   emit("update:hiddenCategories", next);
+}
+
+function toggleAll() {
+  if (allHidden.value) {
+    emit("update:hiddenCategories", new Set());
+  } else {
+    emit("update:hiddenCategories", new Set(sortedCategories.value));
+  }
 }
 
 function onClickOutside(e) {
@@ -85,33 +100,39 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
       <div class="filter-section">
         <div class="filter-heading">Anzeige</div>
         <label class="filter-item">
+          <span class="filter-label">Notenlinien</span>
           <input
             type="checkbox"
             :checked="showStaves"
             @change="emit('update:showStaves', $event.target.checked)"
           />
-          Notenlinien
         </label>
         <label class="filter-item">
+          <span class="filter-label">Gefilterte ausblenden</span>
           <input
             type="checkbox"
             :checked="hideFiltered"
             @change="emit('update:hideFiltered', $event.target.checked)"
           />
-          Gefilterte ausblenden
         </label>
       </div>
       <hr class="filter-divider" />
       <div class="filter-section">
         <div class="filter-heading">Symbolkategorien</div>
+        <label class="filter-item">
+          <span class="filter-label">Alle</span>
+          <input type="checkbox" :checked="!allHidden" @change="toggleAll()" />
+        </label>
         <label v-for="cat in sortedCategories" :key="cat" class="filter-item">
+          <span class="filter-label">
+            {{ CATEGORY_LABELS[cat] || cat }}
+            <span class="filter-count">({{ categoryCounts[cat] }})</span>
+          </span>
           <input
             type="checkbox"
             :checked="!hiddenCategories.has(cat)"
             @change="toggleCategory(cat)"
           />
-          {{ CATEGORY_LABELS[cat] || cat }}
-          <span class="filter-count">({{ categoryCounts[cat] }})</span>
         </label>
       </div>
     </div>
@@ -147,11 +168,16 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
 .filter-item {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   font-size: 0.8rem;
   color: var(--color-muted);
   cursor: pointer;
   padding: 0.15rem 0;
+}
+
+.filter-label {
+  flex: 1;
 }
 
 .filter-item:hover {
