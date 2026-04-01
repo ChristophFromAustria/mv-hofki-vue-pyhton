@@ -3,7 +3,6 @@ import { computed, ref, onMounted, watch } from "vue";
 
 const props = defineProps({
   imagePath: { type: String, default: null },
-  correctedImagePath: { type: String, default: null },
   processedImagePath: { type: String, default: null },
   staves: { type: Array, default: () => [] },
   symbols: { type: Array, default: () => [] },
@@ -29,9 +28,6 @@ function resolveImageUrl(path) {
 }
 
 const activeImageUrl = computed(() => {
-  if (props.viewMode === "corrected" && props.correctedImagePath) {
-    return resolveImageUrl(props.correctedImagePath);
-  }
   if (props.viewMode === "binary" && props.processedImagePath) {
     return resolveImageUrl(props.processedImagePath);
   }
@@ -114,7 +110,7 @@ function applyThreshold() {
   const ctx = canvas.getContext("2d");
   const src = imgData.value;
   const dst = ctx.createImageData(src.width, src.height);
-  const t = props.adjustments.threshold ?? 128;
+  const t = props.adjustments.preprocessing?.threshold ?? props.adjustments.threshold ?? 128;
   for (let i = 0; i < src.data.length; i += 4) {
     // Convert to grayscale
     const gray = src.data[i] * 0.299 + src.data[i + 1] * 0.587 + src.data[i + 2] * 0.114;
@@ -129,7 +125,7 @@ function applyThreshold() {
 
 watch(() => activeImageUrl.value, loadImage);
 watch(
-  () => props.adjustments.threshold,
+  () => props.adjustments.preprocessing?.threshold ?? props.adjustments.threshold,
   () => {
     if (props.viewMode === "original") applyThreshold();
   },

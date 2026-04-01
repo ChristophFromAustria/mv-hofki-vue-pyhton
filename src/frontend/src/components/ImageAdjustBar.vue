@@ -1,23 +1,31 @@
 <script setup>
 import { ref, watch } from "vue";
 
-defineProps({
+const props = defineProps({
   zoomLevel: { type: Number, default: 1.0 },
+  initialValues: {
+    type: Object,
+    default: () => null,
+  },
 });
 
-const emit = defineEmits(["adjust", "analyze", "zoom-in", "zoom-out"]);
+const emit = defineEmits(["adjust", "analyze", "preview", "zoom-in", "zoom-out"]);
 
-const brightness = ref(0);
-const contrast = ref(1.0);
-const rotation = ref(0);
-const threshold = ref(128);
+const brightness = ref(props.initialValues?.brightness ?? 0);
+const contrast = ref(props.initialValues?.contrast ?? 1.0);
+const rotation = ref(props.initialValues?.rotation ?? 0);
+const threshold = ref(props.initialValues?.threshold ?? 128);
+const morphologyKernelSize = ref(props.initialValues?.morphology_kernel_size ?? 2);
 
 function emitAdjust() {
   emit("adjust", {
-    brightness: brightness.value,
-    contrast: contrast.value,
-    rotation: rotation.value,
-    threshold: threshold.value,
+    preprocessing: {
+      brightness: brightness.value,
+      contrast: contrast.value,
+      rotation: rotation.value,
+      threshold: threshold.value,
+      morphology_kernel_size: morphologyKernelSize.value,
+    },
   });
 }
 
@@ -26,7 +34,7 @@ function rotate(deg) {
   emitAdjust();
 }
 
-watch([brightness, contrast, threshold], emitAdjust);
+watch([brightness, contrast, threshold, morphologyKernelSize], emitAdjust);
 </script>
 
 <template>
@@ -76,6 +84,21 @@ watch([brightness, contrast, threshold], emitAdjust);
       />
     </div>
 
+    <div class="adjust-group">
+      <label class="adjust-label">
+        Rauschfilter
+        <span class="adjust-value">{{ morphologyKernelSize }}</span>
+      </label>
+      <input
+        v-model.number="morphologyKernelSize"
+        type="range"
+        min="1"
+        max="5"
+        step="1"
+        class="adjust-slider"
+      />
+    </div>
+
     <div class="adjust-group adjust-rotate">
       <label class="adjust-label">Rotation</label>
       <div class="rotate-btns">
@@ -104,6 +127,7 @@ watch([brightness, contrast, threshold], emitAdjust);
 
     <div class="adjust-spacer"></div>
 
+    <button class="btn btn-secondary" @click="emit('preview')">Vorschau</button>
     <button class="btn btn-primary" @click="emit('analyze')">Analyse starten</button>
   </div>
 </template>

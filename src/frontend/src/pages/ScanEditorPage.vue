@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { RouterLink } from "vue-router";
-import { get, put } from "../lib/api.js";
+import { get, put, post } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ImageAdjustBar from "../components/ImageAdjustBar.vue";
 import ScanCanvas from "../components/ScanCanvas.vue";
@@ -23,7 +23,16 @@ const error = ref(null);
 const processing = ref(false);
 const statusMessage = ref("");
 
-const adjustments = ref({ brightness: 0, contrast: 1.0, rotation: 0, threshold: 128 });
+const adjustments = ref({
+  preprocessing: {
+    brightness: 0,
+    contrast: 1.0,
+    rotation: 0,
+    threshold: 128,
+    morphology_kernel_size: 2,
+  },
+});
+const initialPreprocessing = computed(() => adjustments.value.preprocessing ?? null);
 const showStaves = ref(true);
 const hideFiltered = ref(true);
 const hiddenCategories = ref(new Set());
@@ -189,6 +198,22 @@ function onAnalysisLogClose() {
 
 function onAdjust(adj) {
   adjustments.value = adj;
+}
+
+async function startPreview() {
+  if (processing.value) return;
+  try {
+    const result = await post(`/scanner/scans/${props.scanId}/preview`, {
+      adjustments_json: JSON.stringify(adjustments.value),
+    });
+    if (result.processed_image_path && scan.value) {
+      scan.value.processed_image_path = result.processed_image_path;
+    }
+    viewMode.value = "binary";
+    showStaves.value = false;
+  } catch (e) {
+    statusMessage.value = `Vorschau-Fehler: ${e.message}`;
+  }
 }
 
 const currentZoom = computed(() => scanCanvasRef.value?.zoom ?? 1.0);
@@ -429,8 +454,10 @@ onUnmounted(() => {
     <!-- Top toolbar -->
     <ImageAdjustBar
       :zoom-level="currentZoom"
+      :initial-values="initialPreprocessing"
       @adjust="onAdjust"
       @analyze="startAnalysis"
+      @preview="startPreview"
       @zoom-in="onZoomIn"
       @zoom-out="onZoomOut"
     />
@@ -482,14 +509,6 @@ onUnmounted(() => {
               </button>
               <button
                 class="btn btn-sm"
-                :class="{ 'btn-active': viewMode === 'corrected' }"
-                :disabled="!scan?.corrected_image_path"
-                @click="viewMode = 'corrected'"
-              >
-                Korrigiert
-              </button>
-              <button
-                class="btn btn-sm"
                 :class="{ 'btn-active': viewMode === 'binary' }"
                 :disabled="!scan?.processed_image_path"
                 @click="viewMode = 'binary'"
@@ -518,7 +537,6 @@ onUnmounted(() => {
           <ScanCanvas
             ref="scanCanvasRef"
             :image-path="scan?.image_path ?? null"
-            :corrected-image-path="scan?.corrected_image_path ?? null"
             :processed-image-path="scan?.processed_image_path ?? null"
             :staves="staves"
             :symbols="filteredSymbols"
