@@ -193,10 +193,18 @@ async def run_pipeline(
     # Load global scanner config, merge any per-request overrides
     config = await get_effective_config(session, overrides=config_overrides)
 
-    # Merge scan-level adjustments (user threshold from UI)
+    # Merge scan-level preprocessing adjustments into pipeline config
     adjustments = json.loads(scan.adjustments_json) if scan.adjustments_json else {}
-    if "threshold" in adjustments:
-        config["threshold"] = adjustments["threshold"]
+    preprocessing = adjustments.get("preprocessing", {})
+    for key in (
+        "brightness",
+        "contrast",
+        "threshold",
+        "rotation",
+        "morphology_kernel_size",
+    ):
+        if key in preprocessing:
+            config[key] = preprocessing[key]
 
     from mv_hofki.services.scanner.stages.dewarp import DewarpStage
 
@@ -313,13 +321,70 @@ async def run_pipeline(
             processed_path.relative_to(settings.PROJECT_ROOT)
         )
 
-    # Save corrected (rotated grayscale) image for frontend preview
-    if ctx.corrected_image is not None:
-        corrected_path = _scan_dir(project_id, part_id, scan_id) / "corrected.png"
-        cv2.imwrite(str(corrected_path), ctx.corrected_image)
-        scan.corrected_image_path = str(
-            corrected_path.relative_to(settings.PROJECT_ROOT)
-        )
-
     scan.status = "review"
     await session.commit()
+
+
+async def run_preview(
+    session: AsyncSession,
+    scan_id: int,
+    adjustments_json: str | None = None,
+) -> str:
+    """Run only preprocessing and return the processed image path.
+
+    Saves the adjustments and the resulting binary image but does NOT
+    run stave detection, template matching, or any later pipeline stages.
+    """
+    import json
+
+    import cv2
+
+    from mv_hofki.models.scan_part import ScanPart
+    from mv_hofki.services.scanner.stages.base import PipelineContext
+    from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
+    from mv_hofki.services.scanner_config import get_effective_config
+
+    scan = await session.get(SheetMusicScan, scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+
+    # Persist adjustments
+    if adjustments_json is not None:
+        scan.adjustments_json = adjustments_json
+
+    img_path = settings.PROJECT_ROOT / scan.image_path
+    img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise HTTPException(status_code=400, detail="Bild konnte nicht geladen werden")
+
+    # Build config: global defaults + scan-level preprocessing overrides
+    config = await get_effective_config(session)
+    adjustments = json.loads(scan.adjustments_json) if scan.adjustments_json else {}
+    preprocessing = adjustments.get("preprocessing", {})
+    for key in (
+        "brightness",
+        "contrast",
+        "threshold",
+        "rotation",
+        "morphology_kernel_size",
+    ):
+        if key in preprocessing:
+            config[key] = preprocessing[key]
+
+    ctx = PipelineContext(image=img, config=config)
+    ctx = PreprocessStage().process(ctx)
+
+    # Resolve scan directory
+    part = await session.get(ScanPart, scan.part_id)
+    if part is None:
+        raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
+    scan_dir = _scan_dir(part.project_id, part.id, scan.id)
+    scan_dir.mkdir(parents=True, exist_ok=True)
+
+    processed_path = scan_dir / "processed.png"
+    if ctx.processed_image is not None:
+        cv2.imwrite(str(processed_path), ctx.processed_image)
+    scan.processed_image_path = str(processed_path.relative_to(settings.PROJECT_ROOT))
+
+    await session.commit()
+    return scan.processed_image_path

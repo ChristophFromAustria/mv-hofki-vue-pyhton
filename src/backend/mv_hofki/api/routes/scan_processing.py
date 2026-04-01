@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
@@ -63,6 +64,22 @@ async def trigger_processing(
 
     await db.refresh(scan)
     return ScanStatusRead(status=scan.status, current_stage=None, progress=1.0)
+
+
+class PreviewRequest(BaseModel):
+    adjustments_json: str | None = None
+
+
+@router.post("/scans/{scan_id}/preview")
+async def preview_preprocessing(
+    scan_id: int,
+    body: PreviewRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Run only preprocessing and return the processed image path."""
+    adjustments = body.adjustments_json if body else None
+    path = await scan_service.run_preview(db, scan_id, adjustments_json=adjustments)
+    return {"processed_image_path": path}
 
 
 @router.get("/scans/{scan_id}/process-stream")
