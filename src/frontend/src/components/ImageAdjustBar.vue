@@ -34,6 +34,19 @@ function rotate(deg) {
   emitAdjust();
 }
 
+// Sync sliders when saved values arrive from the API (after async load)
+watch(
+  () => props.initialValues,
+  (vals) => {
+    if (!vals) return;
+    brightness.value = vals.brightness ?? 0;
+    contrast.value = vals.contrast ?? 1.0;
+    rotation.value = vals.rotation ?? 0;
+    threshold.value = vals.threshold ?? 128;
+    morphologyKernelSize.value = vals.morphology_kernel_size ?? 2;
+  },
+);
+
 watch([brightness, contrast, threshold, morphologyKernelSize], emitAdjust);
 </script>
 
