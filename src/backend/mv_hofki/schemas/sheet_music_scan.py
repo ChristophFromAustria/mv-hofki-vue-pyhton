@@ -16,7 +16,6 @@ class SheetMusicScanRead(BaseModel):
     processed_image_path: str | None
     status: str
     adjustments_json: str | None
-    pipeline_config_json: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -26,7 +25,6 @@ class SheetMusicScanRead(BaseModel):
 class SheetMusicScanUpdate(BaseModel):
     page_number: int | None = None
     adjustments_json: str | None = None
-    pipeline_config_json: str | None = None
 
 
 class ScanStatusRead(BaseModel):
