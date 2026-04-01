@@ -64,6 +64,8 @@ const wrapEl = ref(null);
 const previewCanvas = ref(null);
 const imgData = ref(null); // cached original ImageData
 
+const hasInitialFit = ref(false);
+
 function fitZoomToContainer(imgW, imgH) {
   const el = wrapEl.value;
   if (!el || !imgW || !imgH) return;
@@ -88,7 +90,10 @@ function loadImage() {
   img.onload = () => {
     naturalWidth.value = img.naturalWidth;
     naturalHeight.value = img.naturalHeight;
-    fitZoomToContainer(img.naturalWidth, img.naturalHeight);
+    if (!hasInitialFit.value) {
+      fitZoomToContainer(img.naturalWidth, img.naturalHeight);
+      hasInitialFit.value = true;
+    }
     const canvas = previewCanvas.value;
     if (!canvas) return;
     canvas.width = img.naturalWidth;
