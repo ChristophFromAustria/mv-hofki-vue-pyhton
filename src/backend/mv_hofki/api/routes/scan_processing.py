@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mv_hofki.api.deps import get_db
 from mv_hofki.schemas.detected_staff import DetectedStaffRead
 from mv_hofki.schemas.detected_symbol import DetectedSymbolRead, SymbolCorrectionRequest
-from mv_hofki.schemas.scanner_config import ScannerConfigUpdate
 from mv_hofki.schemas.sheet_music_scan import ScanStatusRead
 from mv_hofki.services import sheet_music_scan as scan_service
 
@@ -23,7 +22,6 @@ logger = logging.getLogger(__name__)
 @router.post("/scans/{scan_id}/process", response_model=ScanStatusRead)
 async def trigger_processing(
     scan_id: int,
-    config_overrides: ScannerConfigUpdate | None = None,
     project_id: int | None = None,
     part_id: int | None = None,
     db: AsyncSession = Depends(get_db),
@@ -55,7 +53,6 @@ async def trigger_processing(
             actual_project_id,
             actual_part_id,
             scan_id,
-            config_overrides=config_overrides,
         )
     except Exception:
         scan.status = "error"
@@ -118,11 +115,6 @@ async def stream_processing(
     scan.status = "processing"
     await db.commit()
 
-    # Parse optional config overrides from query param
-    from mv_hofki.schemas.scanner_config import ScannerConfigUpdate as _CfgUpdate
-
-    config_overrides: _CfgUpdate | None = None
-
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
     def log_callback(message: str) -> None:
@@ -136,7 +128,6 @@ async def stream_processing(
                 actual_project_id,
                 actual_part_id,
                 scan_id,
-                config_overrides=config_overrides,
                 log_callback=log_callback,
             )
             queue.put_nowait(None)  # sentinel: success

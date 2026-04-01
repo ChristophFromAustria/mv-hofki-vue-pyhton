@@ -76,14 +76,10 @@ async def test_update_config(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_get_effective_config_with_overrides(db_session: AsyncSession):
-    """Overrides should take precedence over global values."""
-    effective = await get_effective_config(
-        db_session,
-        overrides=ScannerConfigUpdate(confidence_threshold=0.9),
-    )
-    assert effective["confidence_threshold"] == 0.9
-    # Non-overridden values come from global
+async def test_get_effective_config_returns_global(db_session: AsyncSession):
+    """get_effective_config should return the global scanner config as a dict."""
+    effective = await get_effective_config(db_session)
+    assert effective["confidence_threshold"] == 0.6
     assert effective["edge_matching_enabled"] is False
 
 

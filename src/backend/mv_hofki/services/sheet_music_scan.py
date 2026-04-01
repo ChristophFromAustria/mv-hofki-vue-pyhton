@@ -5,7 +5,6 @@ from __future__ import annotations
 import shutil
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import func, select
@@ -15,9 +14,6 @@ from mv_hofki.core.config import settings
 from mv_hofki.models.sheet_music_scan import SheetMusicScan
 from mv_hofki.schemas.sheet_music_scan import SheetMusicScanUpdate
 from mv_hofki.services import scan_part as part_service
-
-if TYPE_CHECKING:
-    from mv_hofki.schemas.scanner_config import ScannerConfigUpdate
 
 ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/tiff"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -167,7 +163,6 @@ async def run_pipeline(
     project_id: int,
     part_id: int,
     scan_id: int,
-    config_overrides: ScannerConfigUpdate | None = None,
     log_callback: Callable[[str], None] | None = None,
 ) -> None:
     import json
@@ -223,8 +218,8 @@ async def run_pipeline(
     all_templates = list(tmpl_result.scalars().all())
     template_display_names = {t.id: t.display_name for t in all_templates}
 
-    # Load global scanner config, merge any per-request overrides
-    config = await get_effective_config(session, overrides=config_overrides)
+    # Load global scanner config
+    config = await get_effective_config(session)
 
     # Merge scan-level adjustments (preprocessing + analysis) into pipeline config
     merge_scan_adjustments(config, scan.adjustments_json)

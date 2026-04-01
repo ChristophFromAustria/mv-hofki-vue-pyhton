@@ -32,16 +32,7 @@ async def update_config(
     return config
 
 
-async def get_effective_config(
-    session: AsyncSession, overrides: ScannerConfigUpdate | None = None
-) -> dict:
-    """Return a merged config dict: global defaults + any per-request overrides.
-
-    The returned dict is ready to be placed into PipelineContext.config.
-    """
+async def get_effective_config(session: AsyncSession) -> dict:
+    """Return global scanner config as a dict for PipelineContext.config."""
     config = await get_config(session)
-    result = ScannerConfigRead.model_validate(config).model_dump()
-    if overrides:
-        for key, value in overrides.model_dump(exclude_unset=True).items():
-            result[key] = value
-    return result
+    return ScannerConfigRead.model_validate(config).model_dump()
