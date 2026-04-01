@@ -181,8 +181,33 @@ async function startAnalysis() {
 
 async function onAnalysisDone() {
   processing.value = false;
-  await fetchScanData();
-  // Switch to binary view after analysis completes
+  // Reload results without setting loading=true (which would unmount the canvas and reset zoom)
+  try {
+    const [, stavesData, symbolsData] = await Promise.all([
+      get(`/scanner/scans/${props.scanId}/status`).catch(() => null),
+      get(`/scanner/scans/${props.scanId}/staves`),
+      get(`/scanner/scans/${props.scanId}/symbols`),
+    ]);
+    const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
+    for (const part of partsData) {
+      const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
+      const foundScan = scansData.find((s) => String(s.id) === String(props.scanId));
+      if (foundScan) {
+        // Cache-bust the processed image so the browser loads the fresh version
+        if (foundScan.processed_image_path) {
+          foundScan.processed_image_path += "?t=" + Date.now();
+        }
+        scan.value = foundScan;
+        break;
+      }
+    }
+    staves.value = stavesData || [];
+    symbols.value = symbolsData || [];
+    updateStatus();
+  } catch {
+    // Fall back to full reload on error
+    await fetchScanData();
+  }
   if (scan.value?.processed_image_path) {
     viewMode.value = "binary";
   }
