@@ -340,13 +340,13 @@ def test_preprocess_uses_configured_deskew_method():
     ctx = PipelineContext(image=img.copy(), config={"deskew_method": "projection"})
     stage = PreprocessStage()
     result = stage.process(ctx)
-    assert result.corrected_image is not None
-    assert result.corrected_image.shape[:2] == img.shape[:2]
+    assert result.processed_image is not None
+    assert result.processed_image.shape[:2] == img.shape[:2]
 
     # Test with hough method
     ctx2 = PipelineContext(image=img.copy(), config={"deskew_method": "hough"})
     result2 = stage.process(ctx2)
-    assert result2.corrected_image is not None
+    assert result2.processed_image is not None
 
     # Test default (none = skip deskew, backward compatible)
     ctx3 = PipelineContext(image=img.copy(), config={"deskew_method": "none"})
