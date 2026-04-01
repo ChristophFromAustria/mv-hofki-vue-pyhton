@@ -41,7 +41,6 @@ const showCorrectPicker = ref(false);
 const libraryTemplates = ref([]);
 
 const showConfig = ref(false);
-const sessionConfig = ref(null);
 const imageInfo = ref(null); // { width, height, type }
 const showAnalysisLog = ref(false);
 const viewMode = ref("original");
@@ -423,8 +422,8 @@ async function onCorrectToAlternative(symbol, alt) {
   updateStatus();
 }
 
-function onApplySessionConfig(cfg) {
-  sessionConfig.value = cfg;
+function onUpdateAdjustments(updated) {
+  adjustments.value = updated;
 }
 
 async function fetchLibraryIfNeeded() {
@@ -551,13 +550,15 @@ onUnmounted(() => {
             </button>
             <button
               class="btn btn-sm"
-              :class="{ 'btn-active': sessionConfig !== null }"
+              :class="{ 'btn-active': adjustments.analysis?.enabled }"
               :title="
-                sessionConfig ? 'Konfiguration (Sitzungsparameter aktiv)' : 'Scanner-Konfiguration'
+                adjustments.analysis?.enabled
+                  ? 'Konfiguration (Scan-spezifisch aktiv)'
+                  : 'Scanner-Konfiguration'
               "
               @click="showConfig = true"
             >
-              {{ sessionConfig ? "Konfig. *" : "Konfig." }}
+              {{ adjustments.analysis?.enabled ? "Konfig. *" : "Konfig." }}
             </button>
           </div>
           <ScanCanvas
@@ -632,14 +633,6 @@ onUnmounted(() => {
         {{ statusMessage }}
       </span>
       <div class="status-actions">
-        <span
-          v-if="sessionConfig"
-          class="session-badge"
-          title="Klicken zum Zurücksetzen"
-          @click="sessionConfig = null"
-        >
-          Sitzungsparameter aktiv ✕
-        </span>
         <button
           v-if="scan?.status === 'review' || scan?.status === 'completed'"
           class="btn btn-primary btn-sm"
@@ -673,8 +666,11 @@ onUnmounted(() => {
     <!-- Scanner config modal -->
     <ScannerConfigModal
       :open="showConfig"
+      :scan-id="props.scanId"
+      :project-id="props.projectId"
+      :adjustments="adjustments"
       @close="showConfig = false"
-      @apply-session="onApplySessionConfig"
+      @update-adjustments="onUpdateAdjustments"
     />
 
     <!-- Analysis log modal -->
@@ -1063,25 +1059,5 @@ onUnmounted(() => {
   gap: 0.5rem;
   justify-content: flex-end;
   margin-top: 1rem;
-}
-
-.session-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-primary);
-  background: var(--color-primary-light);
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.session-badge:hover {
-  background: var(--color-primary);
-  color: #fff;
 }
 </style>
