@@ -207,7 +207,8 @@ async function startPreview() {
       adjustments_json: JSON.stringify(adjustments.value),
     });
     if (result.processed_image_path && scan.value) {
-      scan.value.processed_image_path = result.processed_image_path;
+      // Append cache-buster so the browser fetches the freshly generated image
+      scan.value.processed_image_path = result.processed_image_path + "?t=" + Date.now();
     }
     viewMode.value = "binary";
     showStaves.value = false;
