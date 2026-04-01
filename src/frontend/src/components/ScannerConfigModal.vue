@@ -1,33 +1,58 @@
 <script setup>
 import { ref, watch } from "vue";
 import { get, put } from "../lib/api.js";
-import { groupedFields } from "../lib/scanner-config.js";
+import { groupedFields, SCANNER_CONFIG_FIELDS } from "../lib/scanner-config.js";
 
 const props = defineProps({
   open: { type: Boolean, default: false },
+  scanId: { type: [Number, String], default: null },
+  projectId: { type: [Number, String], default: null },
+  adjustments: { type: Object, default: () => ({}) },
 });
 
-const emit = defineEmits(["close", "apply-session"]);
+const emit = defineEmits(["close", "update-adjustments"]);
 
 const config = ref({});
 const loading = ref(false);
 const saving = ref(false);
 const error = ref(null);
 const successMsg = ref(null);
+const scanSpecific = ref(false);
 
 const groups = groupedFields();
+const analysisKeys = SCANNER_CONFIG_FIELDS.map((f) => f.key);
 
 watch(
   () => props.open,
   async (isOpen) => {
-    if (isOpen) {
-      await loadConfig();
-      successMsg.value = null;
+    if (!isOpen) return;
+    successMsg.value = null;
+    error.value = null;
+
+    const analysis = props.adjustments?.analysis;
+    scanSpecific.value = analysis?.enabled === true;
+
+    await loadGlobalConfig();
+
+    // If scan has specific values, overlay them onto the loaded global config
+    if (analysis && analysis.enabled) {
+      for (const key of analysisKeys) {
+        if (key in analysis) {
+          config.value[key] = analysis[key];
+        }
+      }
     }
   },
 );
 
-async function loadConfig() {
+watch(scanSpecific, (isScanSpecific) => {
+  if (!isScanSpecific) {
+    // Switching back to global: reload global values
+    loadGlobalConfig();
+  }
+});
+
+async function loadGlobalConfig() {
   loading.value = true;
   error.value = null;
   try {
@@ -56,22 +81,45 @@ async function saveGlobal() {
   }
 }
 
-function applySession() {
-  emit("apply-session", { ...config.value });
-  emit("close");
-}
-
-async function resetDefaults() {
-  loading.value = true;
+async function saveScanSpecific() {
+  saving.value = true;
   error.value = null;
+  successMsg.value = null;
   try {
-    const fresh = await get("/scanner/config");
-    config.value = fresh;
+    // Build analysis object from current config values
+    const analysis = { enabled: true };
+    for (const key of analysisKeys) {
+      if (key in config.value) {
+        analysis[key] = config.value[key];
+      }
+    }
+    const updated = { ...props.adjustments, analysis };
+    // Save to backend
+    const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
+    for (const part of partsData) {
+      const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
+      const found = scansData.find((s) => String(s.id) === String(props.scanId));
+      if (found) {
+        await put(`/scanner/projects/${props.projectId}/parts/${part.id}/scans/${props.scanId}`, {
+          adjustments_json: JSON.stringify(updated),
+        });
+        break;
+      }
+    }
+    emit("update-adjustments", updated);
+    successMsg.value = "Für diesen Scan gespeichert";
+    setTimeout(() => {
+      successMsg.value = null;
+    }, 2000);
   } catch (e) {
     error.value = e.message;
   } finally {
-    loading.value = false;
+    saving.value = false;
   }
+}
+
+async function resetDefaults() {
+  await loadGlobalConfig();
 }
 </script>
 
@@ -88,6 +136,14 @@ async function resetDefaults() {
       <div v-else class="modal-body">
         <div v-if="error" class="config-error">{{ error }}</div>
         <div v-if="successMsg" class="config-success">{{ successMsg }}</div>
+
+        <!-- Scan-specific toggle -->
+        <div v-if="scanId" class="scan-toggle">
+          <label class="toggle-label">
+            <input v-model="scanSpecific" type="checkbox" class="toggle-input" />
+            <span class="toggle-text">Scan-spezifische Parameter verwenden</span>
+          </label>
+        </div>
 
         <div v-for="group in groups" :key="group.label" class="config-group">
           <h3 class="group-title">{{ group.label }}</h3>
@@ -138,17 +194,16 @@ async function resetDefaults() {
       <div class="modal-footer">
         <button class="btn" :disabled="loading" @click="resetDefaults">Zurücksetzen</button>
         <div class="footer-spacer"></div>
-        <button
-          class="btn btn-session"
-          :disabled="loading"
-          title="Nur für die aktuelle Analyse verwenden"
-          @click="applySession"
-        >
-          Nur diese Analyse
-        </button>
-        <button class="btn btn-primary" :disabled="loading || saving" @click="saveGlobal">
-          {{ saving ? "Speichert..." : "Global speichern" }}
-        </button>
+        <template v-if="scanSpecific && scanId">
+          <button class="btn btn-primary" :disabled="loading || saving" @click="saveScanSpecific">
+            {{ saving ? "Speichert..." : "Für diesen Scan speichern" }}
+          </button>
+        </template>
+        <template v-else>
+          <button class="btn btn-primary" :disabled="loading || saving" @click="saveGlobal">
+            {{ saving ? "Speichert..." : "Global speichern" }}
+          </button>
+        </template>
       </div>
     </div>
   </div>
@@ -230,6 +285,14 @@ async function resetDefaults() {
   padding: 0.5rem;
   background: rgba(22, 163, 74, 0.08);
   border-radius: var(--radius);
+}
+
+.scan-toggle {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--color-bg-soft);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
 }
 
 .config-group {
@@ -327,15 +390,5 @@ async function resetDefaults() {
 
 .footer-spacer {
   flex: 1;
-}
-
-.btn-session {
-  background: var(--color-bg-soft);
-  border: 1px solid var(--color-primary);
-  color: var(--color-primary);
-}
-
-.btn-session:hover {
-  background: var(--color-primary-light);
 }
 </style>
