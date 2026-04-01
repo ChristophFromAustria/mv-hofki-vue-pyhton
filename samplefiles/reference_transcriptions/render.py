@@ -14,6 +14,8 @@ import sys
 import time
 from pathlib import Path
 
+from pypdf import PdfReader, PdfWriter
+
 
 def find_lilypond() -> str:
     try:
@@ -49,12 +51,17 @@ def render(ly_file: Path, lilypond_bin: str) -> bool:
     if pdf_path.exists():
         print(f"PDF: {pdf_path}")
         rotated_path = output_stem.with_name(output_stem.stem + "_rotated.pdf")
-        rot = subprocess.run(
-            ["qpdf", str(pdf_path), "--rotate=+90", "--", str(rotated_path)],
-            capture_output=True,
-        )
-        if rot.returncode == 0:
+        try:
+            reader = PdfReader(pdf_path)
+            writer = PdfWriter()
+            for page in reader.pages:
+                page.rotate(90)
+                writer.add_page(page)
+            with open(rotated_path, "wb") as f:
+                writer.write(f)
             print(f"PDF (rotated): {rotated_path}")
+        except Exception as exc:
+            print(f"Warning: rotation failed: {exc}", file=sys.stderr)
     else:
         print("Warning: no PDF generated", file=sys.stderr)
         return False

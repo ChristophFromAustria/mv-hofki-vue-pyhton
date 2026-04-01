@@ -75,11 +75,11 @@ pseudoIndent =
 \paper {
   top-margin = 1
   bottom-margin = 4
-  left-margin = 15
-  right-margin = 15
-  system-system-spacing.basic-distance = #5
-  system-system-spacing.minimum-distance = #4
-  system-system-spacing.padding = #0.2
+  left-margin = 16
+  right-margin = 16
+  system-system-spacing.basic-distance = #6
+  system-system-spacing.minimum-distance = #5
+  system-system-spacing.padding = #0.6
   markup-system-spacing.basic-distance = #6
   top-system-spacing.basic-distance = #6
   last-bottom-spacing.basic-distance = #4
@@ -131,21 +131,21 @@ pseudoIndent =
     \break
 
     %% System 4: 2. Strain Fortsetzung + 1./2. Ending
-    f4-.\mf r f4-. r | bes,4-. r f4-. r | bes,4-. r r bes,4\f | ees4 r e2-> | f4-. r f2-> | f4-. r f,2( | } \alternative { \volta 1 { d4)-> r r2 | } \volta 2 { bes,4-. bes,8 bes,8 bes,4-. r4} } \bar "||"
+    f4-.\mf r f4-. r | bes,4-. r f4-. r | bes,4-. r r bes,4\f | ees4 r e2-> | f4-. r f2-> | f4-. r f,2( | } \alternative { \volta 1 { d4)-> r r2 (| } \volta 2 { bes,4)-. bes,8 bes,8 bes,4-. r4} } \bar "||"
 
     %% System 5: Trio Einleitung + Trio body Anfang
-    \key ees \major \pseudoIndent \markuplist { \fontsize #5 \bold "Trio" } 8 ees4\f r4 \mf\> \tuplet 3/2 { ees,4 g,4 bes,4 \!} | ees4 r4 r2  \repeat volta 2 { ees4\p r4 bes,4 r4 | ees4 r4 bes,4 r4 | ees4 r bes,4 r | ees4 r\< bes,4 r | ees4 r\! d4 r | 
+    \key ees \major \pseudoIndent \markuplist { \fontsize #5 \bold "Trio" } 8 ees4\f r4  \tuplet 3/2 { ees,4 \mf\> g,4 bes,4 } | ees4\! r4 r2  \repeat volta 2 { ees4\p r4 bes,4 r4 | ees4 r4 bes,4 r4 | ees4 r bes,4 r | ees4 r\< bes,4 r | ees4 r\! d4 r | 
 
     %% System 6: Trio body Fortsetzung
     \set Staff.instrumentName = ##f \break f4\mf r bes,4 r | f4 r bes,4 r | f4 r bes,4 r | f4 r bes,4 r | f4 r bes,4 r | f4\< r bes,4 r | f4 r d4 r\! | d4-> r bes,4 r | d4-> r bes,4 r |
     \break
 
     %% System 7: Schluss
-    ees4-.\< ees4-. d4-. c4-. | bes,4-. a,4-. g,4-. f,4-. | f,4\!\f r bes,4 r | ees4-> r bes,4 r | ees4-> r bes,4 r | ees4-> r bes,4 r | ees4-> r bes,4 r | ees4 r ees4 r | aes,2.-- r4 | aes,2.-- r4 |
+    ees4-.\< ees4-. d4-. c4-. | bes,4-. aes,4-. g,4-. f,4-. | f,4\!\f r bes,4 r | ees4-> r bes,4 r | ees4-> r bes,4 r | ees4-> r bes,4 r | ees4-> r bes,4 r | ees4 r ees4 r | aes,2.-- r4 | aes,2.-- r4 |
     \break
 
     %% System 8: Schluss Wiederholung
-     a,1->\ff | a,1-> | ees4-. r bes,4-. r | ees4-. r bes,4-. r | ees4-. r bes,4-. r | ees4-. r bes,4-. r | } \alternative { \volta 1 { ees4 r8 c8(\> bes,4-.) g,4-. | ees,4-. r4\! r2 | } \volta 2 { ees4 r8 c8(\> bes,4-.) g,4-. | ees,4-. r4\! ees4-.->\ff r4 | } } \bar "|."
+     a,1->\ff | a,1-> | ees4-. r bes,4-. r | ees4-. r bes,4-. r | ees4-. r bes,4-. r | ees4-. r bes,4-. r | } \alternative { \volta 1 { ees4 r8 c8(\> bes,4-.) g,4-. | ees,4-. r4\! r2 | } \volta 2 { ees4 r8 c8(\> bes,4-.) g,4-. | ees,4-. r4\! ees4-.-> r4\ff | } } \bar "|."
   }
   \layout {
     #(layout-set-staff-size 17)
@@ -154,6 +154,7 @@ pseudoIndent =
       \override SpacingSpanner.common-shortest-duration = #(ly:make-moment 1/4)
       \override SpacingSpanner.spacing-increment = #1.0
       \omit BarNumber
+      \override DynamicText.self-alignment-X = #3                                                                                                                                                                                                          
     }
   }
   \midi { \tempo 2 = 120 }
