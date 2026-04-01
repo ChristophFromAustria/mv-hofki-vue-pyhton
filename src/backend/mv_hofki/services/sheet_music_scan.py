@@ -129,6 +129,39 @@ async def delete(
     await session.commit()
 
 
+_PREPROCESSING_KEYS = (
+    "brightness",
+    "contrast",
+    "threshold",
+    "rotation",
+    "morphology_kernel_size",
+)
+
+
+def merge_scan_adjustments(config: dict, adjustments_json: str | None) -> dict:
+    """Merge scan-level adjustments into a pipeline config dict.
+
+    Preprocessing values always override if present.
+    Analysis values override only when ``analysis.enabled`` is ``True``.
+    """
+    import json
+
+    adjustments = json.loads(adjustments_json) if adjustments_json else {}
+
+    preprocessing = adjustments.get("preprocessing", {})
+    for key in _PREPROCESSING_KEYS:
+        if key in preprocessing:
+            config[key] = preprocessing[key]
+
+    analysis = adjustments.get("analysis", {})
+    if analysis.get("enabled", False):
+        for key, value in analysis.items():
+            if key != "enabled":
+                config[key] = value
+
+    return config
+
+
 async def run_pipeline(
     session: AsyncSession,
     project_id: int,
@@ -193,18 +226,8 @@ async def run_pipeline(
     # Load global scanner config, merge any per-request overrides
     config = await get_effective_config(session, overrides=config_overrides)
 
-    # Merge scan-level preprocessing adjustments into pipeline config
-    adjustments = json.loads(scan.adjustments_json) if scan.adjustments_json else {}
-    preprocessing = adjustments.get("preprocessing", {})
-    for key in (
-        "brightness",
-        "contrast",
-        "threshold",
-        "rotation",
-        "morphology_kernel_size",
-    ):
-        if key in preprocessing:
-            config[key] = preprocessing[key]
+    # Merge scan-level adjustments (preprocessing + analysis) into pipeline config
+    merge_scan_adjustments(config, scan.adjustments_json)
 
     from mv_hofki.services.scanner.stages.dewarp import DewarpStage
 
@@ -335,8 +358,6 @@ async def run_preview(
     Saves the adjustments and the resulting binary image but does NOT
     run stave detection, template matching, or any later pipeline stages.
     """
-    import json
-
     import cv2
 
     from mv_hofki.models.scan_part import ScanPart
@@ -357,19 +378,9 @@ async def run_preview(
     if img is None:
         raise HTTPException(status_code=400, detail="Bild konnte nicht geladen werden")
 
-    # Build config: global defaults + scan-level preprocessing overrides
+    # Build config: global defaults + scan-level overrides
     config = await get_effective_config(session)
-    adjustments = json.loads(scan.adjustments_json) if scan.adjustments_json else {}
-    preprocessing = adjustments.get("preprocessing", {})
-    for key in (
-        "brightness",
-        "contrast",
-        "threshold",
-        "rotation",
-        "morphology_kernel_size",
-    ):
-        if key in preprocessing:
-            config[key] = preprocessing[key]
+    merge_scan_adjustments(config, scan.adjustments_json)
 
     ctx = PipelineContext(image=img, config=config)
     ctx = PreprocessStage().process(ctx)
