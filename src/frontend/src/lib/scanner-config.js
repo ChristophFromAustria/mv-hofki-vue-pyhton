@@ -170,46 +170,6 @@ export const SCANNER_CONFIG_FIELDS = [
       { value: "dilate", label: "Dilate (Proximity)" },
     ],
   },
-
-  // ── Preprocessing ──────────────────────────────────────────────────
-  {
-    key: "adaptive_threshold_block_size",
-    label: "Adaptiver Schwellwert Blockgr.",
-    group: "Vorverarbeitung",
-    type: "number",
-    min: 3,
-    max: 99,
-    step: 2,
-  },
-  {
-    key: "adaptive_threshold_c",
-    label: "Adaptiver Schwellwert Konstante",
-    group: "Vorverarbeitung",
-    type: "number",
-    min: 0,
-    max: 50,
-    step: 1,
-  },
-  {
-    key: "morphology_kernel_size",
-    label: "Morphologie-Kerngr.",
-    group: "Vorverarbeitung",
-    type: "number",
-    min: 1,
-    max: 10,
-    step: 1,
-  },
-  {
-    key: "deskew_method",
-    label: "Deskew-Methode",
-    group: "Vorverarbeitung",
-    type: "select",
-    options: [
-      { value: "none", label: "Keine Korrektur" },
-      { value: "hough", label: "Hough-Linien (schnell)" },
-      { value: "projection", label: "Projektions-Optimierung (genau)" },
-    ],
-  },
 ];
 
 /**
