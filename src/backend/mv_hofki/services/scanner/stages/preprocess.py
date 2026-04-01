@@ -23,6 +23,16 @@ class PreprocessStage(ProcessingStage):
         img = ctx.image
         ctx.original_image = img.copy()
 
+        # Apply 90-degree rotation if configured
+        rotation = ctx.config.get("rotation", 0)
+        rotate_map = {
+            90: cv2.ROTATE_90_CLOCKWISE,
+            180: cv2.ROTATE_180,
+            270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+        }
+        if rotation in rotate_map:
+            img = cv2.rotate(img, rotate_map[rotation])
+
         # Convert to grayscale if needed
         if len(img.shape) == 3:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -58,8 +68,6 @@ class PreprocessStage(ProcessingStage):
         deskew_fn = _DESKEW_STRATEGIES.get(method)
         if deskew_fn is not None:
             binary = deskew_fn(binary)
-            # Also rotate the grayscale image for frontend preview
-            ctx.corrected_image = deskew_fn(gray)
             ctx.log(f"Deskew angewendet (Methode: {method})")
 
         # Morphological noise removal
