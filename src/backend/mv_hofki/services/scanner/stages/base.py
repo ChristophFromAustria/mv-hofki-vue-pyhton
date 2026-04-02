@@ -48,6 +48,17 @@ class SymbolData:
 
 
 @dataclass
+class MeasureData:
+    """Data for a single detected measure (Takt)."""
+
+    staff_index: int
+    measure_number_in_staff: int
+    global_measure_number: int
+    x_start: int
+    x_end: int
+
+
+@dataclass
 class PipelineContext:
     """Shared context passed between pipeline stages."""
 
@@ -57,6 +68,7 @@ class PipelineContext:
     corrected_image: np.ndarray | None = None
     staves: list[StaffData] = field(default_factory=list)
     symbols: list[SymbolData] = field(default_factory=list)
+    measures: list[MeasureData] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
     completed_stages: list[str] = field(default_factory=list)
