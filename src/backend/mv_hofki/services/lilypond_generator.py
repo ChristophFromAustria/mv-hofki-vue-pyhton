@@ -16,7 +16,16 @@ _BARLINE_MAP: dict[str, str] = {
 }
 
 
-def generate_lilypond(measures: list[dict], title: str) -> str:
+def generate_lilypond(
+    measures: list[dict],
+    title: str,
+    *,
+    top_margin: int = 1,
+    bottom_margin: int = 4,
+    left_margin: int = 16,
+    right_margin: int = 16,
+    staff_size: int = 17,
+) -> str:
     """Generate LilyPond source code from detected measures.
 
     Args:
@@ -24,6 +33,11 @@ def generate_lilypond(measures: list[dict], title: str) -> str:
                   measure_number_in_staff, global_measure_number,
                   end_barline (optional display name of the barline type).
         title: Title for the score header.
+        top_margin: Top margin in mm.
+        bottom_margin: Bottom margin in mm.
+        left_margin: Left margin in mm.
+        right_margin: Right margin in mm.
+        staff_size: LilyPond staff size (default 17).
 
     Returns:
         Complete LilyPond source code as a string.
@@ -60,10 +74,10 @@ def generate_lilypond(measures: list[dict], title: str) -> str:
 #(set-default-paper-size "a5" 'landscape)
 
 \\paper {{
-  top-margin = 1
-  bottom-margin = 4
-  left-margin = 16
-  right-margin = 16
+  top-margin = {top_margin}
+  bottom-margin = {bottom_margin}
+  left-margin = {left_margin}
+  right-margin = {right_margin}
   system-system-spacing.basic-distance = #6
   system-system-spacing.minimum-distance = #5
   system-system-spacing.padding = #0.6
@@ -86,7 +100,7 @@ def generate_lilypond(measures: list[dict], title: str) -> str:
 {content}
   }}
   \\layout {{
-    #(layout-set-staff-size 17)
+    #(layout-set-staff-size {staff_size})
     \\context {{
       \\Score
       \\override SpacingSpanner.common-shortest-duration = #(ly:make-moment 1/4)
@@ -209,14 +223,23 @@ def render_lilypond(ly_content: str, output_dir: Path) -> dict:
         capture_output=True,
         timeout=60,
     )
-    # Collect PNG files
+    # Collect and rotate PNG files 90°
     png_paths: list[Path] = []
     single_png = output_stem.with_suffix(".png")
-    if single_png.exists():
-        png_paths.append(single_png)
-    else:
-        for p in sorted(output_dir.glob("generated-page*.png")):
-            png_paths.append(p)
+    raw_pngs = (
+        [single_png]
+        if single_png.exists()
+        else sorted(output_dir.glob("generated-page*.png"))
+    )
+    for png_file in raw_pngs:
+        if png_file.exists():
+            import cv2
+
+            img = cv2.imread(str(png_file), cv2.IMREAD_UNCHANGED)
+            if img is not None:
+                rotated = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+                cv2.imwrite(str(png_file), rotated)
+            png_paths.append(png_file)
 
     # Rotate PDF 90° and add crop marks
     try:

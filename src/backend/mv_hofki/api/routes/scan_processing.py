@@ -437,7 +437,21 @@ async def generate_lilypond_endpoint(
     title = (
         scan.original_filename.rsplit(".", 1)[0] if scan.original_filename else "Scan"
     )
-    ly_code = generate_lilypond(measures, title)
+
+    # Load LilyPond layout settings from global config
+    from mv_hofki.services.scanner_config import get_effective_config
+
+    config = await get_effective_config(db)
+
+    ly_code = generate_lilypond(
+        measures,
+        title,
+        top_margin=config.get("ly_top_margin", 1),
+        bottom_margin=config.get("ly_bottom_margin", 4),
+        left_margin=config.get("ly_left_margin", 16),
+        right_margin=config.get("ly_right_margin", 16),
+        staff_size=config.get("ly_staff_size", 17),
+    )
 
     part = await db.get(ScanPart, scan.part_id)
     if not part:

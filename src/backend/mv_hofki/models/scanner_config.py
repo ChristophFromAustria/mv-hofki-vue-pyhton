@@ -84,3 +84,10 @@ class ScannerConfig(Base):
     auto_verify_confidence: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.85
     )
+
+    # LilyPond layout
+    ly_top_margin: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    ly_bottom_margin: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    ly_left_margin: Mapped[int] = mapped_column(Integer, nullable=False, default=16)
+    ly_right_margin: Mapped[int] = mapped_column(Integer, nullable=False, default=16)
+    ly_staff_size: Mapped[int] = mapped_column(Integer, nullable=False, default=17)

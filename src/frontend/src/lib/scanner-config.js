@@ -170,6 +170,53 @@ export const SCANNER_CONFIG_FIELDS = [
       { value: "dilate", label: "Dilate (Proximity)" },
     ],
   },
+
+  // ── LilyPond Layout ───────────────────────────────────────────────
+  {
+    key: "ly_top_margin",
+    label: "Oberer Rand (mm)",
+    group: "LilyPond Layout",
+    type: "number",
+    min: 0,
+    max: 50,
+    step: 1,
+  },
+  {
+    key: "ly_bottom_margin",
+    label: "Unterer Rand (mm)",
+    group: "LilyPond Layout",
+    type: "number",
+    min: 0,
+    max: 50,
+    step: 1,
+  },
+  {
+    key: "ly_left_margin",
+    label: "Linker Rand (mm)",
+    group: "LilyPond Layout",
+    type: "number",
+    min: 0,
+    max: 50,
+    step: 1,
+  },
+  {
+    key: "ly_right_margin",
+    label: "Rechter Rand (mm)",
+    group: "LilyPond Layout",
+    type: "number",
+    min: 0,
+    max: 50,
+    step: 1,
+  },
+  {
+    key: "ly_staff_size",
+    label: "Notensystem-Größe",
+    group: "LilyPond Layout",
+    type: "number",
+    min: 8,
+    max: 30,
+    step: 1,
+  },
 ];
 
 /**

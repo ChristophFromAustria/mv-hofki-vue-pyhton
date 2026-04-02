@@ -30,6 +30,11 @@ class ScannerConfigRead(BaseModel):
     dewarp_smoothing: int
     deskew_method: str
     auto_verify_confidence: float
+    ly_top_margin: int
+    ly_bottom_margin: int
+    ly_left_margin: int
+    ly_right_margin: int
+    ly_staff_size: int
 
     model_config = {"from_attributes": True}
 
@@ -64,3 +69,8 @@ class ScannerConfigUpdate(BaseModel):
     dewarp_smoothing: int | None = Field(None, ge=5, le=200)
     deskew_method: str | None = Field(None, pattern="^(none|hough|projection)$")
     auto_verify_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    ly_top_margin: int | None = Field(None, ge=0, le=50)
+    ly_bottom_margin: int | None = Field(None, ge=0, le=50)
+    ly_left_margin: int | None = Field(None, ge=0, le=50)
+    ly_right_margin: int | None = Field(None, ge=0, le=50)
+    ly_staff_size: int | None = Field(None, ge=8, le=30)
