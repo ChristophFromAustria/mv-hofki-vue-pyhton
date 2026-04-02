@@ -47,6 +47,23 @@ class MeasureDetectionStage(ProcessingStage):
             barlines = barlines_by_staff.get(staff_index, [])
             barlines.sort(key=lambda s: s.staff_x_start or s.x)
 
+            # Deduplicate overlapping barlines — keep the one with higher confidence
+            deduped: list = []
+            for bl in barlines:
+                bl_start = bl.staff_x_start or bl.x
+                bl_end = bl.staff_x_end or (bl.x + bl.width)
+                if deduped:
+                    prev = deduped[-1]
+                    prev_end = prev.staff_x_end or (prev.x + prev.width)
+                    # Overlapping if the new barline starts before the previous one ends
+                    if bl_start < prev_end:
+                        # Keep the one with higher confidence
+                        if (bl.confidence or 0) > (prev.confidence or 0):
+                            deduped[-1] = bl
+                        continue
+                deduped.append(bl)
+            barlines = deduped
+
             staff_symbols = all_symbols_by_staff.get(staff_index, [])
             if not staff_symbols:
                 continue

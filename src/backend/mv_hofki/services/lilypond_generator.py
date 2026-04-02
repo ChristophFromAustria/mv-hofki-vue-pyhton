@@ -147,4 +147,18 @@ def render_lilypond_to_pdf(ly_content: str, output_dir: Path) -> Path:
     if not pdf_path.exists():
         raise RuntimeError("LilyPond hat keine PDF-Datei erzeugt")
 
+    # Rotate PDF 90° for landscape A5 viewing
+    try:
+        from pypdf import PdfReader, PdfWriter  # type: ignore[import-not-found]
+
+        reader = PdfReader(pdf_path)
+        writer = PdfWriter()
+        for page in reader.pages:
+            page.rotate(90)
+            writer.add_page(page)
+        with open(pdf_path, "wb") as f:
+            writer.write(f)
+    except ImportError:
+        pass  # pypdf not available — skip rotation
+
     return pdf_path
