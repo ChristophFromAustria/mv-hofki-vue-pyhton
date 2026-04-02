@@ -21,7 +21,10 @@ class DetectedSymbolRead(BaseModel):
     width: int
     height: int
     snippet_path: str | None
-    position_on_staff: int | None
+    staff_y_top: float | None
+    staff_y_bottom: float | None
+    staff_x_start: int | None
+    staff_x_end: int | None
     sequence_order: int
     matched_symbol_id: int | None
     confidence: float | None

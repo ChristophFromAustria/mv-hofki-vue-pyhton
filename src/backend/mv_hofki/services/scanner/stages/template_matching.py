@@ -218,7 +218,6 @@ class TemplateMatchingStage(ProcessingStage):
                                 y=int(staff.y_top + pt_y),
                                 width=int(scaled.shape[1]),
                                 height=int(scaled.shape[0]),
-                                position_on_staff=None,
                                 matched_template_id=template_id,
                                 confidence=confidence,
                             )

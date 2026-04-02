@@ -26,7 +26,10 @@ class DetectedSymbol(Base):
     width: Mapped[int] = mapped_column(Integer, nullable=False)
     height: Mapped[int] = mapped_column(Integer, nullable=False)
     snippet_path: Mapped[str | None] = mapped_column(String(500))
-    position_on_staff: Mapped[int | None] = mapped_column(Integer)
+    staff_y_top: Mapped[float | None] = mapped_column(Float)
+    staff_y_bottom: Mapped[float | None] = mapped_column(Float)
+    staff_x_start: Mapped[int | None] = mapped_column(Integer)
+    staff_x_end: Mapped[int | None] = mapped_column(Integer)
     sequence_order: Mapped[int] = mapped_column(Integer, nullable=False)
     matched_symbol_id: Mapped[int | None] = mapped_column(
         ForeignKey("symbol_templates.id", ondelete="SET NULL")

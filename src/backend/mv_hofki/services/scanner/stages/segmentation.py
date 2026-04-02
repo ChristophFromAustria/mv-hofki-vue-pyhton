@@ -74,10 +74,6 @@ class SegmentationStage(ProcessingStage):
                 continue
 
             abs_y = staff.y_top + y
-            center_y = abs_y + h // 2
-
-            # Determine position on staff (line/space index)
-            position = self._get_staff_position(center_y, staff.line_positions)
 
             # Extract snippet from original region
             snippet = region[y : y + h, x : x + w]
@@ -90,7 +86,6 @@ class SegmentationStage(ProcessingStage):
                     width=w,
                     height=h,
                     snippet=snippet.copy(),
-                    position_on_staff=position,
                 )
             )
 

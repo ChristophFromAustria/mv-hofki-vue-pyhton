@@ -35,7 +35,10 @@ class SymbolData:
     width: int
     height: int
     snippet: np.ndarray | None = None
-    position_on_staff: int | None = None
+    staff_y_top: float | None = None
+    staff_y_bottom: float | None = None
+    staff_x_start: int | None = None
+    staff_x_end: int | None = None
     sequence_order: int = 0
     matched_template_id: int | None = None
     confidence: float | None = None
