@@ -9,6 +9,7 @@ import SymbolPanel from "../components/SymbolPanel.vue";
 import FilterDropdown from "../components/FilterDropdown.vue";
 import ScannerConfigModal from "../components/ScannerConfigModal.vue";
 import AnalysisLogModal from "../components/AnalysisLogModal.vue";
+import LilypondModal from "../components/LilypondModal.vue";
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -43,6 +44,10 @@ const showCorrectPicker = ref(false);
 const libraryTemplates = ref([]);
 
 const showConfig = ref(false);
+const showLilypond = ref(false);
+const lilypondCode = ref("");
+const lilypondPdfPath = ref(null);
+const lilypondLoading = ref(false);
 const imageInfo = ref(null); // { width, height, type }
 const showAnalysisLog = ref(false);
 const viewMode = ref("original");
@@ -215,6 +220,21 @@ async function onAnalysisDone() {
   }
   if (scan.value?.processed_image_path) {
     viewMode.value = "binary";
+  }
+}
+
+async function generateLilypond() {
+  if (lilypondLoading.value) return;
+  lilypondLoading.value = true;
+  try {
+    const result = await post(`/scanner/scans/${props.scanId}/generate-lilypond`);
+    lilypondCode.value = result.lilypond_code;
+    lilypondPdfPath.value = result.pdf_path;
+    showLilypond.value = true;
+  } catch (e) {
+    statusMessage.value = `LilyPond-Fehler: ${e.message}`;
+  } finally {
+    lilypondLoading.value = false;
   }
 }
 
@@ -558,6 +578,13 @@ onUnmounted(() => {
             </button>
             <button
               class="btn btn-sm"
+              :disabled="!measures.length || lilypondLoading"
+              @click="generateLilypond"
+            >
+              {{ lilypondLoading ? "Generiert..." : "LilyPond" }}
+            </button>
+            <button
+              class="btn btn-sm"
               :class="{ 'btn-active': adjustments.analysis?.enabled }"
               :title="
                 adjustments.analysis?.enabled
@@ -689,6 +716,14 @@ onUnmounted(() => {
       :open="showAnalysisLog"
       @close="onAnalysisLogClose"
       @done="onAnalysisDone"
+    />
+
+    <!-- LilyPond modal -->
+    <LilypondModal
+      :open="showLilypond"
+      :lilypond-code="lilypondCode"
+      :pdf-path="lilypondPdfPath"
+      @close="showLilypond = false"
     />
 
     <!-- Capture dialog -->
