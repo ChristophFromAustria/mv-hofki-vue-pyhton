@@ -18,6 +18,9 @@ class MeasureDetectionStage(ProcessingStage):
         template_categories: dict[int, str] = ctx.metadata.get(
             "template_categories", {}
         )
+        template_display_names: dict[int, str] = ctx.metadata.get(
+            "template_display_names", {}
+        )
         staff_map = {s.staff_index: s for s in ctx.staves}
 
         barlines_by_staff: dict[int, list] = {}
@@ -51,24 +54,27 @@ class MeasureDetectionStage(ProcessingStage):
             min_x = min(s.staff_x_start or s.x for s in staff_symbols)
             max_x = max(s.staff_x_end or (s.x + s.width) for s in staff_symbols)
 
-            boundaries: list[tuple[int, int]] = []
+            # Build boundaries with barline type info
+            boundary_list: list[tuple[int, int, str | None]] = []
             prev_end = min_x
 
             for bl in barlines:
                 bl_start = bl.staff_x_start or bl.x
                 bl_end = bl.staff_x_end or (bl.x + bl.width)
                 if bl_start > prev_end:
-                    boundaries.append((prev_end, bl_start))
+                    tid = bl.matched_template_id or -1
+                    bl_name = template_display_names.get(tid)
+                    boundary_list.append((prev_end, bl_start, bl_name))
                 prev_end = bl_end
 
             if prev_end < max_x:
-                boundaries.append((prev_end, max_x))
+                boundary_list.append((prev_end, max_x, None))
 
-            if not boundaries:
-                boundaries = [(min_x, max_x)]
+            if not boundary_list:
+                boundary_list = [(min_x, max_x, None)]
 
             local_num = 1
-            for x_start, x_end in boundaries:
+            for x_start, x_end, end_barline in boundary_list:
                 measures.append(
                     MeasureData(
                         staff_index=staff_index,
@@ -76,6 +82,7 @@ class MeasureDetectionStage(ProcessingStage):
                         global_measure_number=global_num,
                         x_start=x_start,
                         x_end=x_end,
+                        end_barline=end_barline,
                     )
                 )
                 local_num += 1

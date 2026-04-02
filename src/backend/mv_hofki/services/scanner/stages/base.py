@@ -56,6 +56,7 @@ class MeasureData:
     global_measure_number: int
     x_start: int
     x_end: int
+    end_barline: str | None = None
 
 
 @dataclass

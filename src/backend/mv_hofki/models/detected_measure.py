@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mv_hofki.db.base import Base
@@ -23,3 +23,4 @@ class DetectedMeasure(Base):
     global_measure_number: Mapped[int] = mapped_column(Integer, nullable=False)
     x_start: Mapped[int] = mapped_column(Integer, nullable=False)
     x_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_barline: Mapped[str | None] = mapped_column(String(50))

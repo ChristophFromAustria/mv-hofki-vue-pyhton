@@ -423,6 +423,7 @@ async def generate_lilypond_endpoint(
             "global_measure_number": m.global_measure_number,
             "x_start": m.x_start,
             "x_end": m.x_end,
+            "end_barline": m.end_barline,
         }
         for m in result.scalars().all()
     ]

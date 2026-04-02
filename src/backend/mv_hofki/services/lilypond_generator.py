@@ -7,13 +7,22 @@ import subprocess
 from collections import defaultdict
 from pathlib import Path
 
+_BARLINE_MAP: dict[str, str] = {
+    "Doppelter Taktstrich": '\\bar "||"',
+    "Schlusstaktstrich": '\\bar "|."',
+    "Wiederholung Anfang": '\\bar ".|:"',
+    "Wiederholung Ende": '\\bar ":|."',
+    "Wiederholung Beidseitig": '\\bar ":|.|:"',
+}
+
 
 def generate_lilypond(measures: list[dict], title: str) -> str:
     """Generate LilyPond source code from detected measures.
 
     Args:
         measures: List of measure dicts with keys: staff_index,
-                  measure_number_in_staff, global_measure_number.
+                  measure_number_in_staff, global_measure_number,
+                  end_barline (optional display name of the barline type).
         title: Title for the score header.
 
     Returns:
@@ -28,12 +37,18 @@ def generate_lilypond(measures: list[dict], title: str) -> str:
     for staff_idx in systems:
         systems[staff_idx].sort(key=lambda m: m["measure_number_in_staff"])
 
-    # Build note content: c1 per measure, \break between systems
+    # Build note content: c1 per measure with barline types, \break between systems
     staff_indices = sorted(systems.keys())
     content_lines: list[str] = []
     for i, staff_idx in enumerate(staff_indices):
-        measure_count = len(systems[staff_idx])
-        notes = " | ".join(["c1"] * measure_count) + " |"
+        parts: list[str] = []
+        for m in systems[staff_idx]:
+            bar_cmd = _BARLINE_MAP.get(m.get("end_barline") or "", "")
+            if bar_cmd:
+                parts.append(f"c1 {bar_cmd}")
+            else:
+                parts.append("c1")
+        notes = " ".join(parts)
         content_lines.append(f"    {notes}")
         if i < len(staff_indices) - 1:
             content_lines.append("    \\break")

@@ -364,6 +364,7 @@ async def run_pipeline(
             global_measure_number=m.global_measure_number,
             x_start=m.x_start,
             x_end=m.x_end,
+            end_barline=m.end_barline,
         )
         session.add(measure)
 

@@ -14,5 +14,6 @@ class DetectedMeasureRead(BaseModel):
     global_measure_number: int
     x_start: int
     x_end: int
+    end_barline: str | None
 
     model_config = {"from_attributes": True}
