@@ -36,6 +36,7 @@ const adjustments = ref({
 const initialPreprocessing = computed(() => adjustments.value.preprocessing ?? null);
 const measures = ref([]);
 const showMeasures = ref(true);
+const showVoltas = ref(true);
 const showStaves = ref(true);
 const hideFiltered = ref(true);
 const hiddenCategories = ref(new Set());
@@ -546,8 +547,10 @@ onUnmounted(() => {
               :hide-filtered="hideFiltered"
               :symbols="symbols"
               :hidden-categories="hiddenCategories"
+              :show-voltas="showVoltas"
               @update:show-staves="showStaves = $event"
               @update:show-measures="showMeasures = $event"
+              @update:show-voltas="showVoltas = $event"
               @update:hide-filtered="hideFiltered = $event"
               @update:hidden-categories="hiddenCategories = $event"
             />
@@ -612,6 +615,7 @@ onUnmounted(() => {
             :view-mode="viewMode"
             :measures="measures"
             :show-measures="showMeasures"
+            :show-voltas="showVoltas"
             @select-symbol="onSelectSymbol"
             @capture-box="onCaptureBox"
           />

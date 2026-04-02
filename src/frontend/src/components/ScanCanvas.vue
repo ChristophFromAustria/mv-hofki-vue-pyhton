@@ -13,6 +13,7 @@ const props = defineProps({
   selectedSymbolId: { type: Number, default: null },
   measures: { type: Array, default: () => [] },
   showMeasures: { type: Boolean, default: true },
+  showVoltas: { type: Boolean, default: true },
   showStaves: { type: Boolean, default: true },
   showSymbols: { type: Boolean, default: true },
   captureMode: { type: Boolean, default: false },
@@ -142,6 +143,29 @@ onMounted(loadImage);
 // Staff line helpers
 function staffBounds(staffIndex) {
   return props.staves.find((s) => s.staff_index === staffIndex) ?? null;
+}
+
+function voltaBrackets() {
+  const groups = {};
+  for (const m of props.measures) {
+    if (m.volta_number && m.volta_group_id != null) {
+      if (!groups[m.volta_group_id]) groups[m.volta_group_id] = {};
+      if (!groups[m.volta_group_id][m.volta_number]) {
+        groups[m.volta_group_id][m.volta_number] = [];
+      }
+      groups[m.volta_group_id][m.volta_number].push(m);
+    }
+  }
+  const brackets = [];
+  for (const [groupId, voltas] of Object.entries(groups)) {
+    for (const [num, measures] of Object.entries(voltas)) {
+      const xStart = Math.min(...measures.map((m) => m.x_start));
+      const xEnd = Math.max(...measures.map((m) => m.x_end));
+      const staffIdx = measures[0].staff_index;
+      brackets.push({ groupId, num: parseInt(num), xStart, xEnd, staffIdx });
+    }
+  }
+  return brackets;
 }
 
 function parseLinePositions(staff) {
@@ -448,6 +472,43 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               opacity="0.8"
             >
               {{ measure.global_measure_number }}
+            </text>
+          </g>
+        </template>
+
+        <!-- Volta brackets -->
+        <template v-if="showVoltas">
+          <g v-for="(vb, idx) in voltaBrackets()" :key="`volta-${idx}`">
+            <!-- Horizontal line -->
+            <line
+              :x1="vb.xStart"
+              :y1="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 25"
+              :x2="vb.xEnd"
+              :y2="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 25"
+              stroke="#d946ef"
+              stroke-width="2"
+              opacity="0.8"
+            />
+            <!-- Vertical hook at start -->
+            <line
+              :x1="vb.xStart"
+              :y1="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 25"
+              :x2="vb.xStart"
+              :y2="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 10"
+              stroke="#d946ef"
+              stroke-width="2"
+              opacity="0.8"
+            />
+            <!-- Volta number label -->
+            <text
+              :x="vb.xStart + 6"
+              :y="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 28"
+              fill="#d946ef"
+              font-size="11"
+              font-weight="700"
+              opacity="0.9"
+            >
+              {{ vb.num }}.
             </text>
           </g>
         </template>

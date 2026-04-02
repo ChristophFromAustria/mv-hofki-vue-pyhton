@@ -4,6 +4,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 const props = defineProps({
   showStaves: { type: Boolean, default: true },
   showMeasures: { type: Boolean, default: true },
+  showVoltas: { type: Boolean, default: true },
   hideFiltered: { type: Boolean, default: true },
   symbols: { type: Array, default: () => [] },
   hiddenCategories: { type: Object, default: () => new Set() },
@@ -12,6 +13,7 @@ const props = defineProps({
 const emit = defineEmits([
   "update:showStaves",
   "update:showMeasures",
+  "update:showVoltas",
   "update:hideFiltered",
   "update:hiddenCategories",
 ]);
@@ -119,6 +121,14 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
             type="checkbox"
             :checked="showMeasures"
             @change="emit('update:showMeasures', $event.target.checked)"
+          />
+        </label>
+        <label class="filter-item">
+          <span class="filter-label">Volta-Klammern anzeigen</span>
+          <input
+            type="checkbox"
+            :checked="showVoltas"
+            @change="emit('update:showVoltas', $event.target.checked)"
           />
         </label>
         <label class="filter-item">
