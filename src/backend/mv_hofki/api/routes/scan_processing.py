@@ -404,7 +404,7 @@ async def generate_lilypond_endpoint(
     from mv_hofki.models.sheet_music_scan import SheetMusicScan
     from mv_hofki.services.lilypond_generator import (
         generate_lilypond,
-        render_lilypond_to_pdf,
+        render_lilypond,
     )
 
     scan = await db.get(SheetMusicScan, scan_id)
@@ -451,13 +451,17 @@ async def generate_lilypond_endpoint(
         / str(scan_id)
     )
 
-    pdf_path = await asyncio.to_thread(render_lilypond_to_pdf, ly_code, scan_dir)
+    render_result = await asyncio.to_thread(render_lilypond, ly_code, scan_dir)
     ly_path = scan_dir / "generated.ly"
 
     return {
         "lilypond_code": ly_code,
-        "pdf_path": str(pdf_path.relative_to(settings.PROJECT_ROOT)),
+        "pdf_path": str(render_result["pdf_path"].relative_to(settings.PROJECT_ROOT)),
         "ly_path": str(ly_path.relative_to(settings.PROJECT_ROOT)),
+        "png_paths": [
+            str(p.relative_to(settings.PROJECT_ROOT))
+            for p in render_result["png_paths"]
+        ],
     }
 
 
