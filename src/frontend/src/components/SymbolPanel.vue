@@ -71,6 +71,16 @@ function confidenceLabel(conf) {
           <span class="info-label">Verifiziert</span>
           <span class="info-value">{{ symbol.user_verified ? "Ja" : "Nein" }}</span>
         </div>
+        <div v-if="symbol.staff_x_start != null" class="info-row">
+          <span class="info-label">X</span>
+          <span class="info-value">{{ symbol.staff_x_start }} – {{ symbol.staff_x_end }} px</span>
+        </div>
+        <div v-if="symbol.staff_y_top != null" class="info-row">
+          <span class="info-label">Y (Staff)</span>
+          <span class="info-value">
+            {{ symbol.staff_y_top.toFixed(1) }} – {{ symbol.staff_y_bottom.toFixed(1) }} Linien
+          </span>
+        </div>
         <div v-if="symbol.corrected_symbol" class="info-row">
           <span class="info-label">Korrigiert zu</span>
           <span class="info-value">{{ symbol.corrected_symbol.display_name }}</span>
