@@ -388,6 +388,78 @@ async def get_detected_measures(scan_id: int, db: AsyncSession = Depends(get_db)
     return list(result.scalars().all())
 
 
+@router.post("/scans/{scan_id}/generate-lilypond")
+async def generate_lilypond_endpoint(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate LilyPond code and PDF from detected measures."""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from mv_hofki.core.config import settings
+    from mv_hofki.models.detected_measure import DetectedMeasure
+    from mv_hofki.models.scan_part import ScanPart
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+    from mv_hofki.services.lilypond_generator import (
+        generate_lilypond,
+        render_lilypond_to_pdf,
+    )
+
+    scan = await db.get(SheetMusicScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+
+    result = await db.execute(
+        select(DetectedMeasure)
+        .where(DetectedMeasure.scan_id == scan_id)
+        .order_by(DetectedMeasure.global_measure_number)
+    )
+    measures = [
+        {
+            "staff_index": m.staff_index,
+            "measure_number_in_staff": m.measure_number_in_staff,
+            "global_measure_number": m.global_measure_number,
+            "x_start": m.x_start,
+            "x_end": m.x_end,
+        }
+        for m in result.scalars().all()
+    ]
+
+    if not measures:
+        raise HTTPException(
+            status_code=400,
+            detail="Keine Takte erkannt — bitte zuerst Analyse durchführen",
+        )
+
+    title = (
+        scan.original_filename.rsplit(".", 1)[0] if scan.original_filename else "Scan"
+    )
+    ly_code = generate_lilypond(measures, title)
+
+    part = await db.get(ScanPart, scan.part_id)
+    if not part:
+        raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
+    scan_dir = (
+        settings.PROJECT_ROOT
+        / "data"
+        / "scans"
+        / str(part.project_id)
+        / str(part.id)
+        / str(scan_id)
+    )
+
+    pdf_path = await asyncio.to_thread(render_lilypond_to_pdf, ly_code, scan_dir)
+    ly_path = scan_dir / "generated.ly"
+
+    return {
+        "lilypond_code": ly_code,
+        "pdf_path": str(pdf_path.relative_to(settings.PROJECT_ROOT)),
+        "ly_path": str(ly_path.relative_to(settings.PROJECT_ROOT)),
+    }
+
+
 @router.get("/scans/{scan_id}/symbols", response_model=list[DetectedSymbolRead])
 async def get_detected_symbols(scan_id: int, db: AsyncSession = Depends(get_db)):
     """Get all detected symbols for a scan, including alternative matches."""
