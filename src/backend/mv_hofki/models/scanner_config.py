@@ -91,3 +91,5 @@ class ScannerConfig(Base):
     ly_left_margin: Mapped[int] = mapped_column(Integer, nullable=False, default=16)
     ly_right_margin: Mapped[int] = mapped_column(Integer, nullable=False, default=16)
     ly_staff_size: Mapped[int] = mapped_column(Integer, nullable=False, default=17)
+    ly_system_distance: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
+    ly_system_padding: Mapped[float] = mapped_column(Float, nullable=False, default=0.6)

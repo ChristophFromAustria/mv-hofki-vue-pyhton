@@ -451,6 +451,8 @@ async def generate_lilypond_endpoint(
         left_margin=config.get("ly_left_margin", 16),
         right_margin=config.get("ly_right_margin", 16),
         staff_size=config.get("ly_staff_size", 17),
+        system_distance=config.get("ly_system_distance", 6),
+        system_padding=config.get("ly_system_padding", 0.6),
     )
 
     part = await db.get(ScanPart, scan.part_id)

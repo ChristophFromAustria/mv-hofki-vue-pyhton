@@ -217,6 +217,24 @@ export const SCANNER_CONFIG_FIELDS = [
     max: 30,
     step: 1,
   },
+  {
+    key: "ly_system_distance",
+    label: "System-Abstand",
+    group: "LilyPond Layout",
+    type: "number",
+    min: 1,
+    max: 20,
+    step: 1,
+  },
+  {
+    key: "ly_system_padding",
+    label: "System-Padding",
+    group: "LilyPond Layout",
+    type: "number",
+    min: 0,
+    max: 5,
+    step: 0.1,
+  },
 ];
 
 /**

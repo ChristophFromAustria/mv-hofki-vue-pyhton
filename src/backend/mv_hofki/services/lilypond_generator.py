@@ -25,6 +25,8 @@ def generate_lilypond(
     left_margin: int = 16,
     right_margin: int = 16,
     staff_size: int = 17,
+    system_distance: int = 6,
+    system_padding: float = 0.6,
 ) -> str:
     """Generate LilyPond source code from detected measures.
 
@@ -78,9 +80,9 @@ def generate_lilypond(
   bottom-margin = {bottom_margin}
   left-margin = {left_margin}
   right-margin = {right_margin}
-  system-system-spacing.basic-distance = #6
-  system-system-spacing.minimum-distance = #5
-  system-system-spacing.padding = #0.6
+  system-system-spacing.basic-distance = #{system_distance}
+  system-system-spacing.minimum-distance = #{max(system_distance - 1, 1)}
+  system-system-spacing.padding = #{system_padding}
   markup-system-spacing.basic-distance = #6
   top-system-spacing.basic-distance = #6
   last-bottom-spacing.basic-distance = #4
