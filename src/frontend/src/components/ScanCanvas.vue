@@ -11,6 +11,8 @@ const props = defineProps({
     default: () => ({ brightness: 0, contrast: 1.0, rotation: 0, threshold: 128 }),
   },
   selectedSymbolId: { type: Number, default: null },
+  measures: { type: Array, default: () => [] },
+  showMeasures: { type: Boolean, default: true },
   showStaves: { type: Boolean, default: true },
   showSymbols: { type: Boolean, default: true },
   captureMode: { type: Boolean, default: false },
@@ -138,6 +140,10 @@ watch(
 onMounted(loadImage);
 
 // Staff line helpers
+function staffBounds(staffIndex) {
+  return props.staves.find((s) => s.staff_index === staffIndex) ?? null;
+}
+
 function parseLinePositions(staff) {
   try {
     return JSON.parse(staff.line_positions_json || "[]");
@@ -417,6 +423,32 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               stroke-dasharray="6 4"
               opacity="0.3"
             />
+          </g>
+        </template>
+
+        <!-- Measure boundaries -->
+        <template v-if="showMeasures">
+          <g v-for="measure in measures" :key="`m-${measure.id}`">
+            <line
+              :x1="measure.x_start"
+              :y1="(staffBounds(measure.staff_index)?.y_top ?? 0) - 10"
+              :x2="measure.x_start"
+              :y2="(staffBounds(measure.staff_index)?.y_bottom ?? 0) + 10"
+              stroke="#06b6d4"
+              stroke-width="1.5"
+              stroke-dasharray="4 3"
+              opacity="0.6"
+            />
+            <text
+              :x="measure.x_start + 4"
+              :y="(staffBounds(measure.staff_index)?.y_top ?? 0) - 14"
+              fill="#06b6d4"
+              font-size="12"
+              font-weight="600"
+              opacity="0.8"
+            >
+              {{ measure.global_measure_number }}
+            </text>
           </g>
         </template>
 

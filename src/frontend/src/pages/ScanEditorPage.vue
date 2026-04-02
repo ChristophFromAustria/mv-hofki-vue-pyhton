@@ -33,6 +33,8 @@ const adjustments = ref({
   },
 });
 const initialPreprocessing = computed(() => adjustments.value.preprocessing ?? null);
+const measures = ref([]);
+const showMeasures = ref(true);
 const showStaves = ref(true);
 const hideFiltered = ref(true);
 const hiddenCategories = ref(new Set());
@@ -70,10 +72,11 @@ async function fetchScanData() {
   loading.value = true;
   error.value = null;
   try {
-    const [, stavesData, symbolsData] = await Promise.all([
+    const [, stavesData, symbolsData, measuresData] = await Promise.all([
       get(`/scanner/scans/${props.scanId}/status`).catch(() => null),
       get(`/scanner/scans/${props.scanId}/staves`),
       get(`/scanner/scans/${props.scanId}/symbols`),
+      get(`/scanner/scans/${props.scanId}/measures`).catch(() => []),
     ]);
 
     // Get actual scan data through project/part lookup
@@ -88,6 +91,7 @@ async function fetchScanData() {
     scan.value = foundScan;
     staves.value = stavesData || [];
     symbols.value = symbolsData || [];
+    measures.value = measuresData || [];
 
     // Resolve image info (dimensions + file type)
     if (foundScan?.image_path) {
@@ -182,10 +186,11 @@ async function onAnalysisDone() {
   processing.value = false;
   // Reload results without setting loading=true (which would unmount the canvas and reset zoom)
   try {
-    const [, stavesData, symbolsData] = await Promise.all([
+    const [, stavesData, symbolsData, measuresData] = await Promise.all([
       get(`/scanner/scans/${props.scanId}/status`).catch(() => null),
       get(`/scanner/scans/${props.scanId}/staves`),
       get(`/scanner/scans/${props.scanId}/symbols`),
+      get(`/scanner/scans/${props.scanId}/measures`).catch(() => []),
     ]);
     const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
     for (const part of partsData) {
@@ -202,6 +207,7 @@ async function onAnalysisDone() {
     }
     staves.value = stavesData || [];
     symbols.value = symbolsData || [];
+    measures.value = measuresData || [];
     updateStatus();
   } catch {
     // Fall back to full reload on error
@@ -514,10 +520,12 @@ onUnmounted(() => {
             <span class="toolbar-separator"></span>
             <FilterDropdown
               :show-staves="showStaves"
+              :show-measures="showMeasures"
               :hide-filtered="hideFiltered"
               :symbols="symbols"
               :hidden-categories="hiddenCategories"
               @update:show-staves="showStaves = $event"
+              @update:show-measures="showMeasures = $event"
               @update:hide-filtered="hideFiltered = $event"
               @update:hidden-categories="hiddenCategories = $event"
             />
@@ -573,6 +581,8 @@ onUnmounted(() => {
             :show-symbols="true"
             :capture-mode="captureMode"
             :view-mode="viewMode"
+            :measures="measures"
+            :show-measures="showMeasures"
             @select-symbol="onSelectSymbol"
             @capture-box="onCaptureBox"
           />
