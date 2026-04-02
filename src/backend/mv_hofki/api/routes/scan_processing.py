@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
+from mv_hofki.schemas.detected_measure import DetectedMeasureRead
 from mv_hofki.schemas.detected_staff import DetectedStaffRead
 from mv_hofki.schemas.detected_symbol import DetectedSymbolRead, SymbolCorrectionRequest
 from mv_hofki.schemas.sheet_music_scan import ScanStatusRead
@@ -363,6 +364,26 @@ async def get_detected_staves(scan_id: int, db: AsyncSession = Depends(get_db)):
         select(DetectedStaff)
         .where(DetectedStaff.scan_id == scan_id)
         .order_by(DetectedStaff.staff_index)
+    )
+    return list(result.scalars().all())
+
+
+@router.get("/scans/{scan_id}/measures", response_model=list[DetectedMeasureRead])
+async def get_detected_measures(scan_id: int, db: AsyncSession = Depends(get_db)):
+    """Get all detected measures for a scan."""
+    from sqlalchemy import select
+
+    from mv_hofki.models.detected_measure import DetectedMeasure
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+
+    scan = await db.get(SheetMusicScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+
+    result = await db.execute(
+        select(DetectedMeasure)
+        .where(DetectedMeasure.scan_id == scan_id)
+        .order_by(DetectedMeasure.global_measure_number)
     )
     return list(result.scalars().all())
 

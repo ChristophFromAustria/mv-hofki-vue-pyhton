@@ -3,6 +3,7 @@
 from mv_hofki.models.clothing_detail import ClothingDetail
 from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.models.currency import Currency
+from mv_hofki.models.detected_measure import DetectedMeasure
 from mv_hofki.models.detected_staff import DetectedStaff
 from mv_hofki.models.detected_symbol import DetectedSymbol
 from mv_hofki.models.instrument_detail import InstrumentDetail
@@ -25,6 +26,7 @@ __all__ = [
     "ClothingDetail",
     "ClothingType",
     "Currency",
+    "DetectedMeasure",
     "DetectedStaff",
     "DetectedSymbol",
     "InstrumentDetail",
