@@ -217,6 +217,7 @@ async def run_pipeline(
     tmpl_result = await session.execute(sa_select(SymbolTemplate))
     all_templates = list(tmpl_result.scalars().all())
     template_display_names = {t.id: t.display_name for t in all_templates}
+    template_categories = {t.id: t.category for t in all_templates}
 
     # Load global scanner config
     config = await get_effective_config(session)
@@ -249,6 +250,10 @@ async def run_pipeline(
 
     stages.append(PostMatchingStage())
 
+    from mv_hofki.services.scanner.stages.measure_detection import MeasureDetectionStage
+
+    stages.append(MeasureDetectionStage())
+
     import asyncio
 
     if log_callback:
@@ -256,6 +261,7 @@ async def run_pipeline(
         log_callback(f"{len(variant_images)} Vorlagen geladen")
 
     ctx = PipelineContext(image=img, config=config, log_callback=log_callback)
+    ctx.metadata["template_categories"] = template_categories
     pipeline = Pipeline(stages=stages)
     # Run CPU-heavy pipeline in a thread to avoid blocking the async event loop
     ctx = await asyncio.to_thread(pipeline.run, ctx)
@@ -333,6 +339,33 @@ async def run_pipeline(
                 filter_reason=sym_data.filter_reason,
             )
             session.add(symbol)
+
+    # Clear previous measures and persist new ones
+    from mv_hofki.models.detected_measure import DetectedMeasure
+
+    await session.execute(
+        sa_delete(DetectedMeasure).where(DetectedMeasure.scan_id == scan_id)
+    )
+
+    # Build staff_index → staff.id lookup from just-persisted staves
+    staff_id_map: dict[int, int] = {}
+    staff_rows = await session.execute(
+        sa_select(DetectedStaff).where(DetectedStaff.scan_id == scan_id)
+    )
+    for s in staff_rows.scalars().all():
+        staff_id_map[s.staff_index] = s.id
+
+    for m in ctx.measures:
+        measure = DetectedMeasure(
+            scan_id=scan_id,
+            staff_id=staff_id_map.get(m.staff_index, 0),
+            staff_index=m.staff_index,
+            measure_number_in_staff=m.measure_number_in_staff,
+            global_measure_number=m.global_measure_number,
+            x_start=m.x_start,
+            x_end=m.x_end,
+        )
+        session.add(measure)
 
     # Save processed image
     if ctx.processed_image is not None:
