@@ -47,6 +47,7 @@ const showConfig = ref(false);
 const showLilypond = ref(false);
 const lilypondCode = ref("");
 const lilypondPdfPath = ref(null);
+const lilypondPngPaths = ref([]);
 const lilypondLoading = ref(false);
 const imageInfo = ref(null); // { width, height, type }
 const showAnalysisLog = ref(false);
@@ -230,6 +231,7 @@ async function generateLilypond() {
     const result = await post(`/scanner/scans/${props.scanId}/generate-lilypond`);
     lilypondCode.value = result.lilypond_code;
     lilypondPdfPath.value = result.pdf_path;
+    lilypondPngPaths.value = result.png_paths || [];
     showLilypond.value = true;
   } catch (e) {
     statusMessage.value = `LilyPond-Fehler: ${e.message}`;
@@ -549,9 +551,9 @@ onUnmounted(() => {
               @update:hide-filtered="hideFiltered = $event"
               @update:hidden-categories="hiddenCategories = $event"
             />
-            <span v-if="staves.length" class="stave-count"
+            <!-- <span v-if="staves.length" class="stave-count"
               >{{ staves.length }} Systeme erkannt</span
-            >
+            > -->
             <div class="view-toggle">
               <button
                 class="btn btn-sm"
@@ -723,6 +725,7 @@ onUnmounted(() => {
       :open="showLilypond"
       :lilypond-code="lilypondCode"
       :pdf-path="lilypondPdfPath"
+      :png-paths="lilypondPngPaths"
       @close="showLilypond = false"
     />
 
