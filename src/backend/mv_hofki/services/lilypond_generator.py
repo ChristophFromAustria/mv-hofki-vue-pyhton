@@ -16,6 +16,147 @@ _BARLINE_MAP: dict[str, str] = {
 }
 
 
+def _measure_to_ly(m: dict) -> str:
+    """Convert a single measure dict to a LilyPond note with optional barline."""
+    bar_cmd = _BARLINE_MAP.get(m.get("end_barline") or "", "")
+    return f"c1 {bar_cmd}" if bar_cmd else "c1"
+
+
+def _build_staff_content(measures: list[dict]) -> list[str]:
+    """Build LilyPond lines for one staff, handling volta/repeat structures."""
+    lines: list[str] = []
+
+    # Index volta groups
+    volta_groups: dict[int, list[dict]] = {}
+    for m in measures:
+        gid = m.get("volta_group_id")
+        if gid is not None:
+            volta_groups.setdefault(gid, []).append(m)
+
+    # Track which measures are in volta groups
+    volta_measure_nums: set[int] = set()
+    for group in volta_groups.values():
+        for m in group:
+            volta_measure_nums.add(m["global_measure_number"])
+
+    # Find repeat body start positions for each volta group
+    repeat_body_starts: dict[int, int] = {}
+    for gid, group in volta_groups.items():
+        first_volta_idx = min(
+            i for i, m in enumerate(measures) if m.get("volta_group_id") == gid
+        )
+        start_idx = 0
+        for j in range(first_volta_idx - 1, -1, -1):
+            bl = measures[j].get("end_barline") or ""
+            if "Wiederholung Anfang" in bl or "Wiederholung Beidseitig" in bl:
+                start_idx = j + 1
+                break
+        repeat_body_starts[gid] = start_idx
+
+    # Track repeat body measures per group
+    repeat_body_nums: dict[int, set[int]] = {}
+    for gid, start_idx in repeat_body_starts.items():
+        first_volta_idx = min(
+            i for i, m in enumerate(measures) if m.get("volta_group_id") == gid
+        )
+        repeat_body_nums[gid] = {
+            measures[j]["global_measure_number"]
+            for j in range(start_idx, first_volta_idx)
+        }
+
+    # All repeat body measure nums (across all groups) — used to know where
+    # a plain run should stop before a repeat block begins.
+    all_repeat_body_nums: set[int] = set()
+    for body_set in repeat_body_nums.values():
+        all_repeat_body_nums.update(body_set)
+
+    emitted: set[int] = set()
+    i = 0
+    while i < len(measures):
+        m = measures[i]
+        gnum = m["global_measure_number"]
+
+        if gnum in emitted:
+            i += 1
+            continue
+
+        # Check if this measure starts a repeat body for a volta group
+        started_group = None
+        for gid, start_idx in repeat_body_starts.items():
+            if i == start_idx:
+                started_group = gid
+                break
+
+        if started_group is not None:
+            gid = started_group
+            body_nums = repeat_body_nums[gid]
+            group = volta_groups[gid]
+            volta1 = sorted(
+                [g for g in group if g.get("volta_number") == 1],
+                key=lambda x: x["measure_number_in_staff"],
+            )
+            volta2 = sorted(
+                [g for g in group if g.get("volta_number") == 2],
+                key=lambda x: x["measure_number_in_staff"],
+            )
+
+            # Emit repeat body
+            body_notes = []
+            for j in range(i, len(measures)):
+                if measures[j]["global_measure_number"] in body_nums:
+                    body_notes.append(_measure_to_ly(measures[j]))
+                    emitted.add(measures[j]["global_measure_number"])
+                else:
+                    break
+
+            lines.append("\\repeat volta 2 { " + " ".join(body_notes) + " }")
+
+            # Emit alternatives
+            lines.append("\\alternative {")
+            if volta1:
+                v1 = " ".join(_measure_to_ly(vm) for vm in volta1)
+                lines.append(f"  \\volta 1 {{ {v1} }}")
+                for vm in volta1:
+                    emitted.add(vm["global_measure_number"])
+            if volta2:
+                v2 = " ".join(_measure_to_ly(vm) for vm in volta2)
+                lines.append(f"  \\volta 2 {{ {v2} }}")
+                for vm in volta2:
+                    emitted.add(vm["global_measure_number"])
+            lines.append("}")
+
+            # Advance past all emitted measures
+            while i < len(measures) and measures[i]["global_measure_number"] in emitted:
+                i += 1
+        else:
+            # Collect a run of plain (non-repeat-body, non-volta) measures
+            # and emit them on a single line.
+            plain_notes: list[str] = []
+            while i < len(measures):
+                cur = measures[i]
+                cnum = cur["global_measure_number"]
+                if cnum in emitted:
+                    i += 1
+                    continue
+                # Stop if this position starts a repeat body
+                is_repeat_start = any(
+                    i == start_idx for start_idx in repeat_body_starts.values()
+                )
+                if is_repeat_start:
+                    break
+                # Stop if this measure is in a volta group (shouldn't emit plain)
+                if cnum in volta_measure_nums or cnum in all_repeat_body_nums:
+                    i += 1
+                    continue
+                plain_notes.append(_measure_to_ly(cur))
+                emitted.add(cnum)
+                i += 1
+            if plain_notes:
+                lines.append(" ".join(plain_notes))
+
+    return lines
+
+
 def generate_lilypond(
     measures: list[dict],
     title: str,
@@ -53,19 +194,14 @@ def generate_lilypond(
     for staff_idx in systems:
         systems[staff_idx].sort(key=lambda m: m["measure_number_in_staff"])
 
-    # Build note content: c1 per measure with barline types, \break between systems
+    # Build note content with volta/repeat structures
     staff_indices = sorted(systems.keys())
     content_lines: list[str] = []
+
     for i, staff_idx in enumerate(staff_indices):
-        parts: list[str] = []
-        for m in systems[staff_idx]:
-            bar_cmd = _BARLINE_MAP.get(m.get("end_barline") or "", "")
-            if bar_cmd:
-                parts.append(f"c1 {bar_cmd}")
-            else:
-                parts.append("c1")
-        notes = " ".join(parts)
-        content_lines.append(f"    {notes}")
+        staff_measures = systems[staff_idx]
+        lines = _build_staff_content(staff_measures)
+        content_lines.extend(f"    {line}" for line in lines)
         if i < len(staff_indices) - 1:
             content_lines.append("    \\break")
 

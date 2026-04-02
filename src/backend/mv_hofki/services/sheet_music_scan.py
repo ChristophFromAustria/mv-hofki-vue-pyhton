@@ -254,6 +254,10 @@ async def run_pipeline(
 
     stages.append(MeasureDetectionStage())
 
+    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
+
+    stages.append(VoltaDetectionStage())
+
     import asyncio
 
     if log_callback:
