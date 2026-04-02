@@ -424,6 +424,8 @@ async def generate_lilypond_endpoint(
             "x_start": m.x_start,
             "x_end": m.x_end,
             "end_barline": m.end_barline,
+            "volta_number": m.volta_number,
+            "volta_group_id": m.volta_group_id,
         }
         for m in result.scalars().all()
     ]

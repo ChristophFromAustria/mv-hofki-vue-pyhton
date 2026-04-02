@@ -365,6 +365,8 @@ async def run_pipeline(
             x_start=m.x_start,
             x_end=m.x_end,
             end_barline=m.end_barline,
+            volta_number=m.volta_number,
+            volta_group_id=m.volta_group_id,
         )
         session.add(measure)
 

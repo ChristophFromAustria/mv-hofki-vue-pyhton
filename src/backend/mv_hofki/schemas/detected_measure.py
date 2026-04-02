@@ -15,5 +15,7 @@ class DetectedMeasureRead(BaseModel):
     x_start: int
     x_end: int
     end_barline: str | None
+    volta_number: int | None
+    volta_group_id: int | None
 
     model_config = {"from_attributes": True}

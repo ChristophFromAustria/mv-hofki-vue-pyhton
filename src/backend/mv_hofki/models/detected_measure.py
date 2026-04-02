@@ -24,3 +24,5 @@ class DetectedMeasure(Base):
     x_start: Mapped[int] = mapped_column(Integer, nullable=False)
     x_end: Mapped[int] = mapped_column(Integer, nullable=False)
     end_barline: Mapped[str | None] = mapped_column(String(50))
+    volta_number: Mapped[int | None] = mapped_column(Integer)
+    volta_group_id: Mapped[int | None] = mapped_column(Integer)

@@ -57,6 +57,8 @@ class MeasureData:
     x_start: int
     x_end: int
     end_barline: str | None = None
+    volta_number: int | None = None
+    volta_group_id: int | None = None
 
 
 @dataclass
