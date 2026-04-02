@@ -208,16 +208,31 @@ class TemplateMatchingStage(ProcessingStage):
                             locations[1][top_indices],
                         )
 
+                    bottom_line_y = max(staff.line_positions)
                     for pt_y, pt_x in zip(locations[0], locations[1]):
                         score = float(result[pt_y, pt_x])
                         confidence = (1.0 - score) if iter_sqdiff else score
+                        abs_y = int(staff.y_top + pt_y)
+                        sym_h = int(scaled.shape[0])
+                        sym_w = int(scaled.shape[1])
+                        sym_x = int(pt_x)
                         raw_detections.append(
                             SymbolData(
                                 staff_index=staff.staff_index,
-                                x=int(pt_x),
-                                y=int(staff.y_top + pt_y),
-                                width=int(scaled.shape[1]),
-                                height=int(scaled.shape[0]),
+                                x=sym_x,
+                                y=abs_y,
+                                width=sym_w,
+                                height=sym_h,
+                                staff_y_top=round(
+                                    (bottom_line_y - abs_y) / staff.line_spacing, 2
+                                ),
+                                staff_y_bottom=round(
+                                    (bottom_line_y - (abs_y + sym_h))
+                                    / staff.line_spacing,
+                                    2,
+                                ),
+                                staff_x_start=sym_x,
+                                staff_x_end=sym_x + sym_w,
                                 matched_template_id=template_id,
                                 confidence=confidence,
                             )
