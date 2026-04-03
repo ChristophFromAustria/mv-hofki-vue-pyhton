@@ -17,11 +17,15 @@ def _make_binary_image_with_volta(
     line_spacing,
     volta_x_start,
     volta_x_end,
+    thickness=3,
 ):
     """Create a white binary image with a horizontal volta line above the staff."""
     img = np.full((height, width), 255, dtype=np.uint8)
     volta_y = int(staff_y_top - line_spacing * 1.5)
-    img[volta_y, volta_x_start:volta_x_end] = 0
+    # Draw horizontal bracket line with realistic thickness
+    for dy in range(thickness):
+        img[volta_y + dy, volta_x_start:volta_x_end] = 0
+    # Vertical hook at start
     img[volta_y : volta_y + int(line_spacing), volta_x_start] = 0
     return img
 
@@ -145,11 +149,13 @@ def test_two_brackets_get_different_numbers():
     ]
     img = np.full((500, 700), 255, dtype=np.uint8)
     volta_y = int(200 - 50 * 1.5)
-    # Volta 1: over measure 2
-    img[volta_y, 210:400] = 0
+    # Volta 1: over measure 2 (3px thick line)
+    for dy in range(3):
+        img[volta_y + dy, 210:400] = 0
     img[volta_y : volta_y + 50, 210] = 0
-    # Volta 2: over measure 3
-    img[volta_y, 410:600] = 0
+    # Volta 2: over measure 3 (3px thick line)
+    for dy in range(3):
+        img[volta_y + dy, 410:600] = 0
     img[volta_y : volta_y + 50, 410] = 0
 
     ctx = PipelineContext(image=img, processed_image=img)

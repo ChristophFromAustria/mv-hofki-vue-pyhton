@@ -63,9 +63,10 @@ class VoltaDetectionStage(ProcessingStage):
         Returns list of (x_start, x_end) for each detected bracket.
         """
         ls = staff.line_spacing
+        # Scan region: 1 to 3 line-spacings above the top staff line
         region_top = max(0, int(staff.y_top - 3 * ls))
-        region_bottom = staff.y_top
-        if region_top >= region_bottom:
+        region_bottom = max(0, int(staff.y_top - ls))
+        if region_top >= region_bottom or region_bottom <= 0:
             return []
 
         region = binary[region_top:region_bottom, :]
@@ -75,9 +76,16 @@ class VoltaDetectionStage(ProcessingStage):
             sum(m.x_end - m.x_start for m in measures) / max(len(measures), 1)
         )
         kernel_width = max(avg_measure_width // 2, 20)
-
+        # Morphological opening to isolate horizontal lines.
+        # First pass: strict horizontal opening with 1px height
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_width, 1))
         horizontal = cv2.morphologyEx(inverted, cv2.MORPH_OPEN, kernel)
+
+        # Dilate vertically to reconnect slightly angled lines (up to ~5°)
+        # A 5° angle over kernel_width pixels gives ~kernel_width*tan(5°) ≈ 0.087*kw
+        dilate_height = max(int(kernel_width * 0.09), 3)
+        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, dilate_height))
+        horizontal = cv2.dilate(horizontal, dilate_kernel)
 
         contours, _ = cv2.findContours(
             horizontal, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
