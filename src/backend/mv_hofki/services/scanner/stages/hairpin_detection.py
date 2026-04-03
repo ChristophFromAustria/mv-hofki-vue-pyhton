@@ -26,6 +26,16 @@ class HairpinDetectionStage(ProcessingStage):
         hairpins: list[SymbolData] = []
         debug_lines: list[dict] = []
 
+        # Look up template IDs for crescendo/decrescendo from metadata
+        display_names: dict[int, str] = ctx.metadata.get("template_display_names", {})
+        cresc_id = None
+        decresc_id = None
+        for tid, name in display_names.items():
+            if name == "Crescendo":
+                cresc_id = tid
+            elif name == "Decrescendo":
+                decresc_id = tid
+
         for staff in staves:
             bottom_line = max(staff.line_positions)
             region_top = bottom_line
@@ -77,17 +87,22 @@ class HairpinDetectionStage(ProcessingStage):
             # Pair angled lines into V-shapes (crescendo/decrescendo)
             found = _find_hairpin_pairs(angled, staff.line_spacing)
             for hp_type, x_min, y_min, x_max, y_max in found:
+                template_id = cresc_id if hp_type == "crescendo" else decresc_id
+                bottom_line_y = max(staff.line_positions)
+                ls = staff.line_spacing
                 hairpins.append(
                     SymbolData(
                         staff_index=staff.staff_index,
                         x=x_min,
                         y=y_min,
                         width=x_max - x_min,
-                        height=y_max - y_min,
+                        height=max(y_max - y_min, int(ls // 2)),
+                        staff_y_top=round((bottom_line_y - y_min) / ls, 2),
+                        staff_y_bottom=round((bottom_line_y - y_max) / ls, 2),
                         staff_x_start=x_min,
                         staff_x_end=x_max,
-                        matched_template_id=None,
-                        confidence=None,
+                        matched_template_id=template_id,
+                        confidence=0.5,
                     )
                 )
                 ctx.log(
