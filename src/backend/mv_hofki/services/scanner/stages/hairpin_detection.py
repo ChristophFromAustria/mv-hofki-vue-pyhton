@@ -87,6 +87,11 @@ class HairpinDetectionStage(ProcessingStage):
             # Pair angled lines into V-shapes (crescendo/decrescendo)
             found = _find_hairpin_pairs(angled, staff.line_spacing)
             for hp_type, x_min, y_min, x_max, y_max in found:
+                # Expand hitbox to cover all connected black pixels
+                x_min, y_min, x_max, y_max = _expand_to_connected(
+                    binary, x_min, y_min, x_max, y_max
+                )
+
                 template_id = cresc_id if hp_type == "crescendo" else decresc_id
                 bottom_line_y = max(staff.line_positions)
                 ls = staff.line_spacing
@@ -102,7 +107,7 @@ class HairpinDetectionStage(ProcessingStage):
                         staff_x_start=x_min,
                         staff_x_end=x_max,
                         matched_template_id=template_id,
-                        confidence=0.5,
+                        confidence=0.8,
                     )
                 )
                 ctx.log(
@@ -202,3 +207,61 @@ def _find_hairpin_pairs(
                 break
 
     return results
+
+
+def _expand_to_connected(
+    binary: np.ndarray,
+    x_min: int,
+    y_min: int,
+    x_max: int,
+    y_max: int,
+    padding: int = 2,
+) -> tuple[int, int, int, int]:
+    """Expand a bounding box to cover all connected black pixels.
+
+    Takes the initial Hough-based hitbox as a seed region, finds all
+    connected components that touch it, and returns the expanded bounds.
+    This ensures both inner and outer contours of thick hairpin lines
+    are fully enclosed.
+    """
+    h, w = binary.shape[:2]
+
+    # Add padding around the seed box to catch nearby pixels
+    roi_y1 = max(0, y_min - padding * 5)
+    roi_y2 = min(h, y_max + padding * 5)
+    roi_x1 = max(0, x_min - padding * 5)
+    roi_x2 = min(w, x_max + padding * 5)
+
+    roi = binary[roi_y1:roi_y2, roi_x1:roi_x2]
+    # Invert: black pixels (ink) become white (foreground) for connectedComponents
+    inverted = cv2.bitwise_not(roi)
+
+    num_labels, labels = cv2.connectedComponents(inverted)
+
+    # Find which labels touch the seed box (relative to ROI)
+    seed_y1 = y_min - roi_y1
+    seed_y2 = y_max - roi_y1
+    seed_x1 = x_min - roi_x1
+    seed_x2 = x_max - roi_x1
+
+    seed_region = labels[seed_y1:seed_y2, seed_x1:seed_x2]
+    touching_labels = set(np.unique(seed_region)) - {0}
+
+    if not touching_labels:
+        return x_min, y_min, x_max, y_max
+
+    # Find the bounding box of all pixels with those labels
+    mask = np.isin(labels, list(touching_labels))
+    coords = cv2.findNonZero(mask.astype(np.uint8))
+    if coords is None:
+        return x_min, y_min, x_max, y_max
+
+    rx, ry, rw, rh = cv2.boundingRect(coords)
+
+    # Convert back to absolute coordinates
+    abs_x_min = roi_x1 + rx
+    abs_y_min = roi_y1 + ry
+    abs_x_max = roi_x1 + rx + rw
+    abs_y_max = roi_y1 + ry + rh
+
+    return abs_x_min, abs_y_min, abs_x_max, abs_y_max
