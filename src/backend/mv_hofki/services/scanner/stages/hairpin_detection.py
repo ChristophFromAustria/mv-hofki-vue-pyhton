@@ -60,16 +60,14 @@ class HairpinDetectionStage(ProcessingStage):
             if lines is None:
                 continue
 
-            # Collect angled lines (hairpins are 5-30 degrees from horizontal)
-            angled: list[tuple[int, int, int, int, float]] = []
+            # Collect near-horizontal lines (hairpins are very flat, 0-15°)
+            candidates: list[tuple[int, int, int, int]] = []
             for line in lines:
                 x1, y1, x2, y2 = line[0]
                 abs_y1 = region_top + y1
                 abs_y2 = region_top + y2
-                angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
-                abs_angle = abs(angle)
+                angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
 
-                # Store all lines for debug
                 debug_lines.append(
                     {
                         "x1": int(x1),
@@ -80,12 +78,15 @@ class HairpinDetectionStage(ProcessingStage):
                     }
                 )
 
-                # Hairpin lines are angled 3-25 degrees from horizontal
-                if 3 <= abs_angle <= 25:
-                    angled.append((int(x1), int(abs_y1), int(x2), int(abs_y2), angle))
+                # Keep lines up to 15° (hairpins are nearly horizontal)
+                if angle <= 15:
+                    # Normalize so x1 < x2
+                    if x1 > x2:
+                        x1, y1, x2, y2 = x2, y2, x1, y1
+                    candidates.append((int(x1), int(abs_y1), int(x2), int(abs_y2)))
 
-            # Pair angled lines into V-shapes (crescendo/decrescendo)
-            found = _find_hairpin_pairs(angled, staff.line_spacing)
+            # Find converging line pairs (V-shapes)
+            found = _find_hairpin_pairs(candidates, staff.line_spacing)
             for hp_type, x_min, y_min, x_max, y_max in found:
                 # Expand hitbox to cover all connected black pixels
                 x_min, y_min, x_max, y_max = _expand_to_connected(
@@ -132,79 +133,97 @@ class HairpinDetectionStage(ProcessingStage):
 
 
 def _find_hairpin_pairs(
-    angled_lines: list[tuple[int, int, int, int, float]],
+    candidates: list[tuple[int, int, int, int]],
     line_spacing: float,
 ) -> list[tuple[str, int, int, int, int]]:
-    """Find V-shaped pairs of angled lines (crescendo/decrescendo).
+    """Find V-shaped pairs from near-horizontal lines.
 
-    A hairpin is two lines that:
-    - Have opposite angles (one going up, one going down)
-    - Share a common vertex (the point of the V)
-    - The vertex ends are close together (within 1 line_spacing)
+    Each candidate is (x1, y1, x2, y2) normalized so x1 < x2.
+    A hairpin pair is two lines that:
+    - Overlap significantly in X range
+    - Have a small Y gap (converge at one end, diverge at the other)
+    - The converging end (vertex) has Y values close together
+    - The diverging end has Y values further apart
 
-    Returns list of (type, x_min, y_min, x_max, y_max) where type is
-    'crescendo' or 'decrescendo'.
+    Returns list of (type, x_min, y_min, x_max, y_max).
     """
-    if len(angled_lines) < 2:
+    if len(candidates) < 2:
         return []
 
-    max_vertex_gap = line_spacing * 1.5
+    max_y_gap = line_spacing * 2
+    min_x_overlap_ratio = 0.5
     results: list[tuple[str, int, int, int, int]] = []
     used: set[int] = set()
 
-    for i, (x1a, y1a, x2a, y2a, angle_a) in enumerate(angled_lines):
+    for i, (x1a, y1a, x2a, y2a) in enumerate(candidates):
         if i in used:
             continue
-        for j, (x1b, y1b, x2b, y2b, angle_b) in enumerate(angled_lines):
+        len_a = x2a - x1a
+        if len_a < 20:
+            continue
+
+        for j, (x1b, y1b, x2b, y2b) in enumerate(candidates):
             if j <= i or j in used:
                 continue
-            # Opposite angles (one positive, one negative)
-            if angle_a * angle_b >= 0:
+            len_b = x2b - x1b
+            if len_b < 20:
                 continue
 
-            # Find the vertex: the ends that are closest together
-            # Check all 4 endpoint combinations
-            pairs = [
-                ((x1a, y1a), (x1b, y1b), (x2a, y2a), (x2b, y2b)),
-                ((x1a, y1a), (x2b, y2b), (x2a, y2a), (x1b, y1b)),
-                ((x2a, y2a), (x1b, y1b), (x1a, y1a), (x2b, y2b)),
-                ((x2a, y2a), (x2b, y2b), (x1a, y1a), (x1b, y1b)),
-            ]
+            # Check X overlap
+            x_overlap = min(x2a, x2b) - max(x1a, x1b)
+            min_len = min(len_a, len_b)
+            if x_overlap < min_len * min_x_overlap_ratio:
+                continue
 
-            for (vxa, vya), (vxb, vyb), (ea, _eya), (eb, _eyb) in pairs:
-                dist = np.hypot(vxa - vxb, vya - vyb)
-                if dist > max_vertex_gap:
-                    continue
+            # Check Y gap at left and right ends
+            # Interpolate Y values at the shared X range
+            shared_left = max(x1a, x1b)
+            shared_right = min(x2a, x2b)
 
-                # Vertex is the close end, open end is the far end
-                vertex_x = (vxa + vxb) // 2
-                open_a_x = ea
-                open_b_x = eb
+            def y_at_x(x, x1, y1, x2, y2):
+                if x2 == x1:
+                    return y1
+                return y1 + (y2 - y1) * (x - x1) / (x2 - x1)
 
-                # Determine type: vertex on left = crescendo, right = decrescendo
-                avg_open_x = (open_a_x + open_b_x) / 2
-                if vertex_x < avg_open_x:
-                    hp_type = "crescendo"
-                else:
-                    hp_type = "decrescendo"
+            y_a_left = y_at_x(shared_left, x1a, y1a, x2a, y2a)
+            y_b_left = y_at_x(shared_left, x1b, y1b, x2b, y2b)
+            y_a_right = y_at_x(shared_right, x1a, y1a, x2a, y2a)
+            y_b_right = y_at_x(shared_right, x1b, y1b, x2b, y2b)
 
-                all_x = [x1a, x2a, x1b, x2b]
-                all_y = [y1a, y2a, y1b, y2b]
-                results.append(
-                    (
-                        hp_type,
-                        min(all_x),
-                        min(all_y),
-                        max(all_x),
-                        max(all_y),
-                    )
+            gap_left = abs(y_a_left - y_b_left)
+            gap_right = abs(y_a_right - y_b_right)
+
+            # Both gaps must be within max_y_gap
+            if gap_left > max_y_gap or gap_right > max_y_gap:
+                continue
+
+            # One end should be notably tighter than the other (V-shape)
+            min_gap = min(gap_left, gap_right)
+            max_gap = max(gap_left, gap_right)
+            if max_gap < 3 or min_gap > max_gap * 0.7:
+                # Too parallel or too similar — not a V
+                continue
+
+            # Determine type from which end converges
+            if gap_left < gap_right:
+                hp_type = "crescendo"  # vertex on left, opens right
+            else:
+                hp_type = "decrescendo"  # vertex on right, opens left
+
+            all_x = [x1a, x2a, x1b, x2b]
+            all_y = [y1a, y2a, y1b, y2b]
+            results.append(
+                (
+                    hp_type,
+                    min(all_x),
+                    min(all_y),
+                    max(all_x),
+                    max(all_y),
                 )
-                used.add(i)
-                used.add(j)
-                break
-
-            if i in used:
-                break
+            )
+            used.add(i)
+            used.add(j)
+            break
 
     return results
 
