@@ -420,6 +420,38 @@ async def get_volta_debug(scan_id: int, db: AsyncSession = Depends(get_db)):
     return json.loads(debug_path.read_text())
 
 
+@router.get("/scans/{scan_id}/hairpin-debug")
+async def get_hairpin_debug(scan_id: int, db: AsyncSession = Depends(get_db)):
+    """Get Hough debug lines from hairpin detection for visualization."""
+    import json
+
+    from mv_hofki.core.config import settings
+    from mv_hofki.models.scan_part import ScanPart
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+
+    scan = await db.get(SheetMusicScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+
+    part = await db.get(ScanPart, scan.part_id)
+    if not part:
+        raise HTTPException(status_code=404, detail="Part nicht gefunden")
+
+    debug_path = (
+        settings.PROJECT_ROOT
+        / "data"
+        / "scans"
+        / str(part.project_id)
+        / str(part.id)
+        / str(scan_id)
+        / "hairpin_debug.json"
+    )
+    if not debug_path.exists():
+        return []
+
+    return json.loads(debug_path.read_text())
+
+
 @router.post("/scans/{scan_id}/generate-lilypond")
 async def generate_lilypond_endpoint(
     scan_id: int,

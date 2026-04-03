@@ -15,6 +15,7 @@ const props = defineProps({
   showMeasures: { type: Boolean, default: true },
   showVoltas: { type: Boolean, default: true },
   voltaDebugLines: { type: Array, default: () => [] },
+  hairpinDebugLines: { type: Array, default: () => [] },
   showStaves: { type: Boolean, default: true },
   showSymbols: { type: Boolean, default: true },
   captureMode: { type: Boolean, default: false },
@@ -524,6 +525,21 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             :x2="dl.x2"
             :y2="dl.y2"
             stroke="#22d3ee"
+            stroke-width="1.5"
+            opacity="0.7"
+          />
+        </template>
+
+        <!-- Hairpin Hough debug lines -->
+        <template v-if="showVoltas && hairpinDebugLines.length">
+          <line
+            v-for="(dl, idx) in hairpinDebugLines"
+            :key="`hdl-${idx}`"
+            :x1="dl.x1"
+            :y1="dl.y1"
+            :x2="dl.x2"
+            :y2="dl.y2"
+            stroke="#f59e0b"
             stroke-width="1.5"
             opacity="0.7"
           />

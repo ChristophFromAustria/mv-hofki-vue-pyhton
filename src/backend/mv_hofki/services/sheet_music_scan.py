@@ -250,6 +250,10 @@ async def run_pipeline(
 
     stages.append(PostMatchingStage())
 
+    from mv_hofki.services.scanner.stages.hairpin_detection import HairpinDetectionStage
+
+    stages.append(HairpinDetectionStage())
+
     from mv_hofki.services.scanner.stages.measure_detection import MeasureDetectionStage
 
     stages.append(MeasureDetectionStage())
@@ -374,11 +378,14 @@ async def run_pipeline(
         )
         session.add(measure)
 
-    # Save volta debug lines if present
+    # Save debug lines if present
+    scan_dir = _scan_dir(project_id, part_id, scan_id)
     volta_debug = ctx.metadata.get("volta_debug_lines")
     if volta_debug:
-        debug_path = _scan_dir(project_id, part_id, scan_id) / "volta_debug.json"
-        debug_path.write_text(json.dumps(volta_debug))
+        (scan_dir / "volta_debug.json").write_text(json.dumps(volta_debug))
+    hairpin_debug = ctx.metadata.get("hairpin_debug_lines")
+    if hairpin_debug:
+        (scan_dir / "hairpin_debug.json").write_text(json.dumps(hairpin_debug))
 
     # Save processed image
     if ctx.processed_image is not None:
