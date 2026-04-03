@@ -250,6 +250,10 @@ async def run_pipeline(
 
     stages.append(PostMatchingStage())
 
+    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
+
+    stages.append(TextMaskingStage())
+
     from mv_hofki.services.scanner.stages.hairpin_detection import HairpinDetectionStage
 
     stages.append(HairpinDetectionStage())
