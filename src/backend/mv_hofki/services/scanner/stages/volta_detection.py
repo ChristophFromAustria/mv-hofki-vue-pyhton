@@ -120,7 +120,7 @@ class VoltaDetectionStage(ProcessingStage):
         for line in lines:
             x1, y1, x2, y2 = line[0]
             angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
-            is_horizontal = angle <= 7
+            is_horizontal = bool(angle <= 7)
             debug_lines.append(
                 (
                     int(x1),
