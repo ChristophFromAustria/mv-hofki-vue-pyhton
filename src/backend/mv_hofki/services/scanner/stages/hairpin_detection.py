@@ -86,16 +86,29 @@ class HairpinDetectionStage(ProcessingStage):
                     candidates.append((int(x1), int(abs_y1), int(x2), int(abs_y2)))
 
             # Find converging line pairs (V-shapes)
-            found = _find_hairpin_pairs(candidates, staff.line_spacing)
-            for hp_type, x_min, y_min, x_max, y_max in found:
-                # Expand hitbox to cover all connected black pixels
-                x_min, y_min, x_max, y_max = _expand_to_connected(
-                    binary, x_min, y_min, x_max, y_max
-                )
+            raw_pairs = _find_hairpin_pairs(candidates, staff.line_spacing)
 
+            # Expand each pair to full connected component bounds
+            expanded: list[tuple[str, int, int, int, int]] = []
+            for hp_type, x_min, y_min, x_max, y_max in raw_pairs:
+                ex = _expand_to_connected(
+                    binary,
+                    x_min,
+                    y_min,
+                    x_max,
+                    y_max,
+                    region_top,
+                    region_bottom,
+                )
+                expanded.append((hp_type, *ex))
+
+            # NMS: merge overlapping detections, keep the largest
+            merged = _nms_hairpins(expanded)
+
+            bottom_line_y = max(staff.line_positions)
+            ls = staff.line_spacing
+            for hp_type, x_min, y_min, x_max, y_max in merged:
                 template_id = cresc_id if hp_type == "crescendo" else decresc_id
-                bottom_line_y = max(staff.line_positions)
-                ls = staff.line_spacing
                 hairpins.append(
                     SymbolData(
                         staff_index=staff.staff_index,
@@ -234,34 +247,31 @@ def _expand_to_connected(
     y_min: int,
     x_max: int,
     y_max: int,
-    padding: int = 2,
+    region_top: int,
+    region_bottom: int,
 ) -> tuple[int, int, int, int]:
     """Expand a bounding box to cover all connected black pixels.
 
-    Takes the initial Hough-based hitbox as a seed region, finds all
-    connected components that touch it, and returns the expanded bounds.
-    This ensures both inner and outer contours of thick hairpin lines
-    are fully enclosed.
+    Uses the full staff below-region for connected component analysis
+    so the expansion can reach the full extent of long hairpin symbols.
     """
     h, w = binary.shape[:2]
+    roi_y1 = max(0, region_top)
+    roi_y2 = min(h, region_bottom)
 
-    # Add padding around the seed box to catch nearby pixels
-    roi_y1 = max(0, y_min - padding * 5)
-    roi_y2 = min(h, y_max + padding * 5)
-    roi_x1 = max(0, x_min - padding * 5)
-    roi_x2 = min(w, x_max + padding * 5)
-
-    roi = binary[roi_y1:roi_y2, roi_x1:roi_x2]
-    # Invert: black pixels (ink) become white (foreground) for connectedComponents
+    roi = binary[roi_y1:roi_y2, :]
     inverted = cv2.bitwise_not(roi)
 
     num_labels, labels = cv2.connectedComponents(inverted)
 
     # Find which labels touch the seed box (relative to ROI)
-    seed_y1 = y_min - roi_y1
-    seed_y2 = y_max - roi_y1
-    seed_x1 = x_min - roi_x1
-    seed_x2 = x_max - roi_x1
+    seed_y1 = max(0, y_min - roi_y1)
+    seed_y2 = min(roi_y2 - roi_y1, y_max - roi_y1)
+    seed_x1 = max(0, x_min)
+    seed_x2 = min(w, x_max)
+
+    if seed_y1 >= seed_y2 or seed_x1 >= seed_x2:
+        return x_min, y_min, x_max, y_max
 
     seed_region = labels[seed_y1:seed_y2, seed_x1:seed_x2]
     touching_labels = set(np.unique(seed_region)) - {0}
@@ -276,11 +286,50 @@ def _expand_to_connected(
         return x_min, y_min, x_max, y_max
 
     rx, ry, rw, rh = cv2.boundingRect(coords)
+    return rx, roi_y1 + ry, rx + rw, roi_y1 + ry + rh
 
-    # Convert back to absolute coordinates
-    abs_x_min = roi_x1 + rx
-    abs_y_min = roi_y1 + ry
-    abs_x_max = roi_x1 + rx + rw
-    abs_y_max = roi_y1 + ry + rh
 
-    return abs_x_min, abs_y_min, abs_x_max, abs_y_max
+def _nms_hairpins(
+    detections: list[tuple[str, int, int, int, int]],
+) -> list[tuple[str, int, int, int, int]]:
+    """Non-maximum suppression: merge overlapping hairpin detections.
+
+    When multiple detections overlap significantly, keep the one with
+    the largest area (= best expanded bounds).
+    """
+    if not detections:
+        return []
+
+    # Sort by area descending (largest first)
+    scored = sorted(
+        detections,
+        key=lambda d: (d[3] - d[1]) * (d[4] - d[2]),
+        reverse=True,
+    )
+
+    kept: list[tuple[str, int, int, int, int]] = []
+    for det in scored:
+        _, x1, y1, x2, y2 = det
+        area = (x2 - x1) * (y2 - y1)
+        if area <= 0:
+            continue
+
+        suppressed = False
+        for k_det in kept:
+            _, kx1, ky1, kx2, ky2 = k_det
+            # Compute overlap
+            ox1 = max(x1, kx1)
+            oy1 = max(y1, ky1)
+            ox2 = min(x2, kx2)
+            oy2 = min(y2, ky2)
+            if ox1 < ox2 and oy1 < oy2:
+                overlap_area = (ox2 - ox1) * (oy2 - oy1)
+                # Suppress if >30% of the smaller detection overlaps
+                if overlap_area > area * 0.3:
+                    suppressed = True
+                    break
+
+        if not suppressed:
+            kept.append(det)
+
+    return kept
