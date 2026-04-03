@@ -60,10 +60,13 @@ class VoltaDetectionStage(ProcessingStage):
     ) -> list[tuple[int, int]]:
         """Find horizontal line segments in the volta region above the staff.
 
+        Uses probabilistic Hough line detection on the region 1-3
+        line-spacings above the staff.  Hough tolerates slightly angled,
+        thin, or gapped lines much better than morphological opening.
+
         Returns list of (x_start, x_end) for each detected bracket.
         """
         ls = staff.line_spacing
-        # Scan region: 1 to 3 line-spacings above the top staff line
         region_top = max(0, int(staff.y_top - 3 * ls))
         region_bottom = max(0, int(staff.y_top - ls))
         if region_top >= region_bottom or region_bottom <= 0:
@@ -75,30 +78,52 @@ class VoltaDetectionStage(ProcessingStage):
         avg_measure_width = int(
             sum(m.x_end - m.x_start for m in measures) / max(len(measures), 1)
         )
-        kernel_width = max(avg_measure_width // 2, 20)
-        # Morphological opening to isolate horizontal lines.
-        # First pass: strict horizontal opening with 1px height
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_width, 1))
-        horizontal = cv2.morphologyEx(inverted, cv2.MORPH_OPEN, kernel)
+        # Use a low minLineLength so Hough finds fragments of broken/angled
+        # lines.  We filter by total width after merging segments.
+        min_line_length = max(int(ls), 20)
 
-        # Dilate vertically to reconnect slightly angled lines (up to ~5°)
-        # A 5° angle over kernel_width pixels gives ~kernel_width*tan(5°) ≈ 0.087*kw
-        dilate_height = max(int(kernel_width * 0.09), 3)
-        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, dilate_height))
-        horizontal = cv2.dilate(horizontal, dilate_kernel)
-
-        contours, _ = cv2.findContours(
-            horizontal, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        # Edge detection + probabilistic Hough
+        edges = cv2.Canny(inverted, 50, 150, apertureSize=3)
+        lines = cv2.HoughLinesP(
+            edges,
+            rho=1,
+            theta=np.pi / 180,
+            threshold=30,
+            minLineLength=min_line_length,
+            maxLineGap=max(int(ls * 0.3), 5),
         )
 
-        min_width = avg_measure_width // 2
-        brackets: list[tuple[int, int]] = []
-        for cnt in contours:
-            x, _, w, _ = cv2.boundingRect(cnt)
-            if w >= min_width:
-                brackets.append((x, x + w))
+        if lines is None:
+            return []
 
-        brackets.sort(key=lambda b: b[0])
+        # Filter: keep only near-horizontal lines (within ~7 degrees)
+        segments: list[tuple[int, int]] = []
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
+            if angle <= 7:
+                seg_start = min(x1, x2)
+                seg_end = max(x1, x2)
+                segments.append((seg_start, seg_end))
+
+        if not segments:
+            return []
+
+        # Merge overlapping/close segments into brackets
+        segments.sort(key=lambda s: s[0])
+        merged: list[tuple[int, int]] = [segments[0]]
+        for seg_start, seg_end in segments[1:]:
+            prev_start, prev_end = merged[-1]
+            # Merge if overlapping or within one line_spacing gap
+            if seg_start <= prev_end + int(ls):
+                merged[-1] = (prev_start, max(prev_end, seg_end))
+            else:
+                merged.append((seg_start, seg_end))
+
+        # Filter: minimum width = half average measure width
+        min_width = avg_measure_width // 2
+        brackets = [(s, e) for s, e in merged if (e - s) >= min_width]
+
         return brackets
 
     def _assign_volta_numbers(

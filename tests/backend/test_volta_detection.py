@@ -135,28 +135,29 @@ def test_two_brackets_get_different_numbers():
             measure_number_in_staff=2,
             global_measure_number=2,
             x_start=210,
-            x_end=400,
+            x_end=450,
             end_barline="Wiederholung Ende",
         ),
         MeasureData(
             staff_index=0,
             measure_number_in_staff=3,
             global_measure_number=3,
-            x_start=410,
-            x_end=600,
+            x_start=470,
+            x_end=720,
             end_barline=None,
         ),
     ]
-    img = np.full((500, 700), 255, dtype=np.uint8)
+    img = np.full((500, 800), 255, dtype=np.uint8)
     volta_y = int(200 - 50 * 1.5)
-    # Volta 1: over measure 2 (3px thick line)
+    # Volta 1: over measure 2 (3px thick, x=210-440)
     for dy in range(3):
-        img[volta_y + dy, 210:400] = 0
+        img[volta_y + dy, 210:440] = 0
     img[volta_y : volta_y + 50, 210] = 0
-    # Volta 2: over measure 3 (3px thick line)
+    # Gap of ~30px (barline area)
+    # Volta 2: over measure 3 (3px thick, x=470-710)
     for dy in range(3):
-        img[volta_y + dy, 410:600] = 0
-    img[volta_y : volta_y + 50, 410] = 0
+        img[volta_y + dy, 470:710] = 0
+    img[volta_y : volta_y + 50, 470] = 0
 
     ctx = PipelineContext(image=img, processed_image=img)
     ctx.staves = [staff]
