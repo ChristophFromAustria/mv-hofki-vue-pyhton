@@ -327,6 +327,24 @@ def test_preprocess_global_threshold():
     assert result.processed_image[5, 5] == 255  # light area → white
 
 
+def test_text_region_data_creation():
+    from mv_hofki.services.scanner.stages.base import TextRegionData
+
+    region = TextRegionData(staff_index=0, x=10, y=20, width=50, height=15)
+    assert region.staff_index == 0
+    assert region.x == 10
+    assert region.y == 20
+    assert region.width == 50
+    assert region.height == 15
+
+
+def test_pipeline_context_has_text_regions():
+    from mv_hofki.services.scanner.stages.base import PipelineContext
+
+    ctx = PipelineContext(image=None)
+    assert ctx.text_regions == []
+
+
 def test_preprocess_uses_configured_deskew_method():
     """PreprocessStage should delegate to the deskew method set in config."""
     from mv_hofki.services.scanner.stages.preprocess import PreprocessStage

@@ -62,6 +62,17 @@ class MeasureData:
 
 
 @dataclass
+class TextRegionData:
+    """Data for a detected text region."""
+
+    staff_index: int
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+@dataclass
 class PipelineContext:
     """Shared context passed between pipeline stages."""
 
@@ -72,6 +83,7 @@ class PipelineContext:
     staves: list[StaffData] = field(default_factory=list)
     symbols: list[SymbolData] = field(default_factory=list)
     measures: list[MeasureData] = field(default_factory=list)
+    text_regions: list[TextRegionData] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
     completed_stages: list[str] = field(default_factory=list)
