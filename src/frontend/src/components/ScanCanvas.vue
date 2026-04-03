@@ -523,9 +523,9 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             :y1="dl.y1"
             :x2="dl.x2"
             :y2="dl.y2"
-            :stroke="dl.horizontal ? '#22d3ee' : '#f97316'"
+            stroke="#22d3ee"
             stroke-width="1.5"
-            :opacity="dl.horizontal ? 0.6 : 0.3"
+            opacity="0.7"
           />
         </template>
 
