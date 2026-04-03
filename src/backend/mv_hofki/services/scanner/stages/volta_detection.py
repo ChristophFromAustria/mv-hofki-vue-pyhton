@@ -31,6 +31,8 @@ class VoltaDetectionStage(ProcessingStage):
             measures_by_staff.setdefault(m.staff_index, []).append(m)
 
         group_id = 1
+        # Debug: collect all Hough lines for visualization
+        debug_lines: list[dict] = []
 
         for staff_index in sorted(staff_map.keys()):
             staff = staff_map[staff_index]
@@ -38,17 +40,34 @@ class VoltaDetectionStage(ProcessingStage):
             if not staff_measures:
                 continue
 
-            brackets = self._find_brackets(binary, staff, staff_measures)
+            brackets, raw_lines = self._find_brackets(binary, staff, staff_measures)
+
+            # Store debug lines with absolute Y coordinates
+            for x1, y1, x2, y2, is_horizontal in raw_lines:
+                debug_lines.append(
+                    {
+                        "x1": int(x1),
+                        "y1": int(y1),
+                        "x2": int(x2),
+                        "y2": int(y2),
+                        "horizontal": is_horizontal,
+                        "staff_index": staff_index,
+                    }
+                )
+
             if not brackets:
                 continue
 
             self._assign_volta_numbers(brackets, staff_measures, group_id)
             group_id += len(brackets)
 
+        ctx.metadata["volta_debug_lines"] = debug_lines
+
         ctx.log(
             f"Volta-Erkennung: "
             f"{sum(1 for m in ctx.measures if m.volta_number is not None)} "
-            f"Takte mit Volta-Klammern"
+            f"Takte mit Volta-Klammern "
+            f"({len(debug_lines)} Hough-Linien gefunden)"
         )
         return ctx
 
@@ -57,20 +76,22 @@ class VoltaDetectionStage(ProcessingStage):
         binary: np.ndarray,
         staff: StaffData,
         measures: list[MeasureData],
-    ) -> list[tuple[int, int]]:
+    ) -> tuple[list[tuple[int, int]], list[tuple[int, int, int, int, bool]]]:
         """Find horizontal line segments in the volta region above the staff.
 
         Uses probabilistic Hough line detection on the region 1-3
-        line-spacings above the staff.  Hough tolerates slightly angled,
-        thin, or gapped lines much better than morphological opening.
+        line-spacings above the staff.
 
-        Returns list of (x_start, x_end) for each detected bracket.
+        Returns:
+            - brackets: list of (x_start, x_end) for each detected bracket
+            - debug_lines: list of (x1, y1_abs, x2, y2_abs, is_horizontal)
+              for ALL Hough lines found (for visualization)
         """
         ls = staff.line_spacing
         region_top = max(0, int(staff.y_top - 3 * ls))
         region_bottom = max(0, int(staff.y_top - ls))
         if region_top >= region_bottom or region_bottom <= 0:
-            return []
+            return [], []
 
         region = binary[region_top:region_bottom, :]
         inverted = cv2.bitwise_not(region)
@@ -78,11 +99,8 @@ class VoltaDetectionStage(ProcessingStage):
         avg_measure_width = int(
             sum(m.x_end - m.x_start for m in measures) / max(len(measures), 1)
         )
-        # Use a low minLineLength so Hough finds fragments of broken/angled
-        # lines.  We filter by total width after merging segments.
         min_line_length = max(int(ls), 20)
 
-        # Edge detection + probabilistic Hough
         edges = cv2.Canny(inverted, 50, 150, apertureSize=3)
         lines = cv2.HoughLinesP(
             edges,
@@ -94,37 +112,44 @@ class VoltaDetectionStage(ProcessingStage):
         )
 
         if lines is None:
-            return []
+            return [], []
 
-        # Filter: keep only near-horizontal lines (within ~7 degrees)
+        # Collect all lines for debug, convert to absolute Y
+        debug_lines: list[tuple[int, int, int, int, bool]] = []
         segments: list[tuple[int, int]] = []
         for line in lines:
             x1, y1, x2, y2 = line[0]
             angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
-            if angle <= 7:
-                seg_start = min(x1, x2)
-                seg_end = max(x1, x2)
-                segments.append((seg_start, seg_end))
+            is_horizontal = angle <= 7
+            debug_lines.append(
+                (
+                    int(x1),
+                    int(region_top + y1),
+                    int(x2),
+                    int(region_top + y2),
+                    is_horizontal,
+                )
+            )
+            if is_horizontal:
+                segments.append((min(x1, x2), max(x1, x2)))
 
         if not segments:
-            return []
+            return [], debug_lines
 
-        # Merge overlapping/close segments into brackets
+        # Merge overlapping/close segments
         segments.sort(key=lambda s: s[0])
         merged: list[tuple[int, int]] = [segments[0]]
         for seg_start, seg_end in segments[1:]:
             prev_start, prev_end = merged[-1]
-            # Merge if overlapping or within one line_spacing gap
             if seg_start <= prev_end + int(ls):
                 merged[-1] = (prev_start, max(prev_end, seg_end))
             else:
                 merged.append((seg_start, seg_end))
 
-        # Filter: minimum width = half average measure width
         min_width = avg_measure_width // 2
-        brackets = [(s, e) for s, e in merged if (e - s) >= min_width]
+        brackets = [(int(s), int(e)) for s, e in merged if (e - s) >= min_width]
 
-        return brackets
+        return brackets, debug_lines
 
     def _assign_volta_numbers(
         self,

@@ -14,6 +14,7 @@ const props = defineProps({
   measures: { type: Array, default: () => [] },
   showMeasures: { type: Boolean, default: true },
   showVoltas: { type: Boolean, default: true },
+  voltaDebugLines: { type: Array, default: () => [] },
   showStaves: { type: Boolean, default: true },
   showSymbols: { type: Boolean, default: true },
   captureMode: { type: Boolean, default: false },
@@ -511,6 +512,21 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               {{ vb.num }}.
             </text>
           </g>
+        </template>
+
+        <!-- Volta Hough debug lines -->
+        <template v-if="showVoltas && voltaDebugLines.length">
+          <line
+            v-for="(dl, idx) in voltaDebugLines"
+            :key="`vdl-${idx}`"
+            :x1="dl.x1"
+            :y1="dl.y1"
+            :x2="dl.x2"
+            :y2="dl.y2"
+            :stroke="dl.horizontal ? '#22d3ee' : '#f97316'"
+            stroke-width="1.5"
+            :opacity="dl.horizontal ? 0.6 : 0.3"
+          />
         </template>
 
         <!-- Symbol bounding boxes -->

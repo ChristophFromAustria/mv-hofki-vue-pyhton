@@ -374,6 +374,12 @@ async def run_pipeline(
         )
         session.add(measure)
 
+    # Save volta debug lines if present
+    volta_debug = ctx.metadata.get("volta_debug_lines")
+    if volta_debug:
+        debug_path = _scan_dir(project_id, part_id, scan_id) / "volta_debug.json"
+        debug_path.write_text(json.dumps(volta_debug))
+
     # Save processed image
     if ctx.processed_image is not None:
         processed_path = _scan_dir(project_id, part_id, scan_id) / "processed.png"
