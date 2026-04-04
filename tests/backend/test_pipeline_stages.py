@@ -345,6 +345,20 @@ def test_pipeline_context_has_text_regions():
     assert ctx.text_regions == []
 
 
+def test_text_region_data_has_text_field():
+    from mv_hofki.services.scanner.stages.base import TextRegionData
+
+    # Default is None
+    region = TextRegionData(staff_index=0, x=10, y=20, width=50, height=15)
+    assert region.text is None
+
+    # Can be set explicitly
+    region_with_text = TextRegionData(
+        staff_index=0, x=10, y=20, width=50, height=15, text="Trio"
+    )
+    assert region_with_text.text == "Trio"
+
+
 def test_preprocess_uses_configured_deskew_method():
     """PreprocessStage should delegate to the deskew method set in config."""
     from mv_hofki.services.scanner.stages.preprocess import PreprocessStage

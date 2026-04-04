@@ -70,6 +70,7 @@ class TextRegionData:
     y: int
     width: int
     height: int
+    text: str | None = None
 
 
 @dataclass
