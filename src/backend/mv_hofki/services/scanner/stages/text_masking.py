@@ -92,7 +92,7 @@ def _detect_text_regions(
     )
 
     # Thresholds derived from staff line spacing
-    max_char_size = line_spacing * 2.0
+    max_char_size = line_spacing * 3.0
     min_char_size = max(2, line_spacing * 0.15)
 
     # Collect bounding boxes of character-sized components
@@ -112,7 +112,7 @@ def _detect_text_regions(
             if aspect < 5:
                 char_boxes.append((bx, by, bx + bw, by + bh))
 
-    if len(char_boxes) < 3:
+    if not char_boxes:
         return []
 
     # Group into horizontal bands by Y-center, then cluster within each band.
@@ -147,13 +147,23 @@ def _detect_text_regions(
                 current_cluster = [box]
         clusters.append(current_cluster)
 
-    # Convert clusters with >= 3 characters to TextRegionData
+    # Convert qualifying clusters to TextRegionData.
+    # Clusters with >= 3 characters are always accepted.
+    # Single/double-component clusters are accepted only if each component
+    # is large enough (>= 0.5 * line_spacing) to avoid catching note dots.
+    min_solo_size = line_spacing * 0.5
     padding = int(line_spacing * 0.3)
     results: list[TextRegionData] = []
 
     for cluster in clusters:
         if len(cluster) < 3:
-            continue
+            # Accept small clusters only if components are large enough
+            all_large = all(
+                (b[2] - b[0]) >= min_solo_size and (b[3] - b[1]) >= min_solo_size
+                for b in cluster
+            )
+            if not all_large:
+                continue
         cx1 = max(0, min(b[0] for b in cluster) - padding)
         cy1 = max(0, min(b[1] for b in cluster) - padding)
         cx2 = min(rw, max(b[2] for b in cluster) + padding)

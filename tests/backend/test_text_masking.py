@@ -137,3 +137,32 @@ def test_text_masking_validate():
     )
     ctx = PipelineContext(image=img, processed_image=img, staves=[staff])
     assert stage.validate(ctx) is True
+
+
+def test_text_masking_detects_single_large_symbol():
+    """A single large symbol like copyright should be detected."""
+    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
+
+    img = np.full((300, 800), 255, dtype=np.uint8)
+
+    # Staff lines
+    for y in [50, 60, 70, 80, 90]:
+        img[y : y + 2, 20:780] = 0
+
+    # Single large symbol below staff (>= 0.5 * line_spacing in both dimensions)
+    # At line_spacing=10, this is a 7x7 symbol
+    cv2.rectangle(img, (400, 120), (407, 127), 0, -1)
+
+    staff = StaffData(
+        staff_index=0,
+        y_top=20,
+        y_bottom=200,
+        line_positions=[50, 60, 70, 80, 90],
+        line_spacing=10.0,
+    )
+    ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
+
+    stage = TextMaskingStage()
+    result = stage.process(ctx)
+
+    assert len(result.text_regions) >= 1
