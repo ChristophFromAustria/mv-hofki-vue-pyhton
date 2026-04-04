@@ -391,6 +391,27 @@ async def run_pipeline(
     if hairpin_debug:
         (scan_dir / "hairpin_debug.json").write_text(json.dumps(hairpin_debug))
 
+    # Persist text regions
+    from mv_hofki.models.detected_text_region import DetectedTextRegion
+
+    await session.execute(
+        sa_delete(DetectedTextRegion).where(DetectedTextRegion.scan_id == scan_id)
+    )
+
+    for tr in ctx.text_regions:
+        session.add(
+            DetectedTextRegion(
+                scan_id=scan_id,
+                staff_index=tr.staff_index,
+                x=tr.x,
+                y=tr.y,
+                width=tr.width,
+                height=tr.height,
+                text=tr.text,
+                confidence=tr.confidence,
+            )
+        )
+
     # Save processed image
     if ctx.processed_image is not None:
         processed_path = _scan_dir(project_id, part_id, scan_id) / "processed.png"

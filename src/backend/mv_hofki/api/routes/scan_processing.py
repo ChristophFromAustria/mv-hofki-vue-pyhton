@@ -12,6 +12,7 @@ from mv_hofki.api.deps import get_db
 from mv_hofki.schemas.detected_measure import DetectedMeasureRead
 from mv_hofki.schemas.detected_staff import DetectedStaffRead
 from mv_hofki.schemas.detected_symbol import DetectedSymbolRead, SymbolCorrectionRequest
+from mv_hofki.schemas.detected_text_region import DetectedTextRegionRead
 from mv_hofki.schemas.sheet_music_scan import ScanStatusRead
 from mv_hofki.services import sheet_music_scan as scan_service
 
@@ -384,6 +385,29 @@ async def get_detected_measures(scan_id: int, db: AsyncSession = Depends(get_db)
         select(DetectedMeasure)
         .where(DetectedMeasure.scan_id == scan_id)
         .order_by(DetectedMeasure.global_measure_number)
+    )
+    return list(result.scalars().all())
+
+
+@router.get(
+    "/scans/{scan_id}/text-regions",
+    response_model=list[DetectedTextRegionRead],
+)
+async def get_detected_text_regions(scan_id: int, db: AsyncSession = Depends(get_db)):
+    """Get all detected text regions for a scan."""
+    from sqlalchemy import select
+
+    from mv_hofki.models.detected_text_region import DetectedTextRegion
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+
+    scan = await db.get(SheetMusicScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+
+    result = await db.execute(
+        select(DetectedTextRegion)
+        .where(DetectedTextRegion.scan_id == scan_id)
+        .order_by(DetectedTextRegion.x)
     )
     return list(result.scalars().all())
 
