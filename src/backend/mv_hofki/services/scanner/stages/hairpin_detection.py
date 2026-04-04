@@ -174,7 +174,7 @@ def _validate_wedge_shape(
     x_max: int,
     y_max: int,
     max_fill_ratio: float = 0.35,
-    num_slices: int = 4,
+    num_slices: int = 8,
 ) -> bool:
     """Validate that black pixels in the bounding box form a wedge shape.
 
@@ -222,20 +222,26 @@ def _validate_wedge_shape(
     if len(spreads) < 2:
         return False
 
-    # For crescendo (opens right): spreads should generally increase
-    # For decrescendo (opens left): spreads should generally decrease
+    # Order spreads from vertex to opening
     if hp_type == "crescendo":
-        vertex_half = spreads[: num_slices // 2]
-        open_half = spreads[num_slices // 2 :]
+        ordered = spreads  # left=vertex, right=open
     else:
-        vertex_half = spreads[num_slices // 2 :]
-        open_half = spreads[: num_slices // 2]
+        ordered = spreads[::-1]  # reverse: right=vertex, left=open
 
-    avg_vertex = sum(vertex_half) / max(len(vertex_half), 1)
-    avg_open = sum(open_half) / max(len(open_half), 1)
+    # Check 1: opening end must be wider than vertex end
+    if ordered[-1] <= ordered[0]:
+        return False
 
-    # The open end should be wider than the vertex end
-    if avg_open <= avg_vertex:
+    # Check 2: monotonicity — spreads should roughly increase from
+    # vertex to opening. Allow at most 1 slice to decrease, and no
+    # single slice should drop to less than 25% of its neighbor.
+    decreases = 0
+    for k in range(1, len(ordered)):
+        if ordered[k] < ordered[k - 1]:
+            decreases += 1
+            if ordered[k - 1] > 0 and ordered[k] < ordered[k - 1] * 0.25:
+                return False
+    if decreases > 1:
         return False
 
     return True
