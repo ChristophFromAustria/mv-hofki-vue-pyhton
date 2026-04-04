@@ -71,6 +71,7 @@ class TextRegionData:
     width: int
     height: int
     text: str | None = None
+    confidence: float | None = None
 
 
 @dataclass

@@ -359,6 +359,18 @@ def test_text_region_data_has_text_field():
     assert region_with_text.text == "Trio"
 
 
+def test_text_region_data_has_confidence_field():
+    from mv_hofki.services.scanner.stages.base import TextRegionData
+
+    region = TextRegionData(staff_index=0, x=10, y=20, width=50, height=15)
+    assert region.confidence is None
+
+    region_with_conf = TextRegionData(
+        staff_index=0, x=10, y=20, width=50, height=15, confidence=92.5
+    )
+    assert region_with_conf.confidence == 92.5
+
+
 def test_preprocess_uses_configured_deskew_method():
     """PreprocessStage should delegate to the deskew method set in config."""
     from mv_hofki.services.scanner.stages.preprocess import PreprocessStage
