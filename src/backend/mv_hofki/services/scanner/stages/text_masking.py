@@ -8,7 +8,6 @@ import numpy as np
 from mv_hofki.services.scanner.stages.base import (
     PipelineContext,
     ProcessingStage,
-    StaffData,
     TextRegionData,
 )
 
@@ -25,9 +24,24 @@ class TextMaskingStage(ProcessingStage):
 
         staves = sorted(ctx.staves, key=lambda s: s.staff_index)
 
-        for staff in staves:
-            regions = _scan_staff_regions(binary, staff)
-            ctx.text_regions.extend(regions)
+        # Use average line_spacing across all staves for thresholds
+        avg_spacing = sum(s.line_spacing for s in staves) / len(staves)
+
+        # Scan the entire image globally
+        h = binary.shape[0]
+        raw_regions = _detect_text_regions(binary, 0, h, avg_spacing, staff_index=0)
+
+        # Assign each region to the nearest staff
+        staff_centers = [
+            (s.staff_index, float(np.mean(s.line_positions))) for s in staves
+        ]
+        for region in raw_regions:
+            region_center_y = region.y + region.height / 2
+            closest_idx = min(
+                staff_centers, key=lambda sc: abs(sc[1] - region_center_y)
+            )[0]
+            region.staff_index = closest_idx
+            ctx.text_regions.append(region)
 
         # Mask detected text regions in the binary image
         for region in ctx.text_regions:
@@ -45,41 +59,6 @@ class TextMaskingStage(ProcessingStage):
 
     def validate(self, ctx: PipelineContext) -> bool:
         return ctx.processed_image is not None and len(ctx.staves) > 0
-
-
-def _scan_staff_regions(
-    binary: np.ndarray,
-    staff: StaffData,
-) -> list[TextRegionData]:
-    """Scan above and below a staff for text-like regions."""
-    results: list[TextRegionData] = []
-
-    top_line = min(staff.line_positions)
-    bottom_line = max(staff.line_positions)
-
-    # Region above: y_top to top staff line
-    if staff.y_top < top_line:
-        above = _detect_text_regions(
-            binary,
-            staff.y_top,
-            top_line,
-            staff.line_spacing,
-            staff.staff_index,
-        )
-        results.extend(above)
-
-    # Region below: bottom staff line to y_bottom
-    if bottom_line < staff.y_bottom:
-        below = _detect_text_regions(
-            binary,
-            bottom_line,
-            staff.y_bottom,
-            staff.line_spacing,
-            staff.staff_index,
-        )
-        results.extend(below)
-
-    return results
 
 
 def _detect_text_regions(
