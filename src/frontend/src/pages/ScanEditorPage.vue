@@ -6,6 +6,7 @@ import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ImageAdjustBar from "../components/ImageAdjustBar.vue";
 import ScanCanvas from "../components/ScanCanvas.vue";
 import SymbolPanel from "../components/SymbolPanel.vue";
+import TextRegionPanel from "../components/TextRegionPanel.vue";
 import FilterDropdown from "../components/FilterDropdown.vue";
 import ScannerConfigModal from "../components/ScannerConfigModal.vue";
 import AnalysisLogModal from "../components/AnalysisLogModal.vue";
@@ -45,6 +46,7 @@ const showStaves = ref(true);
 const hideFiltered = ref(true);
 const hiddenCategories = ref(new Set());
 const selectedSymbol = ref(null);
+const selectedTextRegion = ref(null);
 const showCorrectPicker = ref(false);
 const libraryTemplates = ref([]);
 
@@ -413,6 +415,12 @@ async function saveCapturedTemplate() {
 
 function onSelectSymbol(symbol) {
   selectedSymbol.value = symbol;
+  selectedTextRegion.value = null;
+}
+
+function onSelectTextRegion(region) {
+  selectedTextRegion.value = region;
+  selectedSymbol.value = null;
 }
 
 async function onVerify(symbol) {
@@ -643,6 +651,7 @@ onUnmounted(() => {
             :symbols="filteredSymbols"
             :adjustments="adjustments"
             :selected-symbol-id="selectedSymbol?.id ?? null"
+            :selected-text-region-id="selectedTextRegion?.id ?? null"
             :show-staves="showStaves"
             :show-symbols="true"
             :capture-mode="captureMode"
@@ -655,6 +664,7 @@ onUnmounted(() => {
             :text-regions="textRegions"
             :show-text-regions="showTextRegions"
             @select-symbol="onSelectSymbol"
+            @select-text-region="onSelectTextRegion"
             @capture-box="onCaptureBox"
           />
         </div>
@@ -685,7 +695,9 @@ onUnmounted(() => {
               <span class="scan-info-value">{{ symbols.length }}</span>
             </div>
           </div>
+          <TextRegionPanel v-if="selectedTextRegion" :text-region="selectedTextRegion" />
           <SymbolPanel
+            v-else
             :symbol="selectedSymbol"
             :templates="libraryTemplates"
             @verify="onVerify"
