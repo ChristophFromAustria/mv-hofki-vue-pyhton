@@ -315,8 +315,8 @@ def _find_hairpin_pairs(
 
             # One end should be notably tighter than the other (V-shape)
             min_gap = min(gap_left, gap_right)
-            if min_gap > max_gap * 0.7:
-                # Too parallel or too similar — not a V
+            if min_gap > max_gap * 0.9:
+                # Too parallel — not a V
                 continue
 
             # Determine type from which end converges
