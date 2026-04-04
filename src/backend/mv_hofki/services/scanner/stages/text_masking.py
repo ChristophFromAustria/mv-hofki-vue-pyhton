@@ -1,11 +1,8 @@
-"""Text masking: detect and remove text regions via Tesseract OCR."""
+"""Text masking: detect and remove text regions via EasyOCR."""
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
-import pytesseract  # type: ignore[import-not-found]
-from pytesseract import Output  # type: ignore[import-not-found]
 
 from mv_hofki.services.scanner.stages.base import (
     PipelineContext,
@@ -15,7 +12,7 @@ from mv_hofki.services.scanner.stages.base import (
 
 
 class TextMaskingStage(ProcessingStage):
-    """Detect text regions via Tesseract and mask them in the binary image."""
+    """Detect text regions via EasyOCR and mask them in the binary image."""
 
     name = "text_masking"
 
@@ -35,24 +32,26 @@ class TextMaskingStage(ProcessingStage):
         ]
 
         min_confidence = ctx.config.get("text_masking_min_confidence", 30)
+        # EasyOCR uses 0-1 confidence, config is 0-100
+        min_conf_normalized = min_confidence / 100.0
 
-        data = _run_tesseract(binary)
+        results = _run_easyocr(binary)
 
-        for i in range(len(data["text"])):
-            conf = float(data["conf"][i])
-            text = data["text"][i].strip()
-            if conf < min_confidence or not text:
+        for bbox, text, conf in results:
+            text = text.strip()
+            if conf < min_conf_normalized or not text:
                 continue
 
-            x = int(data["left"][i])
-            y = int(data["top"][i])
-            w = int(data["width"][i])
-            h = int(data["height"][i])
+            # EasyOCR returns bbox as [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
+            xs = [int(p[0]) for p in bbox]
+            ys = [int(p[1]) for p in bbox]
+            x = min(xs)
+            y = min(ys)
+            w = max(xs) - x
+            h = max(ys) - y
 
             # Skip regions overlapping with staff lines
-            region_top = y
-            region_bottom = y + h
-            if _overlaps_staff_lines(region_top, region_bottom, staff_line_ranges):
+            if _overlaps_staff_lines(y, y + h, staff_line_ranges):
                 continue
 
             # Assign to nearest staff
@@ -67,7 +66,7 @@ class TextMaskingStage(ProcessingStage):
                     width=w,
                     height=h,
                     text=text,
-                    confidence=conf,
+                    confidence=round(conf * 100, 1),
                 )
             )
 
@@ -100,10 +99,26 @@ def _overlaps_staff_lines(
     return False
 
 
-def _run_tesseract(binary: np.ndarray) -> dict:
-    """Run Tesseract on the full image and return word-level data."""
-    inverted = cv2.bitwise_not(binary)
-    result: dict = pytesseract.image_to_data(
-        inverted, lang="deu", config="--psm 6", output_type=Output.DICT
-    )
+# Lazy-initialized EasyOCR reader (model loading is expensive)
+_reader = None
+
+
+def _get_reader():  # type: ignore[no-untyped-def]
+    """Get or create the EasyOCR reader singleton."""
+    global _reader  # noqa: PLW0603
+    if _reader is None:
+        import easyocr  # type: ignore[import-not-found]
+
+        _reader = easyocr.Reader(["de", "en"], gpu=False)
+    return _reader
+
+
+def _run_easyocr(binary: np.ndarray) -> list:  # type: ignore[type-arg]
+    """Run EasyOCR on the full image and return detections.
+
+    Each result is (bbox, text, confidence) where bbox is
+    [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].
+    """
+    reader = _get_reader()
+    result: list = reader.readtext(binary)
     return result

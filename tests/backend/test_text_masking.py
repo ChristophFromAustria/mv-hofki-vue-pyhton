@@ -20,28 +20,24 @@ def _make_staff_image():
     return img, staff
 
 
-def _mock_image_to_data(*_args, **_kwargs):
-    """Return a fake Tesseract image_to_data result."""
-    return {
-        "left": [100, 250],
-        "top": [120, 120],
-        "width": [80, 40],
-        "height": [15, 15],
-        "text": ["cresc.", "Trio"],
-        "conf": [85.0, 90.0],
-    }
+def _mock_easyocr_results(*_args, **_kwargs):
+    """Return fake EasyOCR results: list of (bbox, text, confidence)."""
+    return [
+        ([[100, 120], [180, 120], [180, 135], [100, 135]], "cresc.", 0.85),
+        ([[250, 120], [290, 120], [290, 135], [250, 135]], "Trio", 0.90),
+    ]
 
 
-def _mock_image_to_data_empty(*_args, **_kwargs):
-    """Return empty Tesseract result."""
-    return {"left": [], "top": [], "width": [], "height": [], "text": [], "conf": []}
+def _mock_easyocr_empty(*_args, **_kwargs):
+    """Return empty EasyOCR result."""
+    return []
 
 
-def test_text_masking_uses_tesseract(monkeypatch):
+def test_text_masking_uses_easyocr(monkeypatch):
     from mv_hofki.services.scanner.stages import text_masking
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
-    monkeypatch.setattr(text_masking, "_run_tesseract", _mock_image_to_data)
+    monkeypatch.setattr(text_masking, "_run_easyocr", _mock_easyocr_results)
 
     img, staff = _make_staff_image()
     ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
@@ -60,7 +56,7 @@ def test_text_masking_masks_detected_regions(monkeypatch):
     from mv_hofki.services.scanner.stages import text_masking
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
-    monkeypatch.setattr(text_masking, "_run_tesseract", _mock_image_to_data)
+    monkeypatch.setattr(text_masking, "_run_easyocr", _mock_easyocr_results)
 
     img, staff = _make_staff_image()
     ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
@@ -77,7 +73,7 @@ def test_text_masking_assigns_nearest_staff(monkeypatch):
     from mv_hofki.services.scanner.stages import text_masking
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
-    monkeypatch.setattr(text_masking, "_run_tesseract", _mock_image_to_data)
+    monkeypatch.setattr(text_masking, "_run_easyocr", _mock_easyocr_results)
 
     img = np.full((500, 800), 255, dtype=np.uint8)
     staff0 = StaffData(
@@ -101,6 +97,7 @@ def test_text_masking_assigns_nearest_staff(monkeypatch):
     stage = TextMaskingStage()
     result = stage.process(ctx)
 
+    # Mock data has y=120, closer to staff0 (center ~70) than staff1 (center ~270)
     for r in result.text_regions:
         assert r.staff_index == 0
 
@@ -110,16 +107,12 @@ def test_text_masking_filters_low_confidence(monkeypatch):
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
     def mock_low_conf(*_args, **_kwargs):
-        return {
-            "left": [100, 250],
-            "top": [120, 120],
-            "width": [80, 40],
-            "height": [15, 15],
-            "text": ["noise", "real"],
-            "conf": [10.0, 85.0],
-        }
+        return [
+            ([[100, 120], [180, 120], [180, 135], [100, 135]], "noise", 0.10),
+            ([[250, 120], [290, 120], [290, 135], [250, 135]], "real", 0.85),
+        ]
 
-    monkeypatch.setattr(text_masking, "_run_tesseract", mock_low_conf)
+    monkeypatch.setattr(text_masking, "_run_easyocr", mock_low_conf)
 
     img, staff = _make_staff_image()
     ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
@@ -131,11 +124,35 @@ def test_text_masking_filters_low_confidence(monkeypatch):
     assert result.text_regions[0].text == "real"
 
 
+def test_text_masking_filters_staff_line_overlap(monkeypatch):
+    from mv_hofki.services.scanner.stages import text_masking
+    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
+
+    def mock_on_staff(*_args, **_kwargs):
+        return [
+            # This overlaps with staff lines at y=50-90
+            ([[100, 60], [150, 60], [150, 80], [100, 80]], "noise", 0.90),
+            # This is below staff lines
+            ([[100, 120], [180, 120], [180, 135], [100, 135]], "cresc.", 0.85),
+        ]
+
+    monkeypatch.setattr(text_masking, "_run_easyocr", mock_on_staff)
+
+    img, staff = _make_staff_image()
+    ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
+
+    stage = TextMaskingStage()
+    result = stage.process(ctx)
+
+    assert len(result.text_regions) == 1
+    assert result.text_regions[0].text == "cresc."
+
+
 def test_text_masking_no_results_on_empty(monkeypatch):
     from mv_hofki.services.scanner.stages import text_masking
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
-    monkeypatch.setattr(text_masking, "_run_tesseract", _mock_image_to_data_empty)
+    monkeypatch.setattr(text_masking, "_run_easyocr", _mock_easyocr_empty)
 
     img, staff = _make_staff_image()
     ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
