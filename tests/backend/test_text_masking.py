@@ -1,24 +1,15 @@
 """Tests for the text masking pipeline stage."""
 
-import cv2
 import numpy as np
 
 from mv_hofki.services.scanner.stages.base import PipelineContext, StaffData
 
 
-def _make_staff_with_text_below():
-    """Create a binary image with staff lines and text characters below."""
+def _make_staff_image():
+    """Create a binary image with staff lines."""
     img = np.full((300, 800), 255, dtype=np.uint8)
-
-    # Draw 5 staff lines at y=50,60,70,80,90
     for y in [50, 60, 70, 80, 90]:
         img[y : y + 2, 20:780] = 0
-
-    # Draw text-like characters below the staff (y=120..135)
-    # Simulate "cresc." — 6 small rectangles spaced horizontally
-    for i, x in enumerate([100, 115, 130, 145, 160, 175]):
-        cv2.rectangle(img, (x, 120), (x + 8, 135), 0, -1)
-
     staff = StaffData(
         staff_index=0,
         y_top=20,
@@ -29,82 +20,124 @@ def _make_staff_with_text_below():
     return img, staff
 
 
-def test_text_masking_detects_text_regions():
+def _mock_image_to_data(*_args, **_kwargs):
+    """Return a fake Tesseract image_to_data result."""
+    return {
+        "left": [100, 250],
+        "top": [120, 120],
+        "width": [80, 40],
+        "height": [15, 15],
+        "text": ["cresc.", "Trio"],
+        "conf": [85.0, 90.0],
+    }
+
+
+def _mock_image_to_data_empty(*_args, **_kwargs):
+    """Return empty Tesseract result."""
+    return {"left": [], "top": [], "width": [], "height": [], "text": [], "conf": []}
+
+
+def test_text_masking_uses_tesseract(monkeypatch):
+    from mv_hofki.services.scanner.stages import text_masking
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
-    img, staff = _make_staff_with_text_below()
+    monkeypatch.setattr(text_masking, "_run_tesseract", _mock_image_to_data)
+
+    img, staff = _make_staff_image()
     ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
 
     stage = TextMaskingStage()
     result = stage.process(ctx)
 
-    assert len(result.text_regions) >= 1
-    region = result.text_regions[0]
-    assert region.staff_index == 0
-    assert region.x >= 90
-    assert region.x <= 110
-    assert region.width > 50
+    assert len(result.text_regions) == 2
+    assert result.text_regions[0].text == "cresc."
+    assert result.text_regions[0].confidence == 85.0
+    assert result.text_regions[1].text == "Trio"
+    assert result.text_regions[1].confidence == 90.0
 
 
-def test_text_masking_whites_out_text_pixels():
+def test_text_masking_masks_detected_regions(monkeypatch):
+    from mv_hofki.services.scanner.stages import text_masking
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
-    img, staff = _make_staff_with_text_below()
-    original_black = np.sum(img[110:145, 90:200] == 0)
+    monkeypatch.setattr(text_masking, "_run_tesseract", _mock_image_to_data)
 
-    ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
-    stage = TextMaskingStage()
-    result = stage.process(ctx)
-
-    masked_black = np.sum(result.processed_image[110:145, 90:200] == 0)
-    assert masked_black < original_black
-
-
-def test_text_masking_detects_text_above_staff():
-    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
-
-    img = np.full((300, 800), 255, dtype=np.uint8)
-
-    # Staff lines at y=100..140
-    for y in [100, 110, 120, 130, 140]:
-        img[y : y + 2, 20:780] = 0
-
-    # Text above staff (e.g. "1.") at y=60..75
-    for x in [200, 215, 230, 245]:
-        cv2.rectangle(img, (x, 60), (x + 8, 75), 0, -1)
-
-    staff = StaffData(
-        staff_index=0,
-        y_top=30,
-        y_bottom=250,
-        line_positions=[100, 110, 120, 130, 140],
-        line_spacing=10.0,
-    )
+    img, staff = _make_staff_image()
     ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
 
     stage = TextMaskingStage()
     result = stage.process(ctx)
 
-    above_regions = [r for r in result.text_regions if r.y < 100]
-    assert len(above_regions) >= 1
+    # Region at x=100, y=120, w=80, h=15 should be white
+    region = result.processed_image[120:135, 100:180]
+    assert np.all(region == 255)
 
 
-def test_text_masking_no_false_positives_on_clean_staff():
+def test_text_masking_assigns_nearest_staff(monkeypatch):
+    from mv_hofki.services.scanner.stages import text_masking
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
-    img = np.full((300, 800), 255, dtype=np.uint8)
+    monkeypatch.setattr(text_masking, "_run_tesseract", _mock_image_to_data)
 
-    # Only staff lines, no text
-    for y in [50, 60, 70, 80, 90]:
-        img[y : y + 2, 20:780] = 0
-
-    staff = StaffData(
+    img = np.full((500, 800), 255, dtype=np.uint8)
+    staff0 = StaffData(
         staff_index=0,
         y_top=20,
-        y_bottom=200,
+        y_bottom=150,
         line_positions=[50, 60, 70, 80, 90],
         line_spacing=10.0,
     )
+    staff1 = StaffData(
+        staff_index=1,
+        y_top=200,
+        y_bottom=350,
+        line_positions=[250, 260, 270, 280, 290],
+        line_spacing=10.0,
+    )
+    ctx = PipelineContext(
+        image=img, processed_image=img.copy(), staves=[staff0, staff1]
+    )
+
+    stage = TextMaskingStage()
+    result = stage.process(ctx)
+
+    for r in result.text_regions:
+        assert r.staff_index == 0
+
+
+def test_text_masking_filters_low_confidence(monkeypatch):
+    from mv_hofki.services.scanner.stages import text_masking
+    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
+
+    def mock_low_conf(*_args, **_kwargs):
+        return {
+            "left": [100, 250],
+            "top": [120, 120],
+            "width": [80, 40],
+            "height": [15, 15],
+            "text": ["noise", "real"],
+            "conf": [10.0, 85.0],
+        }
+
+    monkeypatch.setattr(text_masking, "_run_tesseract", mock_low_conf)
+
+    img, staff = _make_staff_image()
+    ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
+
+    stage = TextMaskingStage()
+    result = stage.process(ctx)
+
+    assert len(result.text_regions) == 1
+    assert result.text_regions[0].text == "real"
+
+
+def test_text_masking_no_results_on_empty(monkeypatch):
+    from mv_hofki.services.scanner.stages import text_masking
+    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
+
+    monkeypatch.setattr(text_masking, "_run_tesseract", _mock_image_to_data_empty)
+
+    img, staff = _make_staff_image()
     ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
 
     stage = TextMaskingStage()
@@ -118,16 +151,13 @@ def test_text_masking_validate():
 
     stage = TextMaskingStage()
 
-    # No image → False
     ctx = PipelineContext(image=None, processed_image=None)
     assert stage.validate(ctx) is False
 
-    # Image but no staves → False
     img = np.zeros((100, 100), dtype=np.uint8)
     ctx = PipelineContext(image=img, processed_image=img)
     assert stage.validate(ctx) is False
 
-    # Image + staves → True
     staff = StaffData(
         staff_index=0,
         y_top=0,
@@ -137,39 +167,3 @@ def test_text_masking_validate():
     )
     ctx = PipelineContext(image=img, processed_image=img, staves=[staff])
     assert stage.validate(ctx) is True
-
-
-def test_text_masking_runs_ocr_on_regions(monkeypatch):
-    """OCR should populate region.text with recognized content."""
-    from mv_hofki.services.scanner.stages import text_masking
-    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
-
-    # Mock pytesseract to avoid requiring tesseract binary in tests
-    monkeypatch.setattr(text_masking, "_ocr_region", lambda _binary, _region: "cresc.")
-
-    img, staff = _make_staff_with_text_below()
-    ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
-
-    stage = TextMaskingStage()
-    result = stage.process(ctx)
-
-    assert len(result.text_regions) >= 1
-    assert result.text_regions[0].text == "cresc."
-
-
-def test_text_masking_detects_trio(monkeypatch):
-    """Trio text should be recognized and stored in region.text."""
-    from mv_hofki.services.scanner.stages import text_masking
-    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
-
-    monkeypatch.setattr(text_masking, "_ocr_region", lambda _binary, _region: "Trio")
-
-    img, staff = _make_staff_with_text_below()
-    ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
-
-    stage = TextMaskingStage()
-    result = stage.process(ctx)
-
-    trio_regions = [r for r in result.text_regions if r.text == "Trio"]
-    assert len(trio_regions) >= 1
-    assert trio_regions[0].staff_index == 0
