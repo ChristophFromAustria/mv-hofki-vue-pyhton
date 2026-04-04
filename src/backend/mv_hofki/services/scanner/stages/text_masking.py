@@ -13,8 +13,6 @@ from mv_hofki.services.scanner.stages.base import (
     TextRegionData,
 )
 
-MIN_CONFIDENCE = 30
-
 
 class TextMaskingStage(ProcessingStage):
     """Detect text regions via Tesseract and mask them in the binary image."""
@@ -31,12 +29,14 @@ class TextMaskingStage(ProcessingStage):
             (s.staff_index, float(np.mean(s.line_positions))) for s in staves
         ]
 
+        min_confidence = ctx.config.get("text_masking_min_confidence", 30)
+
         data = _run_tesseract(binary)
 
         for i in range(len(data["text"])):
             conf = float(data["conf"][i])
             text = data["text"][i].strip()
-            if conf < MIN_CONFIDENCE or not text:
+            if conf < min_confidence or not text:
                 continue
 
             x = int(data["left"][i])

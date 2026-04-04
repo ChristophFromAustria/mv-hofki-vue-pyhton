@@ -93,3 +93,8 @@ class ScannerConfig(Base):
     ly_staff_size: Mapped[int] = mapped_column(Integer, nullable=False, default=17)
     ly_system_distance: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
     ly_system_padding: Mapped[float] = mapped_column(Float, nullable=False, default=0.6)
+
+    # Text masking
+    text_masking_min_confidence: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=30
+    )

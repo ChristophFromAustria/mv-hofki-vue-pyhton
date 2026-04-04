@@ -37,6 +37,7 @@ class ScannerConfigRead(BaseModel):
     ly_staff_size: int
     ly_system_distance: int
     ly_system_padding: float
+    text_masking_min_confidence: int
 
     model_config = {"from_attributes": True}
 
@@ -78,3 +79,4 @@ class ScannerConfigUpdate(BaseModel):
     ly_staff_size: int | None = Field(None, ge=8, le=30)
     ly_system_distance: int | None = Field(None, ge=1, le=20)
     ly_system_padding: float | None = Field(None, ge=0.0, le=5.0)
+    text_masking_min_confidence: int | None = Field(None, ge=0, le=100)

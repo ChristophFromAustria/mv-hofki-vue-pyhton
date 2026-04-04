@@ -171,6 +171,17 @@ export const SCANNER_CONFIG_FIELDS = [
     ],
   },
 
+  // ── Text-Maskierung ───────────────────────────────────────────────
+  {
+    key: "text_masking_min_confidence",
+    label: "Minimale Konfidenz",
+    group: "Text-Maskierung",
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 5,
+  },
+
   // ── LilyPond Layout ───────────────────────────────────────────────
   {
     key: "ly_top_margin",
