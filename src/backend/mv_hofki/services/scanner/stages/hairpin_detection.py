@@ -83,15 +83,15 @@ class HairpinDetectionStage(ProcessingStage):
                     }
                 )
 
-                # Keep lines up to 10° (hairpins are nearly horizontal)
-                if angle <= 10:
+                # Keep lines between 1° and 10° (hairpins are slightly angled)
+                if 0 <= angle <= 10:
                     # Normalize so x1 < x2
                     if x1 > x2:
                         x1, y1, x2, y2 = x2, y2, x1, y1
                     candidates.append((int(x1), int(abs_y1), int(x2), int(abs_y2)))
 
             # Find converging line pairs (V-shapes)
-            min_y_gap = (staff.line_thickness or 2) * 1
+            min_y_gap = (staff.line_thickness or 2) * 0
             raw_pairs = _find_hairpin_pairs(
                 candidates, staff.line_spacing, min_line_length, min_y_gap
             )
@@ -120,6 +120,14 @@ class HairpinDetectionStage(ProcessingStage):
             )
             for hp_type, x_min, y_min, x_max, y_max in merged:
                 if (x_max - x_min) < min_hitbox_width:
+                    continue
+                if not _validate_wedge_shape(
+                    binary, hp_type, x_min, y_min, x_max, y_max
+                ):
+                    ctx.log(
+                        f"  Hairpin ({hp_type}) verworfen (kein Keil-Profil): "
+                        f"System {staff.staff_index}, x={x_min}-{x_max}"
+                    )
                     continue
                 template_id = cresc_id if hp_type == "crescendo" else decresc_id
                 hairpins.append(
@@ -156,6 +164,81 @@ class HairpinDetectionStage(ProcessingStage):
 
     def validate(self, ctx: PipelineContext) -> bool:
         return ctx.processed_image is not None and len(ctx.staves) > 0
+
+
+def _validate_wedge_shape(
+    binary: np.ndarray,
+    hp_type: str,
+    x_min: int,
+    y_min: int,
+    x_max: int,
+    y_max: int,
+    max_fill_ratio: float = 0.35,
+    num_slices: int = 4,
+) -> bool:
+    """Validate that black pixels in the bounding box form a wedge shape.
+
+    Checks two things:
+    1. Fill ratio must be low (hairpins are thin lines, not filled blocks)
+    2. V-profile: the vertical spread of black pixels must increase from
+       vertex to opening (split into slices along X axis)
+    """
+    h_img, w_img = binary.shape[:2]
+    x1 = max(0, x_min)
+    y1 = max(0, y_min)
+    x2 = min(w_img, x_max)
+    y2 = min(h_img, y_max)
+
+    if x2 <= x1 or y2 <= y1:
+        return False
+
+    roi = binary[y1:y2, x1:x2]
+    total_pixels = roi.size
+    black_pixels = int(np.sum(roi == 0))
+
+    # Check 1: fill ratio — hairpins are sparse, brackets are dense
+    if total_pixels == 0:
+        return False
+    fill_ratio = black_pixels / total_pixels
+    if fill_ratio > max_fill_ratio:
+        return False
+
+    # Check 2: V-profile — vertical spread should increase toward opening
+    roi_w = x2 - x1
+    slice_width = max(1, roi_w // num_slices)
+    spreads: list[int] = []
+
+    for s in range(num_slices):
+        sx1 = s * slice_width
+        sx2 = min(roi_w, (s + 1) * slice_width)
+        col_slice = roi[:, sx1:sx2]
+        black_rows = np.any(col_slice == 0, axis=1)
+        if not np.any(black_rows):
+            spreads.append(0)
+            continue
+        indices = np.where(black_rows)[0]
+        spreads.append(int(indices[-1] - indices[0] + 1))
+
+    if len(spreads) < 2:
+        return False
+
+    # For crescendo (opens right): spreads should generally increase
+    # For decrescendo (opens left): spreads should generally decrease
+    if hp_type == "crescendo":
+        vertex_half = spreads[: num_slices // 2]
+        open_half = spreads[num_slices // 2 :]
+    else:
+        vertex_half = spreads[num_slices // 2 :]
+        open_half = spreads[: num_slices // 2]
+
+    avg_vertex = sum(vertex_half) / max(len(vertex_half), 1)
+    avg_open = sum(open_half) / max(len(open_half), 1)
+
+    # The open end should be wider than the vertex end
+    if avg_open <= avg_vertex:
+        return False
+
+    return True
 
 
 def _find_hairpin_pairs(
