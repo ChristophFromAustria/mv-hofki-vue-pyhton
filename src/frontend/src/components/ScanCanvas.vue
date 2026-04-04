@@ -11,6 +11,7 @@ const props = defineProps({
     default: () => ({ brightness: 0, contrast: 1.0, rotation: 0, threshold: 128 }),
   },
   selectedSymbolId: { type: Number, default: null },
+  selectedTextRegionId: { type: Number, default: null },
   measures: { type: Array, default: () => [] },
   showMeasures: { type: Boolean, default: true },
   showVoltas: { type: Boolean, default: true },
@@ -24,7 +25,7 @@ const props = defineProps({
   viewMode: { type: String, default: "original" },
 });
 
-const emit = defineEmits(["select-symbol", "capture-box"]);
+const emit = defineEmits(["select-symbol", "capture-box", "select-text-region"]);
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
@@ -201,6 +202,10 @@ function isSelected(symbol) {
 
 function selectSymbol(symbol) {
   emit("select-symbol", symbol);
+}
+
+function selectTextRegion(region) {
+  emit("select-text-region", region);
 }
 
 // Box drawing state (capture mode)
@@ -549,7 +554,12 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
 
         <!-- Text region overlay -->
         <template v-if="showTextRegions && textRegions.length">
-          <g v-for="(tr, idx) in textRegions" :key="`tr-${idx}`">
+          <g
+            v-for="(tr, idx) in textRegions"
+            :key="`tr-${idx}`"
+            style="cursor: pointer; pointer-events: all"
+            @click.stop="selectTextRegion(tr)"
+          >
             <rect
               :x="tr.x"
               :y="tr.y"
@@ -558,6 +568,17 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               fill="#10b981"
               fill-opacity="0.15"
               stroke="#10b981"
+              :stroke-width="selectedTextRegionId === tr.id ? 3 : 1"
+              :opacity="selectedTextRegionId === tr.id ? 1 : 0.8"
+            />
+            <rect
+              v-if="selectedTextRegionId === tr.id"
+              :x="tr.x - 2"
+              :y="tr.y - 2"
+              :width="tr.width + 4"
+              :height="tr.height + 4"
+              fill="none"
+              stroke="#fff"
               stroke-width="1"
               opacity="0.8"
             />
