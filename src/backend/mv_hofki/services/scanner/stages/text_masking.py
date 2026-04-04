@@ -115,19 +115,37 @@ def _detect_text_regions(
     if len(char_boxes) < 3:
         return []
 
-    # Sort by x and cluster horizontally adjacent characters
-    char_boxes.sort(key=lambda b: b[0])
-    merge_gap = line_spacing * 1.0
-    clusters: list[list[tuple[int, int, int, int]]] = [[char_boxes[0]]]
+    # Group into horizontal bands by Y-center, then cluster within each band.
+    # This prevents note heads at different Y positions from splitting text clusters.
+    band_height = line_spacing * 1.5
+    char_boxes.sort(key=lambda b: (b[1] + b[3]) / 2)
 
+    bands: list[list[tuple[int, int, int, int]]] = [[char_boxes[0]]]
     for box in char_boxes[1:]:
-        prev = clusters[-1][-1]
-        h_gap = box[0] - prev[2]
-        v_overlap = min(box[3], prev[3]) - max(box[1], prev[1])
-        if h_gap <= merge_gap and v_overlap > 0:
-            clusters[-1].append(box)
+        prev_center = (bands[-1][-1][1] + bands[-1][-1][3]) / 2
+        cur_center = (box[1] + box[3]) / 2
+        if abs(cur_center - prev_center) <= band_height:
+            bands[-1].append(box)
         else:
-            clusters.append([box])
+            bands.append([box])
+
+    # Within each band, sort by X and cluster horizontally
+    merge_gap = line_spacing * 1.0
+    clusters: list[list[tuple[int, int, int, int]]] = []
+
+    for band in bands:
+        band.sort(key=lambda b: b[0])
+        current_cluster: list[tuple[int, int, int, int]] = [band[0]]
+        for box in band[1:]:
+            prev = current_cluster[-1]
+            h_gap = box[0] - prev[2]
+            v_overlap = min(box[3], prev[3]) - max(box[1], prev[1])
+            if h_gap <= merge_gap and v_overlap > 0:
+                current_cluster.append(box)
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [box]
+        clusters.append(current_cluster)
 
     # Convert clusters with >= 3 characters to TextRegionData
     padding = int(line_spacing * 0.3)
