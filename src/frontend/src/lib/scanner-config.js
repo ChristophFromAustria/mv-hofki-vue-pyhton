@@ -182,6 +182,17 @@ export const SCANNER_CONFIG_FIELDS = [
     step: 5,
   },
 
+  // ── Keil-Erkennung (Hairpin) ────────────────────────────────────────
+  {
+    key: "hairpin_min_width_factor",
+    label: "Minimale Breite (× Linienabstand)",
+    group: "Keil-Erkennung",
+    type: "number",
+    min: 0.5,
+    max: 10,
+    step: 0.5,
+  },
+
   // ── LilyPond Layout ───────────────────────────────────────────────
   {
     key: "ly_top_margin",

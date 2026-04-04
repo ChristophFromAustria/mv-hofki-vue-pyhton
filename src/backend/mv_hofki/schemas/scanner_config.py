@@ -38,6 +38,7 @@ class ScannerConfigRead(BaseModel):
     ly_system_distance: int
     ly_system_padding: float
     text_masking_min_confidence: int
+    hairpin_min_width_factor: float
 
     model_config = {"from_attributes": True}
 
@@ -80,3 +81,4 @@ class ScannerConfigUpdate(BaseModel):
     ly_system_distance: int | None = Field(None, ge=1, le=20)
     ly_system_padding: float | None = Field(None, ge=0.0, le=5.0)
     text_masking_min_confidence: int | None = Field(None, ge=0, le=100)
+    hairpin_min_width_factor: float | None = Field(None, ge=0.5, le=10.0)

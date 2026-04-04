@@ -36,6 +36,9 @@ class HairpinDetectionStage(ProcessingStage):
             elif name == "Decrescendo":
                 decresc_id = tid
 
+        # Minimum hairpin width in pixels (configurable, default 3× line_spacing)
+        hairpin_min_width_factor = ctx.config.get("hairpin_min_width_factor", 3.0)
+
         for staff in staves:
             bottom_line = max(staff.line_positions)
             region_top = bottom_line
@@ -43,6 +46,8 @@ class HairpinDetectionStage(ProcessingStage):
 
             if region_top >= region_bottom:
                 continue
+
+            min_line_length = int(staff.line_spacing * hairpin_min_width_factor)
 
             region = binary[region_top:region_bottom, :]
             inverted = cv2.bitwise_not(region)
@@ -53,14 +58,14 @@ class HairpinDetectionStage(ProcessingStage):
                 rho=1,
                 theta=np.pi / 180,
                 threshold=20,
-                minLineLength=20,
+                minLineLength=min_line_length,
                 maxLineGap=10,
             )
 
             if lines is None:
                 continue
 
-            # Collect near-horizontal lines (hairpins are very flat, 0-15°)
+            # Collect near-horizontal lines (hairpins are very flat, max ±10°)
             candidates: list[tuple[int, int, int, int]] = []
             for line in lines:
                 x1, y1, x2, y2 = line[0]
@@ -78,15 +83,17 @@ class HairpinDetectionStage(ProcessingStage):
                     }
                 )
 
-                # Keep lines up to 15° (hairpins are nearly horizontal)
-                if angle <= 15:
+                # Keep lines up to 10° (hairpins are nearly horizontal)
+                if angle <= 10:
                     # Normalize so x1 < x2
                     if x1 > x2:
                         x1, y1, x2, y2 = x2, y2, x1, y1
                     candidates.append((int(x1), int(abs_y1), int(x2), int(abs_y2)))
 
             # Find converging line pairs (V-shapes)
-            raw_pairs = _find_hairpin_pairs(candidates, staff.line_spacing)
+            raw_pairs = _find_hairpin_pairs(
+                candidates, staff.line_spacing, min_line_length
+            )
 
             # Expand each pair to full connected component bounds
             expanded: list[tuple[str, int, int, int, int]] = []
@@ -148,6 +155,7 @@ class HairpinDetectionStage(ProcessingStage):
 def _find_hairpin_pairs(
     candidates: list[tuple[int, int, int, int]],
     line_spacing: float,
+    min_line_length: int = 20,
 ) -> list[tuple[str, int, int, int, int]]:
     """Find V-shaped pairs from near-horizontal lines.
 
@@ -172,14 +180,14 @@ def _find_hairpin_pairs(
         if i in used:
             continue
         len_a = x2a - x1a
-        if len_a < 20:
+        if len_a < min_line_length:
             continue
 
         for j, (x1b, y1b, x2b, y2b) in enumerate(candidates):
             if j <= i or j in used:
                 continue
             len_b = x2b - x1b
-            if len_b < 20:
+            if len_b < min_line_length:
                 continue
 
             # Check X overlap

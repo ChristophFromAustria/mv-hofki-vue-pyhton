@@ -98,3 +98,8 @@ class ScannerConfig(Base):
     text_masking_min_confidence: Mapped[int] = mapped_column(
         Integer, nullable=False, default=30
     )
+
+    # Hairpin detection
+    hairpin_min_width_factor: Mapped[float] = mapped_column(
+        Float, nullable=False, default=3.0
+    )
