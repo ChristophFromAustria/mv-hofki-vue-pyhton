@@ -29,6 +29,11 @@ class TextMaskingStage(ProcessingStage):
             (s.staff_index, float(np.mean(s.line_positions))) for s in staves
         ]
 
+        # Build staff line ranges for overlap filtering
+        staff_line_ranges = [
+            (min(s.line_positions), max(s.line_positions)) for s in staves
+        ]
+
         min_confidence = ctx.config.get("text_masking_min_confidence", 30)
 
         data = _run_tesseract(binary)
@@ -43,6 +48,12 @@ class TextMaskingStage(ProcessingStage):
             y = int(data["top"][i])
             w = int(data["width"][i])
             h = int(data["height"][i])
+
+            # Skip regions overlapping with staff lines
+            region_top = y
+            region_bottom = y + h
+            if _overlaps_staff_lines(region_top, region_bottom, staff_line_ranges):
+                continue
 
             # Assign to nearest staff
             center_y = y + h / 2
@@ -75,6 +86,18 @@ class TextMaskingStage(ProcessingStage):
 
     def validate(self, ctx: PipelineContext) -> bool:
         return ctx.processed_image is not None and len(ctx.staves) > 0
+
+
+def _overlaps_staff_lines(
+    region_top: int,
+    region_bottom: int,
+    staff_line_ranges: list[tuple[int, int]],
+) -> bool:
+    """Check if a region's Y range overlaps with any staff's line area."""
+    for line_top, line_bottom in staff_line_ranges:
+        if region_top < line_bottom and region_bottom > line_top:
+            return True
+    return False
 
 
 def _run_tesseract(binary: np.ndarray) -> dict:
