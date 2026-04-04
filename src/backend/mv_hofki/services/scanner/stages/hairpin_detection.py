@@ -41,7 +41,7 @@ class HairpinDetectionStage(ProcessingStage):
 
         for staff in staves:
             bottom_line = max(staff.line_positions)
-            region_top = bottom_line
+            region_top = bottom_line + int(staff.line_spacing * 0.5)
             region_bottom = staff.y_bottom
 
             if region_top >= region_bottom:
@@ -91,8 +91,9 @@ class HairpinDetectionStage(ProcessingStage):
                     candidates.append((int(x1), int(abs_y1), int(x2), int(abs_y2)))
 
             # Find converging line pairs (V-shapes)
+            min_y_gap = (staff.line_thickness or 2) * 1
             raw_pairs = _find_hairpin_pairs(
-                candidates, staff.line_spacing, min_line_length
+                candidates, staff.line_spacing, min_line_length, min_y_gap
             )
 
             # Expand each pair to full connected component bounds
@@ -114,7 +115,12 @@ class HairpinDetectionStage(ProcessingStage):
 
             bottom_line_y = max(staff.line_positions)
             ls = staff.line_spacing
+            min_hitbox_width = int(
+                ls * ctx.config.get("hairpin_min_hitbox_width_factor", 3.0)
+            )
             for hp_type, x_min, y_min, x_max, y_max in merged:
+                if (x_max - x_min) < min_hitbox_width:
+                    continue
                 template_id = cresc_id if hp_type == "crescendo" else decresc_id
                 hairpins.append(
                     SymbolData(
@@ -156,6 +162,7 @@ def _find_hairpin_pairs(
     candidates: list[tuple[int, int, int, int]],
     line_spacing: float,
     min_line_length: int = 20,
+    min_y_gap: float = 3.0,
 ) -> list[tuple[str, int, int, int, int]]:
     """Find V-shaped pairs from near-horizontal lines.
 
@@ -218,10 +225,14 @@ def _find_hairpin_pairs(
             if gap_left > max_y_gap or gap_right > max_y_gap:
                 continue
 
+            # The open end must have a minimum gap (avoid matching parallel lines)
+            max_gap = max(gap_left, gap_right)
+            if max_gap < min_y_gap:
+                continue
+
             # One end should be notably tighter than the other (V-shape)
             min_gap = min(gap_left, gap_right)
-            max_gap = max(gap_left, gap_right)
-            if max_gap < 3 or min_gap > max_gap * 0.7:
+            if min_gap > max_gap * 0.7:
                 # Too parallel or too similar — not a V
                 continue
 

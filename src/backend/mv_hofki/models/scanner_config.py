@@ -103,3 +103,6 @@ class ScannerConfig(Base):
     hairpin_min_width_factor: Mapped[float] = mapped_column(
         Float, nullable=False, default=3.0
     )
+    hairpin_min_hitbox_width_factor: Mapped[float] = mapped_column(
+        Float, nullable=False, default=3.0
+    )

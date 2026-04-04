@@ -185,7 +185,16 @@ export const SCANNER_CONFIG_FIELDS = [
   // ── Keil-Erkennung (Hairpin) ────────────────────────────────────────
   {
     key: "hairpin_min_width_factor",
-    label: "Minimale Breite (× Linienabstand)",
+    label: "Min. Linien-Breite (× Linienabstand)",
+    group: "Keil-Erkennung",
+    type: "number",
+    min: 0.5,
+    max: 10,
+    step: 0.5,
+  },
+  {
+    key: "hairpin_min_hitbox_width_factor",
+    label: "Min. Hitbox-Breite (× Linienabstand)",
     group: "Keil-Erkennung",
     type: "number",
     min: 0.5,
