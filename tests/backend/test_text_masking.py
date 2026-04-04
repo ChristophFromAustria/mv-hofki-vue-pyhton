@@ -166,3 +166,39 @@ def test_text_masking_detects_single_large_symbol():
     result = stage.process(ctx)
 
     assert len(result.text_regions) >= 1
+
+
+def test_text_masking_runs_ocr_on_regions(monkeypatch):
+    """OCR should populate region.text with recognized content."""
+    from mv_hofki.services.scanner.stages import text_masking
+    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
+
+    # Mock pytesseract to avoid requiring tesseract binary in tests
+    monkeypatch.setattr(text_masking, "_ocr_region", lambda _binary, _region: "cresc.")
+
+    img, staff = _make_staff_with_text_below()
+    ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
+
+    stage = TextMaskingStage()
+    result = stage.process(ctx)
+
+    assert len(result.text_regions) >= 1
+    assert result.text_regions[0].text == "cresc."
+
+
+def test_text_masking_detects_trio(monkeypatch):
+    """Trio text should be recognized and stored in region.text."""
+    from mv_hofki.services.scanner.stages import text_masking
+    from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
+
+    monkeypatch.setattr(text_masking, "_ocr_region", lambda _binary, _region: "Trio")
+
+    img, staff = _make_staff_with_text_below()
+    ctx = PipelineContext(image=img, processed_image=img.copy(), staves=[staff])
+
+    stage = TextMaskingStage()
+    result = stage.process(ctx)
+
+    trio_regions = [r for r in result.text_regions if r.text == "Trio"]
+    assert len(trio_regions) >= 1
+    assert trio_regions[0].staff_index == 0

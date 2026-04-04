@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
+import pytesseract  # type: ignore[import-not-found]
 
 from mv_hofki.services.scanner.stages.base import (
     PipelineContext,
@@ -41,6 +42,7 @@ class TextMaskingStage(ProcessingStage):
                 staff_centers, key=lambda sc: abs(sc[1] - region_center_y)
             )[0]
             region.staff_index = closest_idx
+            region.text = _ocr_region(binary, region)
             ctx.text_regions.append(region)
 
         # Mask detected text regions in the binary image
@@ -59,6 +61,21 @@ class TextMaskingStage(ProcessingStage):
 
     def validate(self, ctx: PipelineContext) -> bool:
         return ctx.processed_image is not None and len(ctx.staves) > 0
+
+
+def _ocr_region(binary: np.ndarray, region: TextRegionData) -> str | None:
+    """Run Tesseract OCR on a text region and return recognized text."""
+    y1 = region.y
+    y2 = region.y + region.height
+    x1 = region.x
+    x2 = region.x + region.width
+
+    snippet = binary[y1:y2, x1:x2]
+    # Invert: tesseract expects black text on white background
+    snippet = cv2.bitwise_not(snippet)
+
+    text = pytesseract.image_to_string(snippet, lang="deu", config="--psm 7").strip()
+    return text if text else None
 
 
 def _detect_text_regions(
