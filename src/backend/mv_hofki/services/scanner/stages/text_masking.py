@@ -50,9 +50,10 @@ class TextMaskingStage(ProcessingStage):
             w = max(xs) - x
             h = max(ys) - y
 
-            # Skip regions overlapping with staff lines
+            # Skip regions overlapping with staff lines (except "Trio")
             if _overlaps_staff_lines(y, y + h, staff_line_ranges):
-                continue
+                if text.lower() != "trio":
+                    continue
 
             # Assign to nearest staff
             center_y = y + h / 2
