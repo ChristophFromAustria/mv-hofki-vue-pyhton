@@ -16,6 +16,8 @@ const props = defineProps({
   showVoltas: { type: Boolean, default: true },
   voltaDebugLines: { type: Array, default: () => [] },
   hairpinDebugLines: { type: Array, default: () => [] },
+  textRegions: { type: Array, default: () => [] },
+  showTextRegions: { type: Boolean, default: true },
   showStaves: { type: Boolean, default: true },
   showSymbols: { type: Boolean, default: true },
   captureMode: { type: Boolean, default: false },
@@ -543,6 +545,32 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             stroke-width="1.5"
             opacity="0.7"
           />
+        </template>
+
+        <!-- Text region overlay -->
+        <template v-if="showTextRegions && textRegions.length">
+          <g v-for="(tr, idx) in textRegions" :key="`tr-${idx}`">
+            <rect
+              :x="tr.x"
+              :y="tr.y"
+              :width="tr.width"
+              :height="tr.height"
+              fill="#10b981"
+              fill-opacity="0.15"
+              stroke="#10b981"
+              stroke-width="1"
+              opacity="0.8"
+            />
+            <text
+              :x="tr.x + 2"
+              :y="tr.y + tr.height - 2"
+              fill="#10b981"
+              font-size="10"
+              opacity="0.9"
+            >
+              {{ tr.text }}
+            </text>
+          </g>
         </template>
 
         <!-- Symbol bounding boxes -->
