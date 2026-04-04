@@ -39,6 +39,8 @@ const showMeasures = ref(true);
 const showVoltas = ref(true);
 const voltaDebugLines = ref([]);
 const hairpinDebugLines = ref([]);
+const textRegions = ref([]);
+const showTextRegions = ref(true);
 const showStaves = ref(true);
 const hideFiltered = ref(true);
 const hiddenCategories = ref(new Set());
@@ -81,15 +83,23 @@ async function fetchScanData() {
   loading.value = true;
   error.value = null;
   try {
-    const [, stavesData, symbolsData, measuresData, debugLinesData, hairpinLinesData] =
-      await Promise.all([
-        get(`/scanner/scans/${props.scanId}/status`).catch(() => null),
-        get(`/scanner/scans/${props.scanId}/staves`),
-        get(`/scanner/scans/${props.scanId}/symbols`),
-        get(`/scanner/scans/${props.scanId}/measures`).catch(() => []),
-        get(`/scanner/scans/${props.scanId}/volta-debug`).catch(() => []),
-        get(`/scanner/scans/${props.scanId}/hairpin-debug`).catch(() => []),
-      ]);
+    const [
+      ,
+      stavesData,
+      symbolsData,
+      measuresData,
+      debugLinesData,
+      hairpinLinesData,
+      textRegionsData,
+    ] = await Promise.all([
+      get(`/scanner/scans/${props.scanId}/status`).catch(() => null),
+      get(`/scanner/scans/${props.scanId}/staves`),
+      get(`/scanner/scans/${props.scanId}/symbols`),
+      get(`/scanner/scans/${props.scanId}/measures`).catch(() => []),
+      get(`/scanner/scans/${props.scanId}/volta-debug`).catch(() => []),
+      get(`/scanner/scans/${props.scanId}/hairpin-debug`).catch(() => []),
+      get(`/scanner/scans/${props.scanId}/text-regions`).catch(() => []),
+    ]);
 
     // Get actual scan data through project/part lookup
     // We fetch from the project-level parts list to find this scan's image_path
@@ -106,6 +116,7 @@ async function fetchScanData() {
     measures.value = measuresData || [];
     voltaDebugLines.value = debugLinesData || [];
     hairpinDebugLines.value = hairpinLinesData || [];
+    textRegions.value = textRegionsData || [];
 
     // Resolve image info (dimensions + file type)
     if (foundScan?.image_path) {
@@ -200,15 +211,23 @@ async function onAnalysisDone() {
   processing.value = false;
   // Reload results without setting loading=true (which would unmount the canvas and reset zoom)
   try {
-    const [, stavesData, symbolsData, measuresData, debugLinesData, hairpinLinesData] =
-      await Promise.all([
-        get(`/scanner/scans/${props.scanId}/status`).catch(() => null),
-        get(`/scanner/scans/${props.scanId}/staves`),
-        get(`/scanner/scans/${props.scanId}/symbols`),
-        get(`/scanner/scans/${props.scanId}/measures`).catch(() => []),
-        get(`/scanner/scans/${props.scanId}/volta-debug`).catch(() => []),
-        get(`/scanner/scans/${props.scanId}/hairpin-debug`).catch(() => []),
-      ]);
+    const [
+      ,
+      stavesData,
+      symbolsData,
+      measuresData,
+      debugLinesData,
+      hairpinLinesData,
+      textRegionsData,
+    ] = await Promise.all([
+      get(`/scanner/scans/${props.scanId}/status`).catch(() => null),
+      get(`/scanner/scans/${props.scanId}/staves`),
+      get(`/scanner/scans/${props.scanId}/symbols`),
+      get(`/scanner/scans/${props.scanId}/measures`).catch(() => []),
+      get(`/scanner/scans/${props.scanId}/volta-debug`).catch(() => []),
+      get(`/scanner/scans/${props.scanId}/hairpin-debug`).catch(() => []),
+      get(`/scanner/scans/${props.scanId}/text-regions`).catch(() => []),
+    ]);
     const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
     for (const part of partsData) {
       const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
@@ -227,6 +246,7 @@ async function onAnalysisDone() {
     measures.value = measuresData || [];
     voltaDebugLines.value = debugLinesData || [];
     hairpinDebugLines.value = hairpinLinesData || [];
+    textRegions.value = textRegionsData || [];
     updateStatus();
   } catch {
     // Fall back to full reload on error
@@ -560,9 +580,11 @@ onUnmounted(() => {
               :symbols="symbols"
               :hidden-categories="hiddenCategories"
               :show-voltas="showVoltas"
+              :show-text-regions="showTextRegions"
               @update:show-staves="showStaves = $event"
               @update:show-measures="showMeasures = $event"
               @update:show-voltas="showVoltas = $event"
+              @update:show-text-regions="showTextRegions = $event"
               @update:hide-filtered="hideFiltered = $event"
               @update:hidden-categories="hiddenCategories = $event"
             />
@@ -630,6 +652,8 @@ onUnmounted(() => {
             :show-voltas="showVoltas"
             :volta-debug-lines="voltaDebugLines"
             :hairpin-debug-lines="hairpinDebugLines"
+            :text-regions="textRegions"
+            :show-text-regions="showTextRegions"
             @select-symbol="onSelectSymbol"
             @capture-box="onCaptureBox"
           />

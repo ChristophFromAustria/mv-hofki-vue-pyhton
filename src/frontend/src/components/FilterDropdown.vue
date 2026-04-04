@@ -5,6 +5,7 @@ const props = defineProps({
   showStaves: { type: Boolean, default: true },
   showMeasures: { type: Boolean, default: true },
   showVoltas: { type: Boolean, default: true },
+  showTextRegions: { type: Boolean, default: true },
   hideFiltered: { type: Boolean, default: true },
   symbols: { type: Array, default: () => [] },
   hiddenCategories: { type: Object, default: () => new Set() },
@@ -14,6 +15,7 @@ const emit = defineEmits([
   "update:showStaves",
   "update:showMeasures",
   "update:showVoltas",
+  "update:showTextRegions",
   "update:hideFiltered",
   "update:hiddenCategories",
 ]);
@@ -129,6 +131,14 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
             type="checkbox"
             :checked="showVoltas"
             @change="emit('update:showVoltas', $event.target.checked)"
+          />
+        </label>
+        <label class="filter-item">
+          <span class="filter-label">Text anzeigen</span>
+          <input
+            type="checkbox"
+            :checked="showTextRegions"
+            @change="emit('update:showTextRegions', $event.target.checked)"
           />
         </label>
         <label class="filter-item">
