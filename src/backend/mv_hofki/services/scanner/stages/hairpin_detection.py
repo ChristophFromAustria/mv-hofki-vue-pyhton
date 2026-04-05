@@ -224,10 +224,20 @@ def _match_hairpin_template(
     if not templates:
         return 0.0
 
+    # Scale template to ROI width but keep some vertical slack so
+    # matchTemplate can slide and find the best vertical alignment.
+    tpl_h = max(3, int(roi_h * 0.7))
+    tpl_w = max(3, int(roi_w * 0.9))
+
+    # Template must be smaller than ROI for sliding
+    if tpl_h >= roi_h:
+        tpl_h = roi_h - 1
+    if tpl_w >= roi_w:
+        tpl_w = roi_w - 1
+
     best_score = 0.0
     for tpl in templates:
-        # Scale template to match the ROI size and re-binarize
-        scaled = cv2.resize(tpl, (roi_w, roi_h), interpolation=cv2.INTER_AREA)
+        scaled = cv2.resize(tpl, (tpl_w, tpl_h), interpolation=cv2.INTER_AREA)
         _, scaled_bin = cv2.threshold(scaled, 127, 255, cv2.THRESH_BINARY)
 
         # For decrescendo, flip horizontally
@@ -235,9 +245,9 @@ def _match_hairpin_template(
             scaled_bin = cv2.flip(scaled_bin, 1)
 
         result = cv2.matchTemplate(roi_bin, scaled_bin, cv2.TM_CCOEFF_NORMED)
-        score = float(result[0][0])
-        if score > best_score:
-            best_score = score
+        _, max_val, _, _ = cv2.minMaxLoc(result)
+        if max_val > best_score:
+            best_score = max_val
 
     return best_score
 
