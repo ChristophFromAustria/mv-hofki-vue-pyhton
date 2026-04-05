@@ -129,7 +129,8 @@ class HairpinDetectionStage(ProcessingStage):
                     f"System {staff.staff_index}, x={x_min}-{x_max}, "
                     f"conf={conf:.2f}"
                 )
-                if conf < 0:
+                hairpin_min_conf = ctx.config.get("hairpin_min_confidence", 0.3)
+                if conf < hairpin_min_conf:
                     continue
                 template_id = cresc_id if hp_type == "crescendo" else decresc_id
                 hairpins.append(

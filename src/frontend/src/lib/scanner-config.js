@@ -201,6 +201,15 @@ export const SCANNER_CONFIG_FIELDS = [
     max: 10,
     step: 0.5,
   },
+  {
+    key: "hairpin_min_confidence",
+    label: "Min. Konfidenz",
+    group: "Keil-Erkennung",
+    type: "number",
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
 
   // ── LilyPond Layout ───────────────────────────────────────────────
   {
