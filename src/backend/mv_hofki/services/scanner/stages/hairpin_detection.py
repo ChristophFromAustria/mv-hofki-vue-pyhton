@@ -121,13 +121,15 @@ class HairpinDetectionStage(ProcessingStage):
             for hp_type, x_min, y_min, x_max, y_max in merged:
                 if (x_max - x_min) < min_hitbox_width:
                     continue
-                if not _validate_wedge_shape(
+                conf = _match_hairpin_template(
                     binary, hp_type, x_min, y_min, x_max, y_max
-                ):
-                    ctx.log(
-                        f"  Hairpin ({hp_type}) verworfen (kein Keil-Profil): "
-                        f"System {staff.staff_index}, x={x_min}-{x_max}"
-                    )
+                )
+                ctx.log(
+                    f"  Hairpin ({hp_type}) Kandidat: "
+                    f"System {staff.staff_index}, x={x_min}-{x_max}, "
+                    f"conf={conf:.2f}"
+                )
+                if conf < 0.3:
                     continue
                 template_id = cresc_id if hp_type == "crescendo" else decresc_id
                 hairpins.append(
@@ -142,7 +144,7 @@ class HairpinDetectionStage(ProcessingStage):
                         staff_x_start=x_min,
                         staff_x_end=x_max,
                         matched_template_id=template_id,
-                        confidence=0.8,
+                        confidence=round(conf, 3),
                     )
                 )
                 ctx.log(
@@ -166,22 +168,39 @@ class HairpinDetectionStage(ProcessingStage):
         return ctx.processed_image is not None and len(ctx.staves) > 0
 
 
-def _validate_wedge_shape(
+_hairpin_templates: list[np.ndarray] | None = None
+
+
+def _load_hairpin_templates() -> list[np.ndarray]:
+    """Load crescendo template images (lazy, cached)."""
+    global _hairpin_templates  # noqa: PLW0603
+    if _hairpin_templates is not None:
+        return _hairpin_templates
+
+    from pathlib import Path
+
+    template_dir = Path(__file__).resolve().parents[4] / "samplefiles" / "crescendo"
+    templates = []
+    for name in sorted(template_dir.glob("*.png")):
+        img = cv2.imread(str(name), cv2.IMREAD_GRAYSCALE)
+        if img is not None:
+            templates.append(img)
+    _hairpin_templates = templates
+    return templates
+
+
+def _match_hairpin_template(
     binary: np.ndarray,
     hp_type: str,
     x_min: int,
     y_min: int,
     x_max: int,
     y_max: int,
-    max_fill_ratio: float = 0.35,
-    num_slices: int = 8,
-) -> bool:
-    """Validate that black pixels in the bounding box form a wedge shape.
+) -> float:
+    """Match the hitbox region against crescendo templates.
 
-    Checks two things:
-    1. Fill ratio must be low (hairpins are thin lines, not filled blocks)
-    2. V-profile: the vertical spread of black pixels must increase from
-       vertex to opening (split into slices along X axis)
+    Returns the best confidence score (0-1). For decrescendo the
+    templates are horizontally flipped.
     """
     h_img, w_img = binary.shape[:2]
     x1 = max(0, x_min)
@@ -190,61 +209,33 @@ def _validate_wedge_shape(
     y2 = min(h_img, y_max)
 
     if x2 <= x1 or y2 <= y1:
-        return False
+        return 0.0
 
     roi = binary[y1:y2, x1:x2]
-    total_pixels = roi.size
-    black_pixels = int(np.sum(roi == 0))
+    roi_h, roi_w = roi.shape
 
-    # Check 1: fill ratio — hairpins are sparse, brackets are dense
-    if total_pixels == 0:
-        return False
-    fill_ratio = black_pixels / total_pixels
-    if fill_ratio > max_fill_ratio:
-        return False
+    if roi_h < 3 or roi_w < 3:
+        return 0.0
 
-    # Check 2: V-profile — vertical spread should increase toward opening
-    roi_w = x2 - x1
-    slice_width = max(1, roi_w // num_slices)
-    spreads: list[int] = []
+    templates = _load_hairpin_templates()
+    if not templates:
+        return 0.0
 
-    for s in range(num_slices):
-        sx1 = s * slice_width
-        sx2 = min(roi_w, (s + 1) * slice_width)
-        col_slice = roi[:, sx1:sx2]
-        black_rows = np.any(col_slice == 0, axis=1)
-        if not np.any(black_rows):
-            spreads.append(0)
-            continue
-        indices = np.where(black_rows)[0]
-        spreads.append(int(indices[-1] - indices[0] + 1))
+    best_score = 0.0
+    for tpl in templates:
+        # Scale template to match the ROI size
+        scaled = cv2.resize(tpl, (roi_w, roi_h), interpolation=cv2.INTER_AREA)
 
-    if len(spreads) < 2:
-        return False
+        # For decrescendo, flip horizontally
+        if hp_type == "decrescendo":
+            scaled = cv2.flip(scaled, 1)
 
-    # Order spreads from vertex to opening
-    if hp_type == "crescendo":
-        ordered = spreads  # left=vertex, right=open
-    else:
-        ordered = spreads[::-1]  # reverse: right=vertex, left=open
+        result = cv2.matchTemplate(roi, scaled, cv2.TM_CCOEFF_NORMED)
+        score = float(result[0][0])
+        if score > best_score:
+            best_score = score
 
-    # Check 1: opening end must be wider than vertex end
-    if ordered[-1] <= ordered[0]:
-        return False
-
-    # Check 2: monotonicity — spreads should roughly increase from
-    # vertex to opening. Allow at most 1 slice to decrease, and no
-    # single slice should drop to less than 25% of its neighbor.
-    decreases = 0
-    for k in range(1, len(ordered)):
-        if ordered[k] < ordered[k - 1]:
-            decreases += 1
-            if ordered[k - 1] > 0 and ordered[k] < ordered[k - 1] * 0.25:
-                return False
-    if decreases > 1:
-        return False
-
-    return True
+    return best_score
 
 
 def _find_hairpin_pairs(
