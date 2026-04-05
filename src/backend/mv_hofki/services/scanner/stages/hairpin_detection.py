@@ -129,7 +129,7 @@ class HairpinDetectionStage(ProcessingStage):
                     f"System {staff.staff_index}, x={x_min}-{x_max}, "
                     f"conf={conf:.2f}"
                 )
-                if conf < 0.3:
+                if conf < 0:
                     continue
                 template_id = cresc_id if hp_type == "crescendo" else decresc_id
                 hairpins.append(
@@ -217,20 +217,24 @@ def _match_hairpin_template(
     if roi_h < 3 or roi_w < 3:
         return 0.0
 
+    # Binarize ROI — processed image may contain anti-aliased gray values
+    _, roi_bin = cv2.threshold(roi, 127, 255, cv2.THRESH_BINARY)
+
     templates = _load_hairpin_templates()
     if not templates:
         return 0.0
 
     best_score = 0.0
     for tpl in templates:
-        # Scale template to match the ROI size
+        # Scale template to match the ROI size and re-binarize
         scaled = cv2.resize(tpl, (roi_w, roi_h), interpolation=cv2.INTER_AREA)
+        _, scaled_bin = cv2.threshold(scaled, 127, 255, cv2.THRESH_BINARY)
 
         # For decrescendo, flip horizontally
         if hp_type == "decrescendo":
-            scaled = cv2.flip(scaled, 1)
+            scaled_bin = cv2.flip(scaled_bin, 1)
 
-        result = cv2.matchTemplate(roi, scaled, cv2.TM_CCOEFF_NORMED)
+        result = cv2.matchTemplate(roi_bin, scaled_bin, cv2.TM_CCOEFF_NORMED)
         score = float(result[0][0])
         if score > best_score:
             best_score = score
