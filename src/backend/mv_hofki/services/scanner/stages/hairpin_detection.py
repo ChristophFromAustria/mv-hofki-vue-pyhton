@@ -180,7 +180,7 @@ def _load_hairpin_templates() -> list[np.ndarray]:
 
     from pathlib import Path
 
-    template_dir = Path(__file__).resolve().parents[4] / "samplefiles" / "crescendo"
+    template_dir = Path(__file__).resolve().parents[6] / "samplefiles" / "crescendo"
     templates = []
     for name in sorted(template_dir.glob("*.png")):
         img = cv2.imread(str(name), cv2.IMREAD_GRAYSCALE)
