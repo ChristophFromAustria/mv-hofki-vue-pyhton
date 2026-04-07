@@ -436,4 +436,44 @@ def test_wide_trailing_segment_is_counted():
     result = MeasureDetectionStage().process(ctx)
 
     # Segment from 10-500 (490px, ok), 500-520 (20px >= 10 -> counted)
+    # barline x_end=505 < staff x_end=520, so trailing segment is allowed
     assert len(result.measures) == 2
+
+
+def test_barline_hitbox_reaches_staff_end_no_trailing():
+    """If the last barline's hitbox x_end >= staff x_end, no trailing segment."""
+    staff = _make_staff(x_start=10, x_end=520)
+    symbols = [
+        SymbolData(
+            staff_index=0,
+            x=200,
+            y=50,
+            width=5,
+            height=50,
+            staff_x_start=200,
+            staff_x_end=205,
+            matched_template_id=10,
+        ),
+        # Wide repeat barline at the end — hitbox reaches staff x_end
+        SymbolData(
+            staff_index=0,
+            x=500,
+            y=50,
+            width=25,
+            height=50,
+            staff_x_start=500,
+            staff_x_end=525,
+            matched_template_id=11,
+        ),
+    ]
+    categories = {10: "barline", 11: "barline"}
+    ctx = _ctx_with_symbols([staff], symbols, categories)
+    result = MeasureDetectionStage().process(ctx)
+
+    # Segments: 10-200 (ok), 200-500 (ok)
+    # No trailing segment because barline x_end (525) >= staff x_end (520)
+    assert len(result.measures) == 2
+    assert result.measures[0].x_start == 10
+    assert result.measures[0].x_end == 200
+    assert result.measures[1].x_start == 200
+    assert result.measures[1].x_end == 500

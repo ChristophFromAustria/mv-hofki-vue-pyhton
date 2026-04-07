@@ -77,7 +77,13 @@ class MeasureDetectionStage(ProcessingStage):
                     boundary_list.append((prev_end, bl_start, bl_name))
                 prev_end = bl_start
 
-            if prev_end < max_x:
+            # Only add trailing segment if the last barline's hitbox
+            # does not reach the staff end (x_end of hitbox < max_x).
+            last_bl_end = 0
+            if barlines:
+                last = barlines[-1]
+                last_bl_end = last.staff_x_end or (last.x + last.width)
+            if prev_end < max_x and last_bl_end < max_x:
                 boundary_list.append((prev_end, max_x, None))
 
             if not boundary_list:

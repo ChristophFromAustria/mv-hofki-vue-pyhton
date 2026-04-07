@@ -145,6 +145,18 @@ watch(
 );
 onMounted(loadImage);
 
+// Set of measure IDs that are the last measure in their staff
+const lastMeasureIds = computed(() => {
+  const lastByStaff = {};
+  for (const m of props.measures) {
+    const prev = lastByStaff[m.staff_index];
+    if (!prev || m.measure_number_in_staff > prev.measure_number_in_staff) {
+      lastByStaff[m.staff_index] = m;
+    }
+  }
+  return new Set(Object.values(lastByStaff).map((m) => m.id));
+});
+
 // Staff line helpers
 function staffBounds(staffIndex) {
   return props.staves.find((s) => s.staff_index === staffIndex) ?? null;
@@ -482,6 +494,18 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             >
               {{ measure.global_measure_number }}
             </text>
+            <!-- End line for the last measure of each staff -->
+            <line
+              v-if="lastMeasureIds.has(measure.id)"
+              :x1="measure.x_end"
+              :y1="(staffBounds(measure.staff_index)?.y_top ?? 0) - 10"
+              :x2="measure.x_end"
+              :y2="(staffBounds(measure.staff_index)?.y_bottom ?? 0) + 10"
+              stroke="#06b6d4"
+              stroke-width="1.5"
+              stroke-dasharray="4 3"
+              opacity="0.6"
+            />
           </g>
         </template>
 
