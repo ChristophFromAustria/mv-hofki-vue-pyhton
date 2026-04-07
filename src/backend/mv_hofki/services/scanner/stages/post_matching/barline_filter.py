@@ -1,17 +1,8 @@
-"""Post-matching stage: filters and cleans up template matching results."""
+"""Barline filter: removes false-positive single barline detections."""
 
 from __future__ import annotations
 
-import logging
-from abc import ABC, abstractmethod
-
-from mv_hofki.services.scanner.stages.base import (
-    PipelineContext,
-    ProcessingStage,
-    SymbolData,
-)
-
-logger = logging.getLogger(__name__)
+from mv_hofki.services.scanner.stages.base import PipelineContext, SymbolData
 
 # Display-name substrings that take priority over single barlines.
 _BARLINE_PRIORITY_NAMES = [
@@ -27,17 +18,7 @@ _BARLINE_PRIORITY_NAMES = [
 _SINGLE_BARLINE_DISPLAY_NAME = "Einfacher Taktstrich"
 
 
-class PostMatchingOperation(ABC):
-    """Base class for post-matching sub-operations."""
-
-    name: str
-
-    @abstractmethod
-    def apply(self, ctx: PipelineContext) -> None:
-        """Modify ctx.symbols in-place (set filtered/filter_reason)."""
-
-
-class BarlineFilter(PostMatchingOperation):
+class BarlineFilter:
     """Filter false-positive single barline detections."""
 
     name = "barline_filter"
@@ -131,27 +112,3 @@ class BarlineFilter(PostMatchingOperation):
             and a.y < b.y + b.height
             and a.y + a.height > b.y
         )
-
-
-class PostMatchingStage(ProcessingStage):
-    """Runs post-matching sub-operations on detected symbols."""
-
-    name = "post_matching"
-
-    def __init__(self) -> None:
-        self._operations: list[PostMatchingOperation] = [
-            BarlineFilter(),
-        ]
-
-    def process(self, ctx: PipelineContext) -> PipelineContext:
-        for op in self._operations:
-            ctx.log(f"  Post-Matching: {op.name}...")
-            op.apply(ctx)
-            filtered_count = sum(1 for s in ctx.symbols if s.filtered)
-            ctx.log(
-                f"  Post-Matching: {op.name} abgeschlossen ({filtered_count} gefiltert)"
-            )
-        return ctx
-
-    def validate(self, ctx: PipelineContext) -> bool:
-        return len(ctx.symbols) > 0
