@@ -10,6 +10,7 @@ from mv_hofki.services.scanner.stages.base import (
     ProcessingStage,
     SymbolData,
 )
+from mv_hofki.services.scanner.stages.utils import expand_to_connected
 
 # Barline names that indicate a repeat boundary
 _REPEAT_BARLINES = {
@@ -40,7 +41,12 @@ class VoltaDetectionStage(ProcessingStage):
                 bracket_id = tid
                 break
 
-        # Group repeat barlines by staff
+        # Group measures by staff for lookup
+        measures_by_staff: dict[int, list] = {}
+        for m in ctx.measures:
+            measures_by_staff.setdefault(m.staff_index, []).append(m)
+
+        # Find repeat barlines
         repeat_measures_by_staff: dict[int, list] = {}
         for m in ctx.measures:
             if m.end_barline in _REPEAT_BARLINES:
@@ -55,78 +61,109 @@ class VoltaDetectionStage(ProcessingStage):
             if staff is None:
                 continue
 
+            ls = staff.line_spacing
             top_line = min(staff.line_positions)
+
+            # Scan region: above staff with 1× line_spacing offset from top line
             region_top = staff.y_top
-            region_bottom = top_line
+            region_bottom = top_line - int(ls)
 
             if region_top >= region_bottom:
                 continue
 
-            h, w = binary.shape[:2]
-            region = binary[region_top:region_bottom, :]
-            inverted = cv2.bitwise_not(region)
+            img_h, img_w = binary.shape[:2]
+            staff_measures = measures_by_staff.get(staff_index, [])
+            staff_measures.sort(key=lambda m: m.x_start)
 
-            # Run Hough for debug info
-            edges = cv2.Canny(inverted, 50, 150, apertureSize=3)
-            min_line_len = int(staff.line_spacing * 2)
-            lines = cv2.HoughLinesP(
-                edges,
-                rho=1,
-                theta=np.pi / 180,
-                threshold=15,
-                minLineLength=min_line_len,
-                maxLineGap=10,
-            )
+            for repeat_m in repeat_measures:
+                # X scan range: one measure before and after the repeat barline
+                scan_x1 = repeat_m.x_start
+                scan_x2 = repeat_m.x_end
 
-            if lines is not None:
+                # Expand to adjacent measures
+                for m in staff_measures:
+                    if m.x_end <= repeat_m.x_start and m.x_end >= scan_x1 - int(ls):
+                        scan_x1 = m.x_start
+                    if m.x_start >= repeat_m.x_end and m.x_start <= scan_x2 + int(ls):
+                        scan_x2 = m.x_end
+
+                scan_x1 = max(0, scan_x1)
+                scan_x2 = min(img_w, scan_x2)
+
+                # Extract the scan region (restricted X range)
+                region = binary[region_top:region_bottom, scan_x1:scan_x2]
+                inverted = cv2.bitwise_not(region)
+
+                edges = cv2.Canny(inverted, 50, 150, apertureSize=3)
+                min_line_len = int(ls * 2)
+                lines = cv2.HoughLinesP(
+                    edges,
+                    rho=1,
+                    theta=np.pi / 180,
+                    threshold=15,
+                    minLineLength=min_line_len,
+                    maxLineGap=10,
+                )
+
+                if lines is None:
+                    continue
+
+                # Find near-horizontal lines (<=5°)
+                best_line: tuple[int, int, int, int] | None = None
+                best_len = 0
+
                 for line in lines:
                     x1, y1, x2, y2 = line[0]
+                    angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
+
+                    # Store debug lines in absolute coords
                     debug_lines.append(
                         {
-                            "x1": int(x1),
+                            "x1": int(scan_x1 + x1),
                             "y1": int(region_top + y1),
-                            "x2": int(x2),
+                            "x2": int(scan_x1 + x2),
                             "y2": int(region_top + y2),
                             "staff_index": staff_index,
                         }
                     )
 
-            # Use connected components to find bracket shapes
-            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(inverted)
+                    if angle <= 5:
+                        if x1 > x2:
+                            x1, y1, x2, y2 = x2, y2, x1, y1
+                        length = x2 - x1
+                        if length > best_len:
+                            best_len = length
+                            # Convert to absolute coords
+                            best_line = (
+                                scan_x1 + x1,
+                                region_top + y1,
+                                scan_x1 + x2,
+                                region_top + y2,
+                            )
 
-            bottom_line_y = max(staff.line_positions)
-            ls = staff.line_spacing
-            min_width = int(ls * 2)
-
-            for lbl in range(1, num_labels):
-                cc_x = int(stats[lbl, cv2.CC_STAT_LEFT])
-                cc_y = int(stats[lbl, cv2.CC_STAT_TOP])
-                cc_w = int(stats[lbl, cv2.CC_STAT_WIDTH])
-                cc_h = int(stats[lbl, cv2.CC_STAT_HEIGHT])
-
-                # Filter: must be wide enough to be a bracket
-                if cc_w < min_width:
+                if best_line is None:
                     continue
 
-                # Filter: must be wider than tall (bracket-shaped)
-                if cc_w < cc_h * 2:
-                    continue
+                lx1, ly1, lx2, ly2 = best_line
 
-                # Convert to absolute coordinates
-                abs_y = region_top + cc_y
-                abs_y2 = abs_y + cc_h
+                # Expand via connected components to get full bracket
+                ex_x1, ex_y1, ex_x2, ex_y2 = expand_to_connected(
+                    binary, lx1, ly1, lx2, ly2, region_top, region_bottom
+                )
+
+                bottom_line_y = max(staff.line_positions)
 
                 brackets.append(
                     SymbolData(
                         staff_index=staff_index,
-                        x=cc_x,
-                        y=abs_y,
-                        width=cc_w,
-                        height=max(cc_h, int(ls // 2)),
-                        staff_y_top=round((bottom_line_y - abs_y) / ls, 2),
-                        staff_y_bottom=round((bottom_line_y - abs_y2) / ls, 2),
-                        staff_x_start=cc_x,
-                        staff_x_end=cc_x + cc_w,
+                        x=ex_x1,
+                        y=ex_y1,
+                        width=ex_x2 - ex_x1,
+                        height=max(ex_y2 - ex_y1, int(ls // 2)),
+                        staff_y_top=round((bottom_line_y - ex_y1) / ls, 2),
+                        staff_y_bottom=round((bottom_line_y - ex_y2) / ls, 2),
+                        staff_x_start=ex_x1,
+                        staff_x_end=ex_x2,
                         matched_template_id=bracket_id,
                         confidence=0.8,
                     )
@@ -134,10 +171,10 @@ class VoltaDetectionStage(ProcessingStage):
 
                 ctx.log(
                     f"  Volta-Klammer erkannt: System {staff_index}, "
-                    f"x={cc_x}-{cc_x + cc_w}"
+                    f"x={ex_x1}-{ex_x2}"
                 )
 
-            # Assign volta numbers to measures under brackets
+            # Assign volta numbers: match bracket hitbox against measures
             staff_brackets = [b for b in brackets if b.staff_index == staff_index]
             staff_brackets.sort(key=lambda b: b.staff_x_start or b.x)
 
@@ -149,7 +186,6 @@ class VoltaDetectionStage(ProcessingStage):
                     for m in ctx.measures:
                         if m.staff_index != staff_index:
                             continue
-                        # Measure overlaps with bracket X range
                         if m.x_start < bx2 and m.x_end > bx1:
                             m.volta_number = volta_num
                             m.volta_group_id = volta_group_id
