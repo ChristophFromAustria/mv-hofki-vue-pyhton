@@ -59,4 +59,4 @@ def expand_to_connected(
         return x_min, y_min, x_max, y_max
 
     rx, ry, rw, rh = cv2.boundingRect(coords)
-    return rx, roi_y1 + ry, rx + rw, roi_y1 + ry + rh
+    return int(rx), int(roi_y1 + ry), int(rx + rw), int(roi_y1 + ry + rh)
