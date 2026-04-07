@@ -235,8 +235,7 @@ async def run_pipeline(
     if config.get("dewarp_enabled", False):
         stages.append(DewarpStage())
 
-    if config.get("staff_removal_before_matching", False):
-        stages.append(StaffRemovalStage())
+    stages.append(StaffRemovalStage())
 
     stages.append(
         TemplateMatchingStage(

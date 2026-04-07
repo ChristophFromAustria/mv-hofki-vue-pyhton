@@ -92,12 +92,6 @@ export const SCANNER_CONFIG_FIELDS = [
 
   // ── Staff Removal ──────────────────────────────────────────────────
   {
-    key: "staff_removal_before_matching",
-    label: "Notenlinien vor Matching entfernen",
-    group: "Notenlinien-Entfernung",
-    type: "toggle",
-  },
-  {
     key: "staff_removal_thickness_pct",
     label: "Liniendicke-Korrektur (%)",
     group: "Notenlinien-Entfernung",
