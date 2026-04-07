@@ -127,6 +127,10 @@ class StaffRemovalStage(ProcessingStage):
         *symbol_padding* keeps that many extra pixels of staff lines intact
         on each side of a symbol, so lines don't end abruptly at the symbol
         edge.
+
+        Returns ``(x_start, x_end)`` — the first and last column indices
+        that contain symbol pixels (inclusive), or ``(None, None)`` if no
+        symbols found.
         """
         h, w = img.shape[:2]
         half_t = line_thickness // 2 + 1
