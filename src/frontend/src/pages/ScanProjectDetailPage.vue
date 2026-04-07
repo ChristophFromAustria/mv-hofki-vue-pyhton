@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { useRouter, RouterLink } from "vue-router";
-import { get, post, del } from "../lib/api.js";
+import { get, post, put, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 
@@ -104,6 +104,11 @@ async function deleteScan() {
   await del(`/scanner/projects/${props.id}/parts/${part.id}/scans/${scan.id}`);
   deleteScanTarget.value = null;
   confirmScanOpen.value = false;
+  await fetchData();
+}
+
+async function resetScan(scan) {
+  await put(`/scanner/scans/${scan.id}/reset-status`);
   await fetchData();
 }
 
@@ -227,9 +232,19 @@ onMounted(fetchData);
               </div>
               <div class="thumb-footer">
                 <span class="page-label">Seite {{ scan.page_number }}</span>
-                <button class="btn btn-xs btn-danger" @click.stop="confirmDeleteScan(scan, part)">
-                  ×
-                </button>
+                <div class="thumb-actions">
+                  <button
+                    v-if="scan.status !== 'uploaded'"
+                    class="btn btn-xs btn-muted"
+                    title="Analyse zurücksetzen"
+                    @click.stop="resetScan(scan)"
+                  >
+                    ↺
+                  </button>
+                  <button class="btn btn-xs btn-danger" @click.stop="confirmDeleteScan(scan, part)">
+                    ×
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -485,6 +500,22 @@ onMounted(fetchData);
 .page-label {
   font-size: 0.75rem;
   color: var(--color-muted);
+}
+
+.thumb-actions {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.btn-muted {
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+}
+
+.btn-muted:hover {
+  color: var(--color-text);
+  border-color: var(--color-text);
 }
 
 .btn-xs {
