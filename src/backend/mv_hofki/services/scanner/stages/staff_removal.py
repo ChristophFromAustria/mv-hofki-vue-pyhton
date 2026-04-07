@@ -35,15 +35,18 @@ class StaffRemovalStage(ProcessingStage):
                 f"effektiv={effective}px ({thickness_pct}%), "
                 f"Abstand={staff.line_spacing:.0f}px"
             )
-            x_start, x_end = self._remove_empty_staff_segments(
+            x_start, x_end = self._find_staff_x_bounds(
+                img, staff.line_positions, effective
+            )
+            staff.x_start = x_start
+            staff.x_end = x_end
+            self._remove_empty_staff_segments(
                 img,
                 staff.line_positions,
                 line_spacing=staff.line_spacing,
                 line_thickness=effective,
                 symbol_padding=symbol_padding,
             )
-            staff.x_start = x_start
-            staff.x_end = x_end
 
         ctx.image = img
         ctx.processed_image = img.copy()
@@ -115,22 +118,63 @@ class StaffRemovalStage(ProcessingStage):
         return per_line[len(per_line) // 2]
 
     @staticmethod
+    def _find_staff_x_bounds(
+        img: np.ndarray,
+        line_positions: list[int],
+        line_thickness: int,
+    ) -> tuple[int | None, int | None]:
+        """Find where all 5 staff lines begin and end by scanning inward.
+
+        Scans from the left edge rightward until a column is found where
+        all 5 lines have at least one black pixel within their thickness
+        range.  Then scans from the right edge leftward for the end.
+
+        Returns ``(x_start, x_end)`` (inclusive), or ``(None, None)``
+        if no column has all 5 lines present.
+        """
+        h, w = img.shape[:2]
+        half_t = line_thickness // 2 + 1
+
+        def _all_lines_present(x: int) -> bool:
+            for ly in line_positions:
+                y_lo = max(0, ly - half_t)
+                y_hi = min(h, ly + half_t + 1)
+                if not np.any(img[y_lo:y_hi, x] == 0):
+                    return False
+            return True
+
+        # Scan from left
+        x_start = None
+        for x in range(w):
+            if _all_lines_present(x):
+                x_start = x
+                break
+
+        if x_start is None:
+            return None, None
+
+        # Scan from right
+        x_end = None
+        for x in range(w - 1, x_start - 1, -1):
+            if _all_lines_present(x):
+                x_end = x
+                break
+
+        return x_start, x_end
+
+    @staticmethod
     def _remove_empty_staff_segments(
         img: np.ndarray,
         line_positions: list[int],
         line_spacing: float,
         line_thickness: int,
         symbol_padding: int = 0,
-    ) -> tuple[int | None, int | None]:
+    ) -> None:
         """Erase columns of the staff region where only line pixels exist.
 
         *symbol_padding* keeps that many extra pixels of staff lines intact
         on each side of a symbol, so lines don't end abruptly at the symbol
         edge.
-
-        Returns ``(x_start, x_end)`` — the first and last column indices
-        that contain symbol pixels (inclusive), or ``(None, None)`` if no
-        symbols found.
         """
         h, w = img.shape[:2]
         half_t = line_thickness // 2 + 1
@@ -153,15 +197,6 @@ class StaffRemovalStage(ProcessingStage):
         symbol_count = np.count_nonzero(symbol_pixels, axis=0)
 
         has_symbol = symbol_count > 0  # shape (w,)
-
-        # Compute staff X-bounds from symbol positions
-        symbol_indices = np.where(has_symbol)[0]
-        if len(symbol_indices) > 0:
-            x_start = int(symbol_indices[0])
-            x_end = int(symbol_indices[-1])
-        else:
-            x_start = None
-            x_end = None
 
         # Expand symbol columns by *symbol_padding* pixels in each direction
         if symbol_padding > 0:
@@ -187,5 +222,3 @@ class StaffRemovalStage(ProcessingStage):
 
         if run_start is not None:
             img[region_top:region_bot, run_start:w] = 255
-
-        return x_start, x_end

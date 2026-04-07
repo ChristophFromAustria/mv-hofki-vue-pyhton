@@ -233,19 +233,18 @@ def test_staff_removal_before_matching_config():
         assert row_black_after < row_black_before
 
 
-def test_staff_removal_sets_x_bounds():
-    """StaffRemovalStage should set x_start/x_end on each staff."""
+def test_staff_removal_sets_x_bounds_from_line_scan():
+    """x_start/x_end should be where all 5 staff lines begin/end, not symbols."""
     from mv_hofki.services.scanner.stages.staff_removal import StaffRemovalStage
 
     img = np.full((200, 400), 255, dtype=np.uint8)
-    # Draw staff lines from x=20 to x=380
+    # Draw staff lines from x=50 to x=350 (all 5 lines)
     for i in range(5):
         y = 30 + i * 20
-        img[y : y + 2, 20:380] = 0
-    # Draw a symbol (black block) at x=50..70
-    img[25:55, 50:70] = 0
-    # Draw another symbol at x=300..320
-    img[25:55, 300:320] = 0
+        img[y : y + 2, 50:350] = 0
+    # Draw "text" before staff lines (only near top line, not all 5)
+    # This simulates an instrument name that should NOT push x_start left
+    img[28:32, 10:45] = 0  # black pixels near line 1 only
 
     staff = StaffData(
         staff_index=0,
@@ -260,7 +259,7 @@ def test_staff_removal_sets_x_bounds():
 
     assert result.staves[0].x_start is not None
     assert result.staves[0].x_end is not None
-    # The symbol regions are at x=50..70 and x=300..320
-    # x_start should be <= 50, x_end should be >= 320
-    assert result.staves[0].x_start <= 50
-    assert result.staves[0].x_end >= 319
+    # x_start should be 50 (where all 5 lines begin), not 10 (where text is)
+    assert result.staves[0].x_start == 50
+    # x_end should be 349 (last column where all 5 lines have pixels)
+    assert result.staves[0].x_end == 349
