@@ -24,13 +24,8 @@ class MeasureDetectionStage(ProcessingStage):
         staff_map = {s.staff_index: s for s in ctx.staves}
 
         barlines_by_staff: dict[int, list] = {}
-        all_symbols_by_staff: dict[int, list] = {}
 
         for sym in ctx.symbols:
-            if sym.staff_index not in all_symbols_by_staff:
-                all_symbols_by_staff[sym.staff_index] = []
-            all_symbols_by_staff[sym.staff_index].append(sym)
-
             if sym.filtered:
                 continue
             tid = sym.matched_template_id if sym.matched_template_id is not None else -1
@@ -44,6 +39,15 @@ class MeasureDetectionStage(ProcessingStage):
         global_num = 1
 
         for staff_index in sorted(staff_map.keys()):
+            staff = staff_map[staff_index]
+
+            # Skip staves without X-bounds
+            if staff.x_start is None or staff.x_end is None:
+                continue
+
+            min_x = staff.x_start
+            max_x = staff.x_end
+
             barlines = barlines_by_staff.get(staff_index, [])
             barlines.sort(key=lambda s: s.staff_x_start or s.x)
 
@@ -51,38 +55,27 @@ class MeasureDetectionStage(ProcessingStage):
             deduped: list = []
             for bl in barlines:
                 bl_start = bl.staff_x_start or bl.x
-                bl_end = bl.staff_x_end or (bl.x + bl.width)
                 if deduped:
                     prev = deduped[-1]
                     prev_end = prev.staff_x_end or (prev.x + prev.width)
-                    # Overlapping if the new barline starts before the previous one ends
                     if bl_start < prev_end:
-                        # Keep the one with higher confidence
                         if (bl.confidence or 0) > (prev.confidence or 0):
                             deduped[-1] = bl
                         continue
                 deduped.append(bl)
             barlines = deduped
 
-            staff_symbols = all_symbols_by_staff.get(staff_index, [])
-            if not staff_symbols:
-                continue
-
-            min_x = min(s.staff_x_start or s.x for s in staff_symbols)
-            max_x = max(s.staff_x_end or (s.x + s.width) for s in staff_symbols)
-
-            # Build boundaries with barline type info
+            # Build boundaries: barline START is the boundary point
             boundary_list: list[tuple[int, int, str | None]] = []
             prev_end = min_x
 
             for bl in barlines:
                 bl_start = bl.staff_x_start or bl.x
-                bl_end = bl.staff_x_end or (bl.x + bl.width)
                 if bl_start > prev_end:
                     tid = bl.matched_template_id or -1
                     bl_name = template_display_names.get(tid)
                     boundary_list.append((prev_end, bl_start, bl_name))
-                prev_end = bl_end
+                prev_end = bl_start
 
             if prev_end < max_x:
                 boundary_list.append((prev_end, max_x, None))
