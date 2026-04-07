@@ -219,9 +219,6 @@ def _match_hairpin_template(
     if roi_h < 3 or roi_w < 3:
         return 0.0
 
-    # Binarize ROI — processed image may contain anti-aliased gray values
-    _, roi_bin = cv2.threshold(roi, 127, 255, cv2.THRESH_BINARY)
-
     templates = _load_hairpin_templates()
     if not templates:
         return 0.0
@@ -239,14 +236,13 @@ def _match_hairpin_template(
 
     best_score = 0.0
     for tpl in templates:
-        scaled = cv2.resize(tpl, (tpl_w, tpl_h), interpolation=cv2.INTER_AREA)
-        _, scaled_bin = cv2.threshold(scaled, 127, 255, cv2.THRESH_BINARY)
+        scaled = cv2.resize(tpl, (tpl_w, tpl_h), interpolation=cv2.INTER_NEAREST)
 
         # For decrescendo, flip horizontally
         if hp_type == "decrescendo":
-            scaled_bin = cv2.flip(scaled_bin, 1)
+            scaled = cv2.flip(scaled, 1)
 
-        result = cv2.matchTemplate(roi_bin, scaled_bin, cv2.TM_CCOEFF_NORMED)
+        result = cv2.matchTemplate(roi, scaled, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, _ = cv2.minMaxLoc(result)
         if max_val > best_score:
             best_score = max_val

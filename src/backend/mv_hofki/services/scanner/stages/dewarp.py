@@ -79,12 +79,13 @@ class DewarpStage(ProcessingStage):
         ctx.image = dewarped
 
         # Also dewarp the processed (binary) image if present
+        # Use INTER_NEAREST to preserve binary values (0/255)
         if ctx.processed_image is not None:
             ctx.processed_image = cv2.remap(
                 ctx.processed_image,
                 map_x,
                 map_y,
-                cv2.INTER_LINEAR,
+                cv2.INTER_NEAREST,
                 borderMode=cv2.BORDER_CONSTANT,
                 borderValue=255,
             )

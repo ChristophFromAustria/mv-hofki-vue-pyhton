@@ -75,9 +75,7 @@ class VoltaDetectionStage(ProcessingStage):
             staff_measures = measures_by_staff.get(staff_index, [])
             staff_measures.sort(key=lambda m: m.x_start)
 
-            # Binarize the scan region once (handle anti-aliased gray values)
-            region_bin = binary[region_top:region_bottom, :].copy()
-            cv2.threshold(region_bin, 127, 255, cv2.THRESH_BINARY, region_bin)
+            region_bin = binary[region_top:region_bottom, :]
 
             for repeat_m in repeat_measures:
                 # Scan exactly one measure before + after the repeat
@@ -280,8 +278,6 @@ def _flood_expand(
                 mask,
                 (sx, sy),
                 128,
-                loDiff=(30,),
-                upDiff=(30,),
             )
 
     # Find all pixels that were filled (value 128)
