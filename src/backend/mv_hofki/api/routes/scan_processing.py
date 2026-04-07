@@ -331,18 +331,38 @@ async def get_processing_status(scan_id: int, db: AsyncSession = Depends(get_db)
 
 @router.put("/scans/{scan_id}/reset-status")
 async def reset_scan_status(scan_id: int, db: AsyncSession = Depends(get_db)):
-    """Reset a stuck or errored scan back to 'uploaded' so it can be re-processed."""
+    """Reset a scan: delete all analysis data and set status to 'uploaded'."""
+    from sqlalchemy import delete as sa_delete
+    from sqlalchemy import select as sa_select
+
+    from mv_hofki.models.detected_measure import DetectedMeasure
+    from mv_hofki.models.detected_staff import DetectedStaff
+    from mv_hofki.models.detected_symbol import DetectedSymbol
+    from mv_hofki.models.detected_text_region import DetectedTextRegion
     from mv_hofki.models.sheet_music_scan import SheetMusicScan
 
     scan = await db.get(SheetMusicScan, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan nicht gefunden")
 
-    if scan.status not in ("processing", "error"):
+    if scan.status == "processing":
         raise HTTPException(
             status_code=400,
-            detail=f"Status '{scan.status}' kann nicht zurückgesetzt werden",
+            detail="Scan wird gerade verarbeitet und kann nicht zurückgesetzt werden",
         )
+
+    # Delete all analysis data
+    staff_ids_q = sa_select(DetectedStaff.id).where(DetectedStaff.scan_id == scan_id)
+    await db.execute(
+        sa_delete(DetectedSymbol).where(DetectedSymbol.staff_id.in_(staff_ids_q))
+    )
+    await db.execute(
+        sa_delete(DetectedMeasure).where(DetectedMeasure.scan_id == scan_id)
+    )
+    await db.execute(
+        sa_delete(DetectedTextRegion).where(DetectedTextRegion.scan_id == scan_id)
+    )
+    await db.execute(sa_delete(DetectedStaff).where(DetectedStaff.scan_id == scan_id))
 
     scan.status = "uploaded"
     await db.commit()
