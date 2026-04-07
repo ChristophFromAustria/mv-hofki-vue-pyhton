@@ -20,6 +20,8 @@ class StaffData:
     line_positions: list[int]
     line_spacing: float
     line_thickness: int | None = None
+    x_start: int | None = None
+    x_end: int | None = None
     clef: str | None = None
     key_signature: str | None = None
     time_signature: str | None = None
