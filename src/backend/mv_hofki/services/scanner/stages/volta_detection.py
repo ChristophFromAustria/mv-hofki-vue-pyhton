@@ -41,12 +41,12 @@ class VoltaDetectionStage(ProcessingStage):
                 bracket_id = tid
                 break
 
-        # Group measures by staff for lookup
+        # Group measures by staff
         measures_by_staff: dict[int, list] = {}
         for m in ctx.measures:
             measures_by_staff.setdefault(m.staff_index, []).append(m)
 
-        # Find repeat barlines
+        # Find repeat barlines by staff
         repeat_measures_by_staff: dict[int, list] = {}
         for m in ctx.measures:
             if m.end_barline in _REPEAT_BARLINES:
@@ -63,6 +63,7 @@ class VoltaDetectionStage(ProcessingStage):
 
             ls = staff.line_spacing
             top_line = min(staff.line_positions)
+            min_line_len = int(ls * 2)
 
             # Scan region: above staff with 1× line_spacing offset from top line
             region_top = staff.y_top
@@ -75,51 +76,34 @@ class VoltaDetectionStage(ProcessingStage):
             staff_measures = measures_by_staff.get(staff_index, [])
             staff_measures.sort(key=lambda m: m.x_start)
 
-            # Build scan ranges: for each repeat barline, scan from the
-            # previous repeat/staff-start to the next repeat/staff-end.
-            # This captures both volta 1 (before) and volta 2 (after).
-            repeat_measures.sort(key=lambda m: m.x_start)
-            scan_ranges: list[tuple[int, int]] = []
-
             for repeat_m in repeat_measures:
-                # Find measure before: go back until another repeat or staff start
+                # Scan exactly one measure before + the repeat measure + one
+                # measure after. No further expansion.
                 scan_x1 = repeat_m.x_start
-                for m in reversed(staff_measures):
-                    if m.x_end <= repeat_m.x_start:
-                        scan_x1 = m.x_start
-                        if m.end_barline in _REPEAT_BARLINES:
-                            break
-
-                # Find measure after: go forward until another repeat or staff end
                 scan_x2 = repeat_m.x_end
+
                 for m in staff_measures:
-                    if m.x_start >= repeat_m.x_end:
-                        scan_x2 = m.x_end
-                        if m.end_barline in _REPEAT_BARLINES:
-                            break
+                    # One measure directly before
+                    if m.x_end == repeat_m.x_start or (
+                        m.x_end <= repeat_m.x_start
+                        and repeat_m.x_start - m.x_end < int(ls)
+                    ):
+                        scan_x1 = min(scan_x1, m.x_start)
+                    # One measure directly after
+                    if m.x_start == repeat_m.x_end or (
+                        m.x_start >= repeat_m.x_end
+                        and m.x_start - repeat_m.x_end < int(ls)
+                    ):
+                        scan_x2 = max(scan_x2, m.x_end)
 
                 scan_x1 = max(0, scan_x1)
                 scan_x2 = min(img_w, scan_x2)
-                scan_ranges.append((scan_x1, scan_x2))
 
-            # Deduplicate overlapping ranges
-            merged_ranges: list[tuple[int, int]] = []
-            for sx1, sx2 in sorted(scan_ranges):
-                if merged_ranges and sx1 <= merged_ranges[-1][1]:
-                    merged_ranges[-1] = (
-                        merged_ranges[-1][0],
-                        max(merged_ranges[-1][1], sx2),
-                    )
-                else:
-                    merged_ranges.append((sx1, sx2))
-
-            for scan_x1, scan_x2 in merged_ranges:
-                # Extract the scan region (restricted X range)
+                # Extract scan region
                 region = binary[region_top:region_bottom, scan_x1:scan_x2]
                 inverted = cv2.bitwise_not(region)
 
                 edges = cv2.Canny(inverted, 50, 150, apertureSize=3)
-                min_line_len = int(ls * 2)
                 lines = cv2.HoughLinesP(
                     edges,
                     rho=1,
@@ -132,8 +116,9 @@ class VoltaDetectionStage(ProcessingStage):
                 if lines is None:
                     continue
 
-                # Collect all near-horizontal lines (<=5°), convert to abs
-                h_lines: list[tuple[int, int, int, int]] = []
+                # Collect horizontal lines (<=5°), filter short ones,
+                # merge segments on similar Y into single seed lines
+                raw_segments: list[tuple[int, int, int, int]] = []
                 for line in lines:
                     x1, y1, x2, y2 = line[0]
                     angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
@@ -148,40 +133,44 @@ class VoltaDetectionStage(ProcessingStage):
                         }
                     )
 
-                    if angle <= 5:
-                        if x1 > x2:
-                            x1, y1, x2, y2 = x2, y2, x1, y1
-                        h_lines.append(
-                            (
-                                scan_x1 + x1,
-                                region_top + y1,
-                                scan_x1 + x2,
-                                region_top + y2,
-                            )
-                        )
+                    if angle > 5:
+                        continue
+                    if x1 > x2:
+                        x1, y1, x2, y2 = x2, y2, x1, y1
+                    length = x2 - x1
+                    if length < min_line_len:
+                        continue
 
-                # Expand each horizontal line via CC, deduplicate results
-                used_labels: set[tuple[int, int, int, int]] = set()
-                for lx1, ly1, lx2, ly2 in h_lines:
+                    raw_segments.append(
+                        (
+                            scan_x1 + x1,
+                            region_top + y1,
+                            scan_x1 + x2,
+                            region_top + y2,
+                        )
+                    )
+
+                # Merge segments on similar Y (within 3px) into single seeds
+                merged_seeds = _merge_h_segments(raw_segments, y_tolerance=3)
+
+                # CC-expand each merged seed
+                bottom_line_y = max(staff.line_positions)
+                for sx1, sy1, sx2, sy2 in merged_seeds:
                     ex = expand_to_connected(
                         binary,
-                        lx1,
-                        ly1,
-                        lx2,
-                        ly2,
+                        sx1,
+                        sy1,
+                        sx2,
+                        sy2,
                         region_top,
                         region_bottom,
                     )
-                    ex_key = (int(ex[0]), int(ex[1]), int(ex[2]), int(ex[3]))
-
-                    # Skip if we already found this exact expanded box
-                    if ex_key in used_labels:
-                        continue
-                    used_labels.add(ex_key)
-
-                    ex_x1, ex_y1, ex_x2, ex_y2 = ex_key
-
-                    bottom_line_y = max(staff.line_positions)
+                    ex_x1, ex_y1, ex_x2, ex_y2 = (
+                        int(ex[0]),
+                        int(ex[1]),
+                        int(ex[2]),
+                        int(ex[3]),
+                    )
 
                     brackets.append(
                         SymbolData(
@@ -204,10 +193,17 @@ class VoltaDetectionStage(ProcessingStage):
                         f"x={ex_x1}-{ex_x2}"
                     )
 
-            # Assign volta numbers: match bracket hitbox against measures
-            staff_brackets = [b for b in brackets if b.staff_index == staff_index]
-            staff_brackets.sort(key=lambda b: b.staff_x_start or b.x)
+            # NMS: merge overlapping bracket detections on this staff
+            staff_brackets = _nms_brackets(
+                [b for b in brackets if b.staff_index == staff_index]
+            )
+            # Remove old staff brackets from list and replace with merged
+            brackets = [
+                b for b in brackets if b.staff_index != staff_index
+            ] + staff_brackets
 
+            # Assign volta numbers
+            staff_brackets.sort(key=lambda b: b.staff_x_start or b.x)
             if staff_brackets:
                 volta_group_id += 1
                 for volta_num, bracket in enumerate(staff_brackets, start=1):
@@ -234,3 +230,75 @@ class VoltaDetectionStage(ProcessingStage):
 
     def validate(self, ctx: PipelineContext) -> bool:
         return ctx.processed_image is not None and len(ctx.staves) > 0
+
+
+def _merge_h_segments(
+    segments: list[tuple[int, int, int, int]],
+    y_tolerance: int = 3,
+) -> list[tuple[int, int, int, int]]:
+    """Merge horizontal line segments that sit on similar Y positions.
+
+    Groups segments whose Y-centers are within y_tolerance, then produces
+    one merged segment per group spanning the full X range.
+    """
+    if not segments:
+        return []
+
+    # Sort by Y center
+    sorted_segs = sorted(segments, key=lambda s: (s[1] + s[3]) / 2)
+
+    groups: list[list[tuple[int, int, int, int]]] = [[sorted_segs[0]]]
+    for seg in sorted_segs[1:]:
+        prev_y = (groups[-1][-1][1] + groups[-1][-1][3]) / 2
+        cur_y = (seg[1] + seg[3]) / 2
+        if abs(cur_y - prev_y) <= y_tolerance:
+            groups[-1].append(seg)
+        else:
+            groups.append([seg])
+
+    merged: list[tuple[int, int, int, int]] = []
+    for group in groups:
+        x1 = min(s[0] for s in group)
+        y1 = min(s[1] for s in group)
+        x2 = max(s[2] for s in group)
+        y2 = max(s[3] for s in group)
+        merged.append((x1, y1, x2, y2))
+
+    return merged
+
+
+def _nms_brackets(
+    brackets: list[SymbolData],
+) -> list[SymbolData]:
+    """Non-maximum suppression: merge overlapping bracket detections.
+
+    Keeps the largest (widest) detection when brackets overlap significantly.
+    """
+    if not brackets:
+        return []
+
+    # Sort by width descending (widest first)
+    scored = sorted(brackets, key=lambda b: b.width, reverse=True)
+
+    kept: list[SymbolData] = []
+    for det in scored:
+        x1 = det.staff_x_start or det.x
+        x2 = det.staff_x_end or (det.x + det.width)
+
+        suppressed = False
+        for k in kept:
+            kx1 = k.staff_x_start or k.x
+            kx2 = k.staff_x_end or (k.x + k.width)
+
+            # Check X overlap
+            overlap = min(x2, kx2) - max(x1, kx1)
+            if overlap > 0:
+                smaller_width = min(x2 - x1, kx2 - kx1)
+                if smaller_width > 0 and overlap > smaller_width * 0.3:
+                    suppressed = True
+                    break
+
+        if not suppressed:
+            kept.append(det)
+
+    return kept
