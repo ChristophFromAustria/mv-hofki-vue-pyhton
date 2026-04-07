@@ -147,8 +147,14 @@ class VoltaDetectionStage(ProcessingStage):
                 lx1, ly1, lx2, ly2 = best_line
 
                 # Expand via connected components to get full bracket
-                ex_x1, ex_y1, ex_x2, ex_y2 = expand_to_connected(
+                ex = expand_to_connected(
                     binary, lx1, ly1, lx2, ly2, region_top, region_bottom
+                )
+                ex_x1, ex_y1, ex_x2, ex_y2 = (
+                    int(ex[0]),
+                    int(ex[1]),
+                    int(ex[2]),
+                    int(ex[3]),
                 )
 
                 bottom_line_y = max(staff.line_positions)
