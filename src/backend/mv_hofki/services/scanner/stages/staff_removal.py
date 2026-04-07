@@ -35,13 +35,15 @@ class StaffRemovalStage(ProcessingStage):
                 f"effektiv={effective}px ({thickness_pct}%), "
                 f"Abstand={staff.line_spacing:.0f}px"
             )
-            self._remove_empty_staff_segments(
+            x_start, x_end = self._remove_empty_staff_segments(
                 img,
                 staff.line_positions,
                 line_spacing=staff.line_spacing,
                 line_thickness=effective,
                 symbol_padding=symbol_padding,
             )
+            staff.x_start = x_start
+            staff.x_end = x_end
 
         ctx.image = img
         ctx.processed_image = img.copy()
@@ -119,7 +121,7 @@ class StaffRemovalStage(ProcessingStage):
         line_spacing: float,
         line_thickness: int,
         symbol_padding: int = 0,
-    ) -> None:
+    ) -> tuple[int | None, int | None]:
         """Erase columns of the staff region where only line pixels exist.
 
         *symbol_padding* keeps that many extra pixels of staff lines intact
@@ -148,6 +150,15 @@ class StaffRemovalStage(ProcessingStage):
 
         has_symbol = symbol_count > 0  # shape (w,)
 
+        # Compute staff X-bounds from symbol positions
+        symbol_indices = np.where(has_symbol)[0]
+        if len(symbol_indices) > 0:
+            x_start = int(symbol_indices[0])
+            x_end = int(symbol_indices[-1])
+        else:
+            x_start = None
+            x_end = None
+
         # Expand symbol columns by *symbol_padding* pixels in each direction
         if symbol_padding > 0:
             protected = has_symbol.copy()
@@ -172,3 +183,5 @@ class StaffRemovalStage(ProcessingStage):
 
         if run_start is not None:
             img[region_top:region_bot, run_start:w] = 255
+
+        return x_start, x_end
