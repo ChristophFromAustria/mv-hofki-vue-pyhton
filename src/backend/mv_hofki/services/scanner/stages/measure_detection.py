@@ -84,7 +84,10 @@ class MeasureDetectionStage(ProcessingStage):
                 boundary_list = [(min_x, max_x, None)]
 
             local_num = 1
+            min_width = staff.line_spacing
             for x_start, x_end, end_barline in boundary_list:
+                if (x_end - x_start) < min_width:
+                    continue
                 measures.append(
                     MeasureData(
                         staff_index=staff_index,

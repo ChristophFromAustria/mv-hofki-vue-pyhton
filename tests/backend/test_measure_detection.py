@@ -352,3 +352,88 @@ def test_staff_without_x_bounds_skipped():
     result = MeasureDetectionStage().process(ctx)
 
     assert len(result.measures) == 0
+
+
+def test_narrow_trailing_segment_not_counted():
+    """Trailing segment narrower than line_spacing should not become a measure."""
+    staff = _make_staff(x_start=10, x_end=508)  # 8px after last barline
+    symbols = [
+        SymbolData(
+            staff_index=0,
+            x=100,
+            y=50,
+            width=5,
+            height=50,
+            staff_x_start=100,
+            staff_x_end=105,
+            matched_template_id=10,
+        ),
+        SymbolData(
+            staff_index=0,
+            x=500,
+            y=50,
+            width=5,
+            height=50,
+            staff_x_start=500,
+            staff_x_end=505,
+            matched_template_id=10,
+        ),
+    ]
+    categories = {10: "barline"}
+    ctx = _ctx_with_symbols([staff], symbols, categories)
+    result = MeasureDetectionStage().process(ctx)
+
+    # Segments: 10-100 (ok), 100-500 (ok), 500-508 (8px < line_spacing=10 -> filtered)
+    assert len(result.measures) == 2
+    assert result.measures[0].x_start == 10
+    assert result.measures[0].x_end == 100
+    assert result.measures[1].x_start == 100
+    assert result.measures[1].x_end == 500
+
+
+def test_narrow_leading_segment_not_counted():
+    """Leading segment narrower than line_spacing should not become a measure."""
+    staff = _make_staff(x_start=95, x_end=600)  # 5px before first barline
+    symbols = [
+        SymbolData(
+            staff_index=0,
+            x=100,
+            y=50,
+            width=5,
+            height=50,
+            staff_x_start=100,
+            staff_x_end=105,
+            matched_template_id=10,
+        ),
+    ]
+    categories = {10: "barline"}
+    ctx = _ctx_with_symbols([staff], symbols, categories)
+    result = MeasureDetectionStage().process(ctx)
+
+    # Segment from 95-100 (5px < 10 -> filtered), 100-600 (500px, ok)
+    assert len(result.measures) == 1
+    assert result.measures[0].x_start == 100
+    assert result.measures[0].x_end == 600
+
+
+def test_wide_trailing_segment_is_counted():
+    """Trailing segment wider than line_spacing should be a measure."""
+    staff = _make_staff(x_start=10, x_end=520)  # 20px after last barline
+    symbols = [
+        SymbolData(
+            staff_index=0,
+            x=500,
+            y=50,
+            width=5,
+            height=50,
+            staff_x_start=500,
+            staff_x_end=505,
+            matched_template_id=10,
+        ),
+    ]
+    categories = {10: "barline"}
+    ctx = _ctx_with_symbols([staff], symbols, categories)
+    result = MeasureDetectionStage().process(ctx)
+
+    # Segment from 10-500 (490px, ok), 500-520 (20px >= 10 -> counted)
+    assert len(result.measures) == 2
