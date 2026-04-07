@@ -3,22 +3,21 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
+from typing import Protocol
 
 from mv_hofki.services.scanner.stages.base import PipelineContext, ProcessingStage
 from mv_hofki.services.scanner.stages.post_matching.barline_filter import BarlineFilter
+from mv_hofki.services.scanner.stages.post_matching.dynamic_filter import DynamicFilter
 
 logger = logging.getLogger(__name__)
 
 
-class PostMatchingOperation(ABC):
-    """Base class for post-matching sub-operations."""
+class PostMatchingOperation(Protocol):
+    """Protocol for post-matching sub-operations."""
 
     name: str
 
-    @abstractmethod
-    def apply(self, ctx: PipelineContext) -> None:
-        """Modify ctx.symbols in-place (set filtered/filter_reason)."""
+    def apply(self, ctx: PipelineContext) -> None: ...
 
 
 class PostMatchingStage(ProcessingStage):
@@ -27,8 +26,9 @@ class PostMatchingStage(ProcessingStage):
     name = "post_matching"
 
     def __init__(self) -> None:
-        self._operations = [
+        self._operations: list[PostMatchingOperation] = [
             BarlineFilter(),
+            DynamicFilter(),
         ]
 
     def process(self, ctx: PipelineContext) -> PipelineContext:

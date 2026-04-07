@@ -249,6 +249,10 @@ async def run_pipeline(
 
     stages.append(PostMatchingStage())
 
+    from mv_hofki.services.scanner.stages.dynamic_masking import DynamicMaskingStage
+
+    stages.append(DynamicMaskingStage())
+
     from mv_hofki.services.scanner.stages.text_masking import TextMaskingStage
 
     stages.append(TextMaskingStage())
