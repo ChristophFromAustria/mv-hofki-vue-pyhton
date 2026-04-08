@@ -16,7 +16,6 @@ from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
 from mv_hofki.models.scan_part import ScanPart
 from mv_hofki.models.scan_project import ScanProject
-from mv_hofki.models.scanner_config import ScannerConfig
 from mv_hofki.models.scanner_config_entry import ScannerConfigEntry
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
 from mv_hofki.models.sheet_music_genre import SheetMusicGenre
@@ -41,7 +40,6 @@ __all__ = [
     "Musician",
     "ScanPart",
     "ScanProject",
-    "ScannerConfig",
     "ScannerConfigEntry",
     "SheetMusicDetail",
     "SheetMusicGenre",
