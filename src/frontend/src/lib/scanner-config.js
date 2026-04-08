@@ -90,6 +90,26 @@ export const SCANNER_CONFIG_FIELDS = [
     step: 10,
   },
 
+  // ── Scan Region ────────────────────────────────────────────────────
+  {
+    key: "staff_margin_top",
+    label: "Scanbereich oben (× Linienabstand)",
+    group: "Scanbereich",
+    type: "number",
+    min: 1,
+    max: 20,
+    step: 0.5,
+  },
+  {
+    key: "staff_margin_bottom",
+    label: "Scanbereich unten (× Linienabstand)",
+    group: "Scanbereich",
+    type: "number",
+    min: 1,
+    max: 20,
+    step: 0.5,
+  },
+
   // ── Staff Removal ──────────────────────────────────────────────────
   {
     key: "staff_removal_thickness_pct",

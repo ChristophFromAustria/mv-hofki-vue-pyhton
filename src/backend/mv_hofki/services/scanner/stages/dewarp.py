@@ -104,9 +104,12 @@ class DewarpStage(ProcessingStage):
                 else staff.line_spacing
             )
             staff.line_spacing = spacing
-            margin = int(spacing * 4)
-            staff.y_top = max(0, new_positions[0] - margin)
-            staff.y_bottom = min(img.shape[0], new_positions[-1] + margin)
+            margin_top = int(spacing * float(ctx.config.get("staff_margin_top", 4.0)))
+            margin_bottom = int(
+                spacing * float(ctx.config.get("staff_margin_bottom", 4.0))
+            )
+            staff.y_top = max(0, new_positions[0] - margin_top)
+            staff.y_bottom = min(img.shape[0], new_positions[-1] + margin_bottom)
 
         max_displacement = max(
             float(np.max(np.abs(p - t))) for p, t in zip(all_paths, all_targets)

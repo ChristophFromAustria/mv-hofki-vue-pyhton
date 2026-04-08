@@ -37,6 +37,12 @@ class ScannerConfig(Base):
     canny_low: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     canny_high: Mapped[int] = mapped_column(Integer, nullable=False, default=150)
 
+    # Staff scan region margins (in multiples of line_spacing)
+    staff_margin_top: Mapped[float] = mapped_column(Float, nullable=False, default=4.0)
+    staff_margin_bottom: Mapped[float] = mapped_column(
+        Float, nullable=False, default=4.0
+    )
+
     # Staff removal before matching
     staff_removal_before_matching: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False

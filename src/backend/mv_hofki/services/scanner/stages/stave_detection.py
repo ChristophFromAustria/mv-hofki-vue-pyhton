@@ -105,16 +105,18 @@ class StaveDetectionStage(ProcessingStage):
                 < 0.5
             ]
 
+        margin_top_factor = float(ctx.config.get("staff_margin_top", 4.0))
+        margin_bottom_factor = float(ctx.config.get("staff_margin_bottom", 4.0))
+
         for i, staff_lines in enumerate(staves):
             spacing = np.mean(np.diff(staff_lines))
-            # Extend region by the full staff height (4× line spacing)
-            # to catch symbols above/below the lines
-            margin = int(spacing * 4)
+            margin_top = int(spacing * margin_top_factor)
+            margin_bottom = int(spacing * margin_bottom_factor)
             ctx.staves.append(
                 StaffData(
                     staff_index=i,
-                    y_top=max(0, staff_lines[0] - margin),
-                    y_bottom=min(img.shape[0], staff_lines[-1] + margin),
+                    y_top=max(0, staff_lines[0] - margin_top),
+                    y_bottom=min(img.shape[0], staff_lines[-1] + margin_bottom),
                     line_positions=[int(y) for y in staff_lines],
                     line_spacing=float(spacing),
                 )

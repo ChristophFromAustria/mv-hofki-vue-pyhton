@@ -16,6 +16,8 @@ class ScannerConfigRead(BaseModel):
     edge_matching_enabled: bool
     canny_low: int
     canny_high: int
+    staff_margin_top: float
+    staff_margin_bottom: float
     staff_removal_before_matching: bool
     staff_removal_thickness_pct: int
     staff_removal_symbol_padding: int
@@ -61,6 +63,8 @@ class ScannerConfigUpdate(BaseModel):
     edge_matching_enabled: bool | None = None
     canny_low: int | None = Field(None, ge=0, le=500)
     canny_high: int | None = Field(None, ge=0, le=500)
+    staff_margin_top: float | None = Field(None, ge=1.0, le=20.0)
+    staff_margin_bottom: float | None = Field(None, ge=1.0, le=20.0)
     staff_removal_before_matching: bool | None = None
     staff_removal_thickness_pct: int | None = Field(None, ge=50, le=300)
     staff_removal_symbol_padding: int | None = Field(None, ge=0, le=50)
