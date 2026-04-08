@@ -20,6 +20,7 @@ const successMsg = ref(null);
 const scanSpecific = ref(false);
 
 const groups = groupedFields();
+const collapsedGroups = ref(new Set(groups.map((g) => g.label)));
 const analysisKeys = SCANNER_CONFIG_FIELDS.map((f) => f.key);
 
 watch(
@@ -146,8 +147,18 @@ async function resetDefaults() {
         </div>
 
         <div v-for="group in groups" :key="group.label" class="config-group">
-          <h3 class="group-title">{{ group.label }}</h3>
-          <div class="group-fields">
+          <h3
+            class="group-title"
+            @click="
+              collapsedGroups.has(group.label)
+                ? collapsedGroups.delete(group.label)
+                : collapsedGroups.add(group.label)
+            "
+          >
+            <span class="group-chevron">{{ collapsedGroups.has(group.label) ? "▸" : "▾" }}</span>
+            {{ group.label }}
+          </h3>
+          <div v-show="!collapsedGroups.has(group.label)" class="group-fields">
             <div v-for="field in group.fields" :key="field.key" class="config-field">
               <!-- Toggle -->
               <template v-if="field.type === 'toggle'">
@@ -308,6 +319,21 @@ async function resetDefaults() {
   margin-bottom: 0.5rem;
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.group-title:hover {
+  color: var(--color-text);
+}
+
+.group-chevron {
+  font-size: 0.7rem;
+  width: 0.8rem;
+  text-align: center;
 }
 
 .group-fields {
