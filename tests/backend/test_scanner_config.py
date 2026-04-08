@@ -5,6 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.models.scanner_config_entry import ScannerConfigEntry
+from mv_hofki.services.scanner_config_registry import (
+    SCANNER_CONFIG_REGISTRY,
+    sync_config_registry,
+)
 
 
 @pytest.mark.asyncio
@@ -78,3 +82,77 @@ async def test_scanner_config_entry_select_type(db_session: AsyncSession):
     assert row.min is None
     assert row.max is None
     assert row.step is None
+
+
+# ── Registry + sync tests ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_sync_creates_entries_from_registry(db_session: AsyncSession):
+    """sync_config_registry should create all registry entries in the DB."""
+    await sync_config_registry(db_session)
+
+    result = await db_session.execute(select(ScannerConfigEntry))
+    rows = {r.key: r for r in result.scalars().all()}
+
+    assert len(rows) == len(SCANNER_CONFIG_REGISTRY)
+    # Spot-check a known entry
+    ct = rows["confidence_threshold"]
+    assert ct.value == "0.6"
+    assert ct.default_value == "0.6"
+    assert ct.type == "number"
+    assert ct.min == 0.0
+    assert ct.max == 1.0
+
+
+@pytest.mark.asyncio
+async def test_sync_preserves_user_value(db_session: AsyncSession):
+    """sync_config_registry should not overwrite user-changed values."""
+    entry = ScannerConfigEntry(
+        key="confidence_threshold",
+        value="0.9",
+        default_value="0.6",
+        type="number",
+        label="Old label",
+        group_path="Old Group",
+        min=0.0,
+        max=1.0,
+        step=0.05,
+        sort_order=10,
+    )
+    db_session.add(entry)
+    await db_session.flush()
+
+    await sync_config_registry(db_session)
+
+    result = await db_session.execute(
+        select(ScannerConfigEntry).where(
+            ScannerConfigEntry.key == "confidence_threshold"
+        )
+    )
+    row = result.scalar_one()
+    assert row.value == "0.9"  # Value preserved
+    assert row.label == "Konfidenz-Schwellwert"  # Metadata updated
+    assert row.group_path == "Template Matching"  # Metadata updated
+
+
+@pytest.mark.asyncio
+async def test_sync_deletes_removed_keys(db_session: AsyncSession):
+    """sync_config_registry should remove keys no longer in the registry."""
+    orphan = ScannerConfigEntry(
+        key="old_removed_key",
+        value="42",
+        default_value="42",
+        type="number",
+        label="Gone",
+        sort_order=0,
+    )
+    db_session.add(orphan)
+    await db_session.flush()
+
+    await sync_config_registry(db_session)
+
+    result = await db_session.execute(
+        select(ScannerConfigEntry).where(ScannerConfigEntry.key == "old_removed_key")
+    )
+    assert result.scalar_one_or_none() is None
