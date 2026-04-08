@@ -412,15 +412,39 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
         @mousemove="onMouseMove"
         @mouseup="onMouseUp"
       >
+        <!-- Hatch pattern for upper scan region -->
+        <defs>
+          <pattern
+            id="staff-hatch"
+            width="6"
+            height="6"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <line x1="0" y1="0" x2="0" y2="6" stroke="#3b82f6" stroke-width="1" />
+          </pattern>
+        </defs>
+
         <!-- Staff regions and individual lines -->
         <template v-if="showStaves">
           <g v-for="staff in staves" :key="`staff-${staff.id}`">
-            <!-- Staff region background tint -->
+            <!-- Upper scan region (above top line): hatched -->
             <rect
+              v-if="parseLinePositions(staff).length"
               x="0"
               :y="staff.y_top"
               :width="naturalWidth"
-              :height="staff.y_bottom - staff.y_top"
+              :height="parseLinePositions(staff)[0] - staff.y_top"
+              fill="url(#staff-hatch)"
+              opacity="0.15"
+            />
+            <!-- Lower scan region (top line to bottom boundary): solid tint -->
+            <rect
+              v-if="parseLinePositions(staff).length"
+              x="0"
+              :y="parseLinePositions(staff)[0]"
+              :width="naturalWidth"
+              :height="staff.y_bottom - parseLinePositions(staff)[0]"
               fill="#3b82f6"
               opacity="0.04"
             />

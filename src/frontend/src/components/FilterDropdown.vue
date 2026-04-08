@@ -12,12 +12,12 @@ const props = defineProps({
 });
 
 const emit = defineEmits([
-  "update:showStaves",
-  "update:showMeasures",
-  "update:showVoltas",
-  "update:showTextRegions",
-  "update:hideFiltered",
-  "update:hiddenCategories",
+  "update:show-staves",
+  "update:show-measures",
+  "update:show-voltas",
+  "update:show-text-regions",
+  "update:hide-filtered",
+  "update:hidden-categories",
 ]);
 
 const open = ref(false);
@@ -80,14 +80,14 @@ function toggleCategory(cat) {
   } else {
     next.add(cat);
   }
-  emit("update:hiddenCategories", next);
+  emit("update:hidden-categories", next);
 }
 
 function toggleAll() {
   if (allHidden.value) {
-    emit("update:hiddenCategories", new Set());
+    emit("update:hidden-categories", new Set());
   } else {
-    emit("update:hiddenCategories", new Set(sortedCategories.value));
+    emit("update:hidden-categories", new Set(sortedCategories.value));
   }
 }
 
@@ -114,7 +114,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
           <input
             type="checkbox"
             :checked="showStaves"
-            @change="emit('update:showStaves', $event.target.checked)"
+            @change="emit('update:show-staves', $event.target.checked)"
           />
         </label>
         <label class="filter-item">
@@ -122,7 +122,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
           <input
             type="checkbox"
             :checked="showMeasures"
-            @change="emit('update:showMeasures', $event.target.checked)"
+            @change="emit('update:show-measures', $event.target.checked)"
           />
         </label>
         <label class="filter-item">
@@ -130,7 +130,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
           <input
             type="checkbox"
             :checked="showVoltas"
-            @change="emit('update:showVoltas', $event.target.checked)"
+            @change="emit('update:show-voltas', $event.target.checked)"
           />
         </label>
         <label class="filter-item">
@@ -138,7 +138,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
           <input
             type="checkbox"
             :checked="showTextRegions"
-            @change="emit('update:showTextRegions', $event.target.checked)"
+            @change="emit('update:show-text-regions', $event.target.checked)"
           />
         </label>
         <label class="filter-item">
@@ -146,7 +146,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
           <input
             type="checkbox"
             :checked="hideFiltered"
-            @change="emit('update:hideFiltered', $event.target.checked)"
+            @change="emit('update:hide-filtered', $event.target.checked)"
           />
         </label>
       </div>
