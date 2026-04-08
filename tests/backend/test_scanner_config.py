@@ -245,3 +245,62 @@ async def test_get_effective_config_returns_dict(db_session: AsyncSession):
     assert config["multi_scale_enabled"] is False
     assert config["matching_method"] == "TM_CCOEFF_NORMED"
     assert isinstance(config["canny_low"], int)
+
+
+# ── API route tests ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_api_get_config_entries(client):
+    """GET /api/v1/scanner/config returns entries with metadata."""
+    resp = await client.get("/api/v1/scanner/config")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "entries" in data
+    assert len(data["entries"]) == len(SCANNER_CONFIG_REGISTRY)
+    ct = next(e for e in data["entries"] if e["key"] == "confidence_threshold")
+    assert ct["value"] == 0.6
+    assert ct["is_modified"] is False
+    assert ct["type"] == "number"
+    assert ct["min"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_api_put_config(client):
+    """PUT /api/v1/scanner/config updates values."""
+    resp = await client.put(
+        "/api/v1/scanner/config",
+        json={"values": {"confidence_threshold": 0.8, "dewarp_enabled": True}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    ct = next(e for e in data["entries"] if e["key"] == "confidence_threshold")
+    assert ct["value"] == 0.8
+    assert ct["is_modified"] is True
+
+
+@pytest.mark.asyncio
+async def test_api_put_config_validation_error(client):
+    """PUT /api/v1/scanner/config returns 422 for invalid values."""
+    resp = await client.put(
+        "/api/v1/scanner/config",
+        json={"values": {"confidence_threshold": 5.0}},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_api_post_reset(client):
+    """POST /api/v1/scanner/config/reset resets specific keys."""
+    await client.put(
+        "/api/v1/scanner/config",
+        json={"values": {"confidence_threshold": 0.9}},
+    )
+    resp = await client.post(
+        "/api/v1/scanner/config/reset",
+        json={"keys": ["confidence_threshold"]},
+    )
+    assert resp.status_code == 200
+    ct = next(e for e in resp.json()["entries"] if e["key"] == "confidence_threshold")
+    assert ct["value"] == 0.6
+    assert ct["is_modified"] is False

@@ -34,6 +34,11 @@ async def db_session():
 @pytest.fixture
 async def client(db_session):
     from mv_hofki.api.app import app
+    from mv_hofki.services.scanner_config_registry import sync_config_registry
+
+    # Seed the test DB with scanner config entries (mimics app lifespan)
+    await sync_config_registry(db_session)
+    await db_session.commit()
 
     async def override_get_db():
         yield db_session
