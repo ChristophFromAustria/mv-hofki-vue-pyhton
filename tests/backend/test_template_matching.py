@@ -80,6 +80,35 @@ def test_template_matching_respects_threshold():
     assert len(result.symbols) == 0
 
 
+def test_template_matching_returns_staff_positions():
+    """Detections include correct staff_y_top and staff_y_bottom."""
+    spacing = 20
+    staff = _make_staff(spacing)
+
+    img = np.full((200, 400), 255, dtype=np.uint8)
+    symbol = np.full((40, 20), 255, dtype=np.uint8)
+    cv2.circle(symbol, (10, 20), 8, 0, -1)
+    img[30:70, 100:120] = symbol
+
+    stage = TemplateMatchingStage(
+        variant_images=[symbol.copy()],
+        variant_template_ids=[42],
+        variant_heights=[2.0],
+    )
+    ctx = PipelineContext(
+        image=img, staves=[staff], config={"confidence_threshold": 0.5}
+    )
+    result = stage.process(ctx)
+
+    assert len(result.symbols) > 0
+    sym = result.symbols[0]
+    assert sym.staff_y_top is not None
+    assert sym.staff_y_bottom is not None
+    # Bottom line is at y=90 (line_positions[4]=10+20*4=90)
+    # Symbol y ≈ 30, so staff_y_top ≈ (90-30)/20 = 3.0
+    assert 2.0 <= sym.staff_y_top <= 4.0
+
+
 def test_template_matching_scales_template():
     """Template should be scaled based on height_in_lines and staff spacing."""
     stage = TemplateMatchingStage(

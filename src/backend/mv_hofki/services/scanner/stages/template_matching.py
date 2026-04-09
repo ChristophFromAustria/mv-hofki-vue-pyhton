@@ -11,6 +11,7 @@ import numpy as np
 from mv_hofki.services.scanner.stages.base import (
     PipelineContext,
     ProcessingStage,
+    StaffData,
     SymbolData,
 )
 
@@ -101,142 +102,27 @@ class TemplateMatchingStage(ProcessingStage):
             if edge_img is not None:
                 edge_region = edge_img[staff.y_top : staff.y_bottom, :]
 
-            for i, tmpl_img in enumerate(self._variant_images):
-                template_id = self._variant_template_ids[i]
-                height_in_lines = self._variant_heights[i]
-                source_ls = self._variant_line_spacings[i]
-
-                base_scale = self._compute_scale(
-                    tmpl_img, height_in_lines, staff.line_spacing, source_ls
+            all_indices = list(range(len(self._variant_images)))
+            raw_detections.extend(
+                self._match_templates_in_region(
+                    region=region,
+                    edge_region=edge_region,
+                    staff=staff,
+                    template_indices=all_indices,
+                    region_y_offset=staff.y_top,
+                    confidence_threshold=confidence_threshold,
+                    cv_method=cv_method,
+                    is_sqdiff=is_sqdiff,
+                    multi_scale_enabled=multi_scale_enabled,
+                    multi_scale_range=multi_scale_range,
+                    multi_scale_steps=multi_scale_steps,
+                    edge_matching_enabled=edge_matching_enabled,
+                    canny_low=canny_low,
+                    canny_high=canny_high,
+                    masked_matching_enabled=masked_matching_enabled,
+                    mask_threshold=mask_threshold,
                 )
-                if base_scale is None:
-                    continue
-
-                # Determine scales to try
-                if multi_scale_enabled and multi_scale_steps > 1:
-                    scales = np.linspace(
-                        base_scale * (1 - multi_scale_range),
-                        base_scale * (1 + multi_scale_range),
-                        multi_scale_steps,
-                    ).tolist()
-                else:
-                    scales = [base_scale]
-
-                for scale in scales:
-                    scaled = self._apply_scale(tmpl_img, scale)
-                    if scaled is None:
-                        continue
-
-                    # Skip if template is larger than the region
-                    if (
-                        scaled.shape[0] > region.shape[0]
-                        or scaled.shape[1] > region.shape[1]
-                    ):
-                        continue
-
-                    # Choose images and method for matching
-                    match_region = region
-                    match_template = scaled
-                    method_to_use = cv_method
-                    mask: np.ndarray | None = None
-
-                    # Per-iteration sqdiff flag — may differ from outer
-                    # is_sqdiff when masked matching overrides the method.
-                    iter_sqdiff = is_sqdiff
-
-                    if edge_matching_enabled and edge_region is not None:
-                        match_region = edge_region
-                        match_template = cv2.Canny(scaled, canny_low, canny_high)
-                    elif masked_matching_enabled:
-                        # Build foreground mask from the template
-                        mask = np.where(scaled < mask_threshold, 255, 0).astype(
-                            np.uint8
-                        )
-                        # Force TM_SQDIFF — OpenCV masks only work
-                        # reliably with TM_SQDIFF / TM_CCORR (not normed)
-                        method_to_use = cv2.TM_SQDIFF
-
-                    # Run template matching
-                    if mask is not None:
-                        result = cv2.matchTemplate(
-                            match_region, match_template, method_to_use, mask=mask
-                        )
-                        # TM_SQDIFF (unnormalized) — convert to 0-1
-                        # confidence where 1=perfect match.
-                        rmin = result.min()
-                        rmax = result.max()
-                        if rmax > rmin:
-                            result = 1.0 - (result - rmin) / (rmax - rmin)
-                        else:
-                            result = np.ones_like(result)
-                        iter_sqdiff = False  # already normalised as confidence
-                    else:
-                        result = cv2.matchTemplate(
-                            match_region, match_template, method_to_use
-                        )
-
-                    # Threshold logic (inverted for SQDIFF_NORMED)
-                    if iter_sqdiff:
-                        locations = np.where(result <= (1 - confidence_threshold))
-                    else:
-                        locations = np.where(result >= confidence_threshold)
-
-                    n_hits = len(locations[0])
-
-                    if n_hits > _MAX_HITS_PER_VARIANT:
-                        logger.warning(
-                            "Variant tid=%d on staff %d produced %d hits "
-                            "(cap=%d), keeping top %d by confidence",
-                            template_id,
-                            staff.staff_index,
-                            n_hits,
-                            _MAX_HITS_PER_VARIANT,
-                            _MAX_HITS_PER_VARIANT,
-                        )
-                        confidences = result[locations]
-                        if iter_sqdiff:
-                            # Lower is better for SQDIFF
-                            top_indices = np.argpartition(
-                                confidences, _MAX_HITS_PER_VARIANT
-                            )[:_MAX_HITS_PER_VARIANT]
-                        else:
-                            top_indices = np.argpartition(
-                                confidences, -_MAX_HITS_PER_VARIANT
-                            )[-_MAX_HITS_PER_VARIANT:]
-                        locations = (
-                            locations[0][top_indices],
-                            locations[1][top_indices],
-                        )
-
-                    bottom_line_y = max(staff.line_positions)
-                    for pt_y, pt_x in zip(locations[0], locations[1]):
-                        score = float(result[pt_y, pt_x])
-                        confidence = (1.0 - score) if iter_sqdiff else score
-                        abs_y = int(staff.y_top + pt_y)
-                        sym_h = int(scaled.shape[0])
-                        sym_w = int(scaled.shape[1])
-                        sym_x = int(pt_x)
-                        raw_detections.append(
-                            SymbolData(
-                                staff_index=staff.staff_index,
-                                x=sym_x,
-                                y=abs_y,
-                                width=sym_w,
-                                height=sym_h,
-                                staff_y_top=round(
-                                    (bottom_line_y - abs_y) / staff.line_spacing, 2
-                                ),
-                                staff_y_bottom=round(
-                                    (bottom_line_y - (abs_y + sym_h))
-                                    / staff.line_spacing,
-                                    2,
-                                ),
-                                staff_x_start=sym_x,
-                                staff_x_end=sym_x + sym_w,
-                                matched_template_id=template_id,
-                                confidence=confidence,
-                            )
-                        )
+            )
 
         # Read NMS config
         nms_method: str = str(self._cfg(ctx, "nms_method", "standard"))
@@ -253,6 +139,175 @@ class TemplateMatchingStage(ProcessingStage):
             sym.sequence_order = i
 
         return ctx
+
+    # ------------------------------------------------------------------
+    # Region matching
+    # ------------------------------------------------------------------
+
+    def _match_templates_in_region(
+        self,
+        *,
+        region: np.ndarray,
+        edge_region: np.ndarray | None,
+        staff: StaffData,
+        template_indices: list[int],
+        region_y_offset: int,
+        confidence_threshold: float,
+        cv_method: int,
+        is_sqdiff: bool,
+        multi_scale_enabled: bool,
+        multi_scale_range: float,
+        multi_scale_steps: int,
+        edge_matching_enabled: bool,
+        canny_low: int,
+        canny_high: int,
+        masked_matching_enabled: bool,
+        mask_threshold: int,
+    ) -> list[SymbolData]:
+        """Match templates against a single image region.
+
+        This is the inner matching loop extracted from *process()* so it
+        can be reused for different regions (e.g. staff zone vs.
+        below-staff zone).
+        """
+        detections: list[SymbolData] = []
+
+        for i in template_indices:
+            tmpl_img = self._variant_images[i]
+            template_id = self._variant_template_ids[i]
+            height_in_lines = self._variant_heights[i]
+            source_ls = self._variant_line_spacings[i]
+
+            base_scale = self._compute_scale(
+                tmpl_img, height_in_lines, staff.line_spacing, source_ls
+            )
+            if base_scale is None:
+                continue
+
+            # Determine scales to try
+            if multi_scale_enabled and multi_scale_steps > 1:
+                scales = np.linspace(
+                    base_scale * (1 - multi_scale_range),
+                    base_scale * (1 + multi_scale_range),
+                    multi_scale_steps,
+                ).tolist()
+            else:
+                scales = [base_scale]
+
+            for scale in scales:
+                scaled = self._apply_scale(tmpl_img, scale)
+                if scaled is None:
+                    continue
+
+                # Skip if template is larger than the region
+                if (
+                    scaled.shape[0] > region.shape[0]
+                    or scaled.shape[1] > region.shape[1]
+                ):
+                    continue
+
+                # Choose images and method for matching
+                match_region = region
+                match_template = scaled
+                method_to_use = cv_method
+                mask: np.ndarray | None = None
+
+                # Per-iteration sqdiff flag — may differ from outer
+                # is_sqdiff when masked matching overrides the method.
+                iter_sqdiff = is_sqdiff
+
+                if edge_matching_enabled and edge_region is not None:
+                    match_region = edge_region
+                    match_template = cv2.Canny(scaled, canny_low, canny_high)
+                elif masked_matching_enabled:
+                    # Build foreground mask from the template
+                    mask = np.where(scaled < mask_threshold, 255, 0).astype(np.uint8)
+                    # Force TM_SQDIFF — OpenCV masks only work
+                    # reliably with TM_SQDIFF / TM_CCORR (not normed)
+                    method_to_use = cv2.TM_SQDIFF
+
+                # Run template matching
+                if mask is not None:
+                    result = cv2.matchTemplate(
+                        match_region, match_template, method_to_use, mask=mask
+                    )
+                    # TM_SQDIFF (unnormalized) — convert to 0-1
+                    # confidence where 1=perfect match.
+                    rmin = result.min()
+                    rmax = result.max()
+                    if rmax > rmin:
+                        result = 1.0 - (result - rmin) / (rmax - rmin)
+                    else:
+                        result = np.ones_like(result)
+                    iter_sqdiff = False  # already normalised as confidence
+                else:
+                    result = cv2.matchTemplate(
+                        match_region, match_template, method_to_use
+                    )
+
+                # Threshold logic (inverted for SQDIFF_NORMED)
+                if iter_sqdiff:
+                    locations = np.where(result <= (1 - confidence_threshold))
+                else:
+                    locations = np.where(result >= confidence_threshold)
+
+                n_hits = len(locations[0])
+
+                if n_hits > _MAX_HITS_PER_VARIANT:
+                    logger.warning(
+                        "Variant tid=%d on staff %d produced %d hits "
+                        "(cap=%d), keeping top %d by confidence",
+                        template_id,
+                        staff.staff_index,
+                        n_hits,
+                        _MAX_HITS_PER_VARIANT,
+                        _MAX_HITS_PER_VARIANT,
+                    )
+                    confidences = result[locations]
+                    if iter_sqdiff:
+                        # Lower is better for SQDIFF
+                        top_indices = np.argpartition(
+                            confidences, _MAX_HITS_PER_VARIANT
+                        )[:_MAX_HITS_PER_VARIANT]
+                    else:
+                        top_indices = np.argpartition(
+                            confidences, -_MAX_HITS_PER_VARIANT
+                        )[-_MAX_HITS_PER_VARIANT:]
+                    locations = (
+                        locations[0][top_indices],
+                        locations[1][top_indices],
+                    )
+
+                bottom_line_y = max(staff.line_positions)
+                for pt_y, pt_x in zip(locations[0], locations[1]):
+                    score = float(result[pt_y, pt_x])
+                    confidence = (1.0 - score) if iter_sqdiff else score
+                    abs_y = int(region_y_offset + pt_y)
+                    sym_h = int(scaled.shape[0])
+                    sym_w = int(scaled.shape[1])
+                    sym_x = int(pt_x)
+                    detections.append(
+                        SymbolData(
+                            staff_index=staff.staff_index,
+                            x=sym_x,
+                            y=abs_y,
+                            width=sym_w,
+                            height=sym_h,
+                            staff_y_top=round(
+                                (bottom_line_y - abs_y) / staff.line_spacing, 2
+                            ),
+                            staff_y_bottom=round(
+                                (bottom_line_y - (abs_y + sym_h)) / staff.line_spacing,
+                                2,
+                            ),
+                            staff_x_start=sym_x,
+                            staff_x_end=sym_x + sym_w,
+                            matched_template_id=template_id,
+                            confidence=confidence,
+                        )
+                    )
+
+        return detections
 
     # ------------------------------------------------------------------
     # Scale helpers
