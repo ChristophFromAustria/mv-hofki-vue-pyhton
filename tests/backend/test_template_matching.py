@@ -125,3 +125,16 @@ def test_template_matching_scales_template():
     scaled2 = stage._scale_template(template, height_in_lines=4.0, line_spacing=20.0)
     assert scaled2.shape[0] == 80
     assert scaled2.shape[1] == 40  # width scales proportionally
+
+
+def test_template_categories_splits_into_zones():
+    """Templates are split by category: dynamics → below_staff, others → staff."""
+    stage = TemplateMatchingStage(
+        variant_images=[],
+        variant_template_ids=[1, 2, 3],
+        variant_heights=[],
+        template_categories={1: "note", 2: "dynamic", 3: "barline"},
+    )
+    staff_indices, below_staff_indices = stage._split_by_zone()
+    assert staff_indices == [0, 2]
+    assert below_staff_indices == [1]

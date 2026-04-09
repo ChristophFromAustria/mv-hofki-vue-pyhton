@@ -33,6 +33,8 @@ class TemplateMatchingStage(ProcessingStage):
 
     name = "template_matching"
 
+    _BELOW_STAFF_CATEGORY = "dynamic"
+
     def __init__(
         self,
         variant_images: list[np.ndarray],
@@ -40,6 +42,7 @@ class TemplateMatchingStage(ProcessingStage):
         variant_heights: list[float],
         variant_line_spacings: list[float] | None = None,
         template_display_names: dict[int, str] | None = None,
+        template_categories: dict[int, str] | None = None,
     ) -> None:
         self._variant_images = variant_images
         self._variant_template_ids = variant_template_ids
@@ -48,6 +51,19 @@ class TemplateMatchingStage(ProcessingStage):
             variant_images
         )
         self._template_display_names = template_display_names or {}
+        self._template_categories = template_categories or {}
+
+    def _split_by_zone(self) -> tuple[list[int], list[int]]:
+        """Split variant indices into staff and below_staff groups."""
+        staff_indices: list[int] = []
+        below_staff_indices: list[int] = []
+        for i, tid in enumerate(self._variant_template_ids):
+            cat = self._template_categories.get(tid, "")
+            if cat == self._BELOW_STAFF_CATEGORY:
+                below_staff_indices.append(i)
+            else:
+                staff_indices.append(i)
+        return staff_indices, below_staff_indices
 
     # ------------------------------------------------------------------
     # Config helpers
