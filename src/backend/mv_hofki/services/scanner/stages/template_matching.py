@@ -65,6 +65,26 @@ class TemplateMatchingStage(ProcessingStage):
                 staff_indices.append(i)
         return staff_indices, below_staff_indices
 
+    @staticmethod
+    def _compute_below_staff_region(
+        staff: StaffData,
+        next_staff: StaffData | None,
+        img_height: int,
+    ) -> tuple[int, int]:
+        """Compute the vertical region for below-staff matching (dynamics).
+
+        Returns (y_start, y_end) where:
+        - y_start = bottom staff line minus 1 × line_spacing
+        - y_end = top line of next staff, or image height if last staff
+        """
+        bottom_line = max(staff.line_positions)
+        y_start = max(0, int(bottom_line - staff.line_spacing))
+        if next_staff is not None:
+            y_end = min(next_staff.line_positions)
+        else:
+            y_end = img_height
+        return y_start, y_end
+
     # ------------------------------------------------------------------
     # Config helpers
     # ------------------------------------------------------------------

@@ -138,3 +138,61 @@ def test_template_categories_splits_into_zones():
     staff_indices, below_staff_indices = stage._split_by_zone()
     assert staff_indices == [0, 2]
     assert below_staff_indices == [1]
+
+
+def test_below_staff_region_with_next_staff():
+    """below_staff region goes from bottom_line - 1*ls to next staff's top line."""
+    staff = StaffData(
+        staff_index=0,
+        y_top=10,
+        y_bottom=170,
+        line_positions=[50, 70, 90, 110, 130],
+        line_spacing=20.0,
+    )
+    next_staff = StaffData(
+        staff_index=1,
+        y_top=210,
+        y_bottom=370,
+        line_positions=[250, 270, 290, 310, 330],
+        line_spacing=20.0,
+    )
+    y_start, y_end = TemplateMatchingStage._compute_below_staff_region(
+        staff, next_staff, img_height=500
+    )
+    # y_start = max(line_positions) - 1 * line_spacing = 130 - 20 = 110
+    assert y_start == 110
+    # y_end = min(next_staff.line_positions) = 250
+    assert y_end == 250
+
+
+def test_below_staff_region_last_staff():
+    """For the last staff, below_staff region extends to page bottom."""
+    staff = StaffData(
+        staff_index=0,
+        y_top=10,
+        y_bottom=170,
+        line_positions=[50, 70, 90, 110, 130],
+        line_spacing=20.0,
+    )
+    y_start, y_end = TemplateMatchingStage._compute_below_staff_region(
+        staff, None, img_height=500
+    )
+    assert y_start == 110
+    assert y_end == 500
+
+
+def test_below_staff_region_clamps_to_zero():
+    """y_start should not go below 0 for staves near the top."""
+    staff = StaffData(
+        staff_index=0,
+        y_top=0,
+        y_bottom=100,
+        line_positions=[5, 15, 25, 35, 45],
+        line_spacing=10.0,
+    )
+    y_start, y_end = TemplateMatchingStage._compute_below_staff_region(
+        staff, None, img_height=200
+    )
+    # y_start = max(5,15,25,35,45) - 10 = 35, no clamping needed here
+    assert y_start == 35
+    assert y_end == 200
