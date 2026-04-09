@@ -165,6 +165,9 @@ class TemplateMatchingStage(ProcessingStage):
                 )
 
             # --- Zone 2: below_staff region (dynamic templates only) ---
+            # bs_start may overlap the staff bounding box (intentional — catches
+            # dynamics at the lower staff boundary).  No double-detection risk
+            # because staff_indices and below_staff_indices are mutually exclusive.
             if below_staff_indices:
                 bs_start, bs_end = self._compute_below_staff_region(
                     staff, next_staff, img.shape[0]
