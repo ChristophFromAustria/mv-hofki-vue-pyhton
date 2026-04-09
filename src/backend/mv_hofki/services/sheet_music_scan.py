@@ -244,6 +244,7 @@ async def run_pipeline(
             variant_heights=variant_heights,
             variant_line_spacings=variant_line_spacings,
             template_display_names=template_display_names,
+            template_categories=template_categories,
         ),
     )
 
