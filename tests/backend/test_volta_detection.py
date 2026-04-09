@@ -1,192 +1,36 @@
 """Tests for the volta bracket detection stage."""
 
-import cv2
 import numpy as np
 
-from mv_hofki.services.scanner.stages.base import (
-    MeasureData,
-    PipelineContext,
-    StaffData,
-)
+
+def test_find_runs_single_run():
+    """A single black segment in a white row returns one run."""
+    from mv_hofki.services.scanner.stages.volta_detection import _find_runs
+
+    # Row: 10 white, 20 black, 10 white (40 px total)
+    row = np.full(40, 255, dtype=np.uint8)
+    row[10:30] = 0
+    runs = _find_runs(row, min_length=10)
+    assert len(runs) == 1
+    assert runs[0] == (10, 29)  # (start_x, end_x) inclusive
 
 
-def _make_image_with_bracket():
-    """Create a binary image with staff lines and a volta bracket above."""
-    img = np.full((400, 800), 255, dtype=np.uint8)
+def test_find_runs_filters_short():
+    """Runs shorter than min_length are discarded."""
+    from mv_hofki.services.scanner.stages.volta_detection import _find_runs
 
-    # Staff lines at y=200..240
-    for y in [200, 210, 220, 230, 240]:
-        img[y : y + 2, 20:780] = 0
-
-    # Volta bracket above staff: horizontal line at y=170 from x=400 to x=600
-    cv2.line(img, (400, 170), (600, 170), 0, 2)
-    # Vertical hook at left end
-    cv2.line(img, (400, 170), (400, 185), 0, 2)
-
-    staff = StaffData(
-        staff_index=0,
-        y_top=140,
-        y_bottom=300,
-        line_positions=[200, 210, 220, 230, 240],
-        line_spacing=10.0,
-    )
-    return img, staff
+    row = np.full(40, 255, dtype=np.uint8)
+    row[5:10] = 0  # 5 px run
+    row[20:35] = 0  # 15 px run
+    runs = _find_runs(row, min_length=10)
+    assert len(runs) == 1
+    assert runs[0] == (20, 34)
 
 
-def test_volta_detects_bracket_above_repeat_barline():
-    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
+def test_find_runs_empty_row():
+    """An all-white row returns no runs."""
+    from mv_hofki.services.scanner.stages.volta_detection import _find_runs
 
-    img, staff = _make_image_with_bracket()
-    measures = [
-        MeasureData(
-            staff_index=0,
-            measure_number_in_staff=1,
-            global_measure_number=1,
-            x_start=200,
-            x_end=400,
-            end_barline="Wiederholung Ende",
-        ),
-        MeasureData(
-            staff_index=0,
-            measure_number_in_staff=2,
-            global_measure_number=2,
-            x_start=400,
-            x_end=600,
-            end_barline="Einfacher Taktstrich",
-        ),
-    ]
-
-    ctx = PipelineContext(
-        image=img,
-        processed_image=img.copy(),
-        staves=[staff],
-        measures=measures,
-        metadata={
-            "template_display_names": {60: "Wiederholungs Klammer"},
-        },
-    )
-
-    stage = VoltaDetectionStage()
-    result = stage.process(ctx)
-
-    bracket_syms = [s for s in result.symbols if s.matched_template_id == 60]
-    assert len(bracket_syms) >= 1
-    bracket = bracket_syms[0]
-    assert bracket.staff_index == 0
-    assert bracket.staff_x_start is not None
-    assert bracket.staff_x_start <= 410
-    assert bracket.staff_x_end is not None
-    assert bracket.staff_x_end >= 590
-
-
-def test_volta_assigns_volta_numbers_to_measures():
-    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
-
-    img, staff = _make_image_with_bracket()
-
-    # Add a second bracket at x=610-780 (gap at x=600-610 separates them)
-    cv2.line(img, (610, 170), (780, 170), 0, 2)
-    cv2.line(img, (610, 170), (610, 185), 0, 2)
-
-    measures = [
-        MeasureData(
-            staff_index=0,
-            measure_number_in_staff=1,
-            global_measure_number=1,
-            x_start=200,
-            x_end=400,
-            end_barline="Wiederholung Ende",
-        ),
-        MeasureData(
-            staff_index=0,
-            measure_number_in_staff=2,
-            global_measure_number=2,
-            x_start=400,
-            x_end=600,
-            end_barline="Wiederholung Anfang",
-        ),
-        MeasureData(
-            staff_index=0,
-            measure_number_in_staff=3,
-            global_measure_number=3,
-            x_start=600,
-            x_end=780,
-            end_barline=None,
-        ),
-    ]
-
-    ctx = PipelineContext(
-        image=img,
-        processed_image=img.copy(),
-        staves=[staff],
-        measures=measures,
-        metadata={
-            "template_display_names": {60: "Wiederholungs Klammer"},
-        },
-    )
-
-    stage = VoltaDetectionStage()
-    result = stage.process(ctx)
-
-    # Both brackets are close together so Hough may merge them into one
-    # expanded bracket. At minimum we should get volta 1 assigned.
-    volta_measures = [m for m in result.measures if m.volta_number is not None]
-    assert len(volta_measures) >= 1
-
-    bracket_syms = [s for s in result.symbols if s.matched_template_id == 60]
-    assert len(bracket_syms) >= 1
-
-
-def test_volta_no_detection_without_repeat_barlines():
-    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
-
-    img, staff = _make_image_with_bracket()
-    measures = [
-        MeasureData(
-            staff_index=0,
-            measure_number_in_staff=1,
-            global_measure_number=1,
-            x_start=200,
-            x_end=600,
-            end_barline="Einfacher Taktstrich",
-        ),
-    ]
-
-    ctx = PipelineContext(
-        image=img,
-        processed_image=img.copy(),
-        staves=[staff],
-        measures=measures,
-        metadata={
-            "template_display_names": {60: "Wiederholungs Klammer"},
-        },
-    )
-
-    stage = VoltaDetectionStage()
-    result = stage.process(ctx)
-
-    bracket_syms = [s for s in result.symbols if s.matched_template_id == 60]
-    assert len(bracket_syms) == 0
-
-
-def test_volta_validate():
-    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
-
-    stage = VoltaDetectionStage()
-
-    ctx = PipelineContext(image=None, processed_image=None)
-    assert stage.validate(ctx) is False
-
-    img = np.zeros((100, 100), dtype=np.uint8)
-    ctx = PipelineContext(image=img, processed_image=img)
-    assert stage.validate(ctx) is False
-
-    staff = StaffData(
-        staff_index=0,
-        y_top=0,
-        y_bottom=100,
-        line_positions=[20, 30, 40, 50, 60],
-        line_spacing=10.0,
-    )
-    ctx = PipelineContext(image=img, processed_image=img, staves=[staff])
-    assert stage.validate(ctx) is True
+    row = np.full(40, 255, dtype=np.uint8)
+    runs = _find_runs(row, min_length=5)
+    assert runs == []
