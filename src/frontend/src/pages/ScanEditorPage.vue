@@ -177,25 +177,27 @@ function updateStatus() {
   }
 }
 
+async function saveAdjustments() {
+  if (!scan.value) return;
+  const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
+  for (const part of partsData) {
+    const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
+    const found = scansData.find((s) => String(s.id) === String(props.scanId));
+    if (found) {
+      await put(`/scanner/projects/${props.projectId}/parts/${part.id}/scans/${props.scanId}`, {
+        adjustments_json: JSON.stringify(adjustments.value),
+      });
+      break;
+    }
+  }
+}
+
 async function startAnalysis() {
   if (processing.value) return;
   processing.value = true;
   statusMessage.value = "Analyse wird gestartet...";
   try {
-    // Save current adjustments to the scan first
-    if (scan.value) {
-      const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
-      for (const part of partsData) {
-        const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
-        const found = scansData.find((s) => String(s.id) === String(props.scanId));
-        if (found) {
-          await put(`/scanner/projects/${props.projectId}/parts/${part.id}/scans/${props.scanId}`, {
-            adjustments_json: JSON.stringify(adjustments.value),
-          });
-          break;
-        }
-      }
-    }
+    await saveAdjustments();
     // Open the log modal and start SSE stream
     showAnalysisLog.value = true;
     // Wait for the component to mount before calling startStream
@@ -284,12 +286,13 @@ function onAnalysisLogClose() {
 }
 
 function onAdjust(adj) {
-  adjustments.value = adj;
+  adjustments.value = { ...adj, analysis: adjustments.value.analysis };
 }
 
 async function startPreview() {
   if (processing.value) return;
   try {
+    await saveAdjustments();
     const result = await post(`/scanner/scans/${props.scanId}/preview`, {
       adjustments_json: JSON.stringify(adjustments.value),
     });
@@ -765,6 +768,8 @@ onUnmounted(() => {
       @close="showConfig = false"
       @update-adjustments="onUpdateAdjustments"
     />
+    <!-- Note: Modal updates adjustments.analysis locally on close.
+         Actual DB save happens in startPreview/startAnalysis. -->
 
     <!-- Analysis log modal -->
     <AnalysisLogModal

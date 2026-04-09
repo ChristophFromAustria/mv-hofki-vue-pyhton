@@ -1,6 +1,9 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { get, put, post } from "../lib/api.js";
+import FieldToggle from "../components/config/FieldToggle.vue";
+import FieldSelect from "../components/config/FieldSelect.vue";
+import FieldNumber from "../components/config/FieldNumber.vue";
 
 const entries = ref([]);
 const loading = ref(true);
@@ -151,8 +154,30 @@ function updateValue(key, val) {
       <!-- Root-level entries -->
       <div v-if="groupTree.rootEntries.length" class="card config-card">
         <div class="card-fields">
-          <div v-for="entry in groupTree.rootEntries" :key="entry.key" class="field-row">
-            <ConfigField :entry="entry" @update="updateValue" @reset="resetSingle" />
+          <div
+            v-for="entry in groupTree.rootEntries"
+            :key="entry.key"
+            class="field-row"
+            :class="{ 'is-modified': entry.is_modified }"
+          >
+            <FieldToggle
+              v-if="entry.type === 'toggle'"
+              :entry="entry"
+              @update="updateValue"
+              @reset="resetSingle"
+            />
+            <FieldSelect
+              v-else-if="entry.type === 'select'"
+              :entry="entry"
+              @update="updateValue"
+              @reset="resetSingle"
+            />
+            <FieldNumber
+              v-else-if="entry.type === 'number'"
+              :entry="entry"
+              @update="updateValue"
+              @reset="resetSingle"
+            />
           </div>
         </div>
       </div>
@@ -168,8 +193,30 @@ function updateValue(key, val) {
           </h2>
           <div v-show="!collapsedGroups.has(node.path)">
             <div class="card-fields">
-              <div v-for="entry in node.entries" :key="entry.key" class="field-row">
-                <ConfigField :entry="entry" @update="updateValue" @reset="resetSingle" />
+              <div
+                v-for="entry in node.entries"
+                :key="entry.key"
+                class="field-row"
+                :class="{ 'is-modified': entry.is_modified }"
+              >
+                <FieldToggle
+                  v-if="entry.type === 'toggle'"
+                  :entry="entry"
+                  @update="updateValue"
+                  @reset="resetSingle"
+                />
+                <FieldSelect
+                  v-else-if="entry.type === 'select'"
+                  :entry="entry"
+                  @update="updateValue"
+                  @reset="resetSingle"
+                />
+                <FieldNumber
+                  v-else-if="entry.type === 'number'"
+                  :entry="entry"
+                  @update="updateValue"
+                  @reset="resetSingle"
+                />
               </div>
             </div>
             <div v-for="child in node.children" :key="child.path" class="subgroup">
@@ -180,8 +227,30 @@ function updateValue(key, val) {
                 {{ child.label }}
               </h3>
               <div v-show="!collapsedGroups.has(child.path)" class="card-fields">
-                <div v-for="entry in child.entries" :key="entry.key" class="field-row">
-                  <ConfigField :entry="entry" @update="updateValue" @reset="resetSingle" />
+                <div
+                  v-for="entry in child.entries"
+                  :key="entry.key"
+                  class="field-row"
+                  :class="{ 'is-modified': entry.is_modified }"
+                >
+                  <FieldToggle
+                    v-if="entry.type === 'toggle'"
+                    :entry="entry"
+                    @update="updateValue"
+                    @reset="resetSingle"
+                  />
+                  <FieldSelect
+                    v-else-if="entry.type === 'select'"
+                    :entry="entry"
+                    @update="updateValue"
+                    @reset="resetSingle"
+                  />
+                  <FieldNumber
+                    v-else-if="entry.type === 'number'"
+                    :entry="entry"
+                    @update="updateValue"
+                    @reset="resetSingle"
+                  />
                 </div>
               </div>
             </div>
@@ -191,60 +260,6 @@ function updateValue(key, val) {
     </div>
   </div>
 </template>
-
-<script>
-const ConfigField = {
-  props: {
-    entry: { type: Object, required: true },
-  },
-  emits: ["update", "reset"],
-  template: `
-    <div class="config-field-wrapper" :class="{ 'is-modified': entry.is_modified }">
-      <template v-if="entry.type === 'toggle'">
-        <label class="toggle-row">
-          <input type="checkbox" class="toggle-checkbox" :checked="entry.value" @change="$emit('update', entry.key, $event.target.checked)" />
-          <span>{{ entry.label }}</span>
-          <span v-if="entry.is_modified" class="modified-dot" title="Ge\u00e4ndert"></span>
-          <button v-if="entry.is_modified" class="reset-btn" title="Zur\u00fccksetzen" @click.prevent="$emit('reset', entry.key)">\u21BA</button>
-        </label>
-      </template>
-
-      <template v-else-if="entry.type === 'select'">
-        <label class="select-row">
-          <span class="field-name">
-            {{ entry.label }}
-            <span v-if="entry.is_modified" class="modified-dot" title="Ge\u00e4ndert"></span>
-            <button v-if="entry.is_modified" class="reset-btn" title="Zur\u00fccksetzen" @click.prevent="$emit('reset', entry.key)">\u21BA</button>
-          </span>
-          <select :value="entry.value" @change="$emit('update', entry.key, $event.target.value)">
-            <option v-for="opt in entry.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-          <span v-if="entry.is_modified" class="default-hint">Standard: {{ entry.options?.find(o => o.value === entry.default_value)?.label || entry.default_value }}</span>
-        </label>
-      </template>
-
-      <template v-else-if="entry.type === 'number'">
-        <label class="number-row">
-          <span class="field-name">
-            {{ entry.label }}
-            <span class="field-value-group">
-              <strong>{{ entry.value }}</strong>
-              <span v-if="entry.is_modified" class="default-hint">(Std: {{ entry.default_value }})</span>
-              <span v-if="entry.is_modified" class="modified-dot" title="Ge\u00e4ndert"></span>
-              <button v-if="entry.is_modified" class="reset-btn" title="Zur\u00fccksetzen" @click.prevent="$emit('reset', entry.key)">\u21BA</button>
-            </span>
-          </span>
-          <input type="range" :value="entry.value" :min="entry.min" :max="entry.max" :step="entry.step" @input="$emit('update', entry.key, Number($event.target.value))" />
-        </label>
-      </template>
-    </div>
-  `,
-};
-
-export default {
-  components: { ConfigField },
-};
-</script>
 
 <style scoped>
 .page-header {
@@ -334,92 +349,8 @@ export default {
   padding: 0.1rem 0;
 }
 
-.config-field-wrapper.is-modified {
+.is-modified {
   border-left: 2px solid var(--color-primary);
   padding-left: 0.5rem;
-}
-
-.toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-.toggle-checkbox {
-  width: 1.1rem;
-  height: 1.1rem;
-  accent-color: var(--color-primary);
-  cursor: pointer;
-}
-
-.select-row {
-  display: block;
-  font-size: 0.85rem;
-  color: var(--color-muted);
-}
-.select-row select {
-  display: block;
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: inherit;
-  font-size: 0.85rem;
-}
-
-.number-row {
-  display: block;
-  font-size: 0.85rem;
-  color: var(--color-muted);
-}
-.field-name {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-.field-name strong {
-  color: var(--color-text);
-}
-.field-value-group {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-}
-.number-row input[type="range"] {
-  width: 100%;
-  margin-top: 0.2rem;
-  accent-color: var(--color-primary);
-}
-
-.modified-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  flex-shrink: 0;
-}
-.default-hint {
-  font-size: 0.75rem;
-  color: var(--color-muted);
-  font-weight: normal;
-}
-.reset-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--color-muted);
-  padding: 0 0.15rem;
-  line-height: 1;
-}
-.reset-btn:hover {
-  color: var(--color-primary);
 }
 </style>

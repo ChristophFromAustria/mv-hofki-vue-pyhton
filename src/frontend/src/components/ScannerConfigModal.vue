@@ -1,6 +1,9 @@
 <script setup>
 import { ref, watch } from "vue";
-import { get, put, post } from "../lib/api.js";
+import { get } from "../lib/api.js";
+import FieldToggle from "./config/FieldToggle.vue";
+import FieldSelect from "./config/FieldSelect.vue";
+import FieldNumber from "./config/FieldNumber.vue";
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -12,49 +15,49 @@ const props = defineProps({
 const emit = defineEmits(["close", "update-adjustments"]);
 
 const entries = ref([]);
+const globalValues = ref({});
 const loading = ref(false);
-const saving = ref(false);
 const error = ref(null);
-const successMsg = ref(null);
-const scanSpecific = ref(false);
 const collapsedGroups = ref(new Set());
 
 watch(
   () => props.open,
   async (isOpen) => {
     if (!isOpen) return;
-    successMsg.value = null;
     error.value = null;
-
-    const analysis = props.adjustments?.analysis;
-    scanSpecific.value = analysis?.enabled === true;
-
-    await loadGlobalConfig();
-
-    if (analysis && analysis.enabled) {
-      for (const entry of entries.value) {
-        if (entry.key in analysis) {
-          entry.value = analysis[entry.key];
-          entry.is_modified = true;
-        }
-      }
-    }
+    await loadConfigWithOverrides();
   },
 );
 
-watch(scanSpecific, (isScanSpecific) => {
-  if (!isScanSpecific) {
-    loadGlobalConfig();
-  }
-});
-
-async function loadGlobalConfig() {
+async function loadConfigWithOverrides() {
   loading.value = true;
   error.value = null;
   try {
-    const data = await get("/scanner/config");
-    entries.value = data.entries;
-    // Collapse all groups by default
+    const configData = await get("/scanner/config");
+    const globalEntries = configData.entries;
+
+    globalValues.value = {};
+    for (const e of globalEntries) {
+      globalValues.value[e.key] = e.value;
+    }
+
+    // Use props.adjustments as primary source (includes unsaved local changes).
+    // props.adjustments is always current because:
+    // - On page load: fetchScanData parses adjustments_json from DB
+    // - On modal close: emit("update-adjustments") updates the parent ref
+    const analysis = props.adjustments?.analysis;
+    entries.value = globalEntries.map((e) => {
+      if (analysis && analysis.enabled && e.key in analysis) {
+        const overrideVal = analysis[e.key];
+        return {
+          ...e,
+          value: overrideVal,
+          is_modified: String(overrideVal) !== String(e.value),
+        };
+      }
+      return { ...e, is_modified: false };
+    });
+
     collapsedGroups.value = new Set();
     for (const e of entries.value) {
       if (e.group_path) {
@@ -70,6 +73,23 @@ async function loadGlobalConfig() {
   } finally {
     loading.value = false;
   }
+}
+
+function buildAnalysis() {
+  const hasOverrides = entries.value.some((e) => e.is_modified);
+  if (!hasOverrides) return { enabled: false };
+  const analysis = { enabled: true };
+  for (const entry of entries.value) {
+    analysis[entry.key] = entry.value;
+  }
+  return analysis;
+}
+
+function close() {
+  // Update parent adjustments with current analysis state on close
+  const analysis = buildAnalysis();
+  emit("update-adjustments", { ...props.adjustments, analysis });
+  emit("close");
 }
 
 function getGroupTree() {
@@ -118,63 +138,12 @@ function getGroupTree() {
   return { roots, rootEntries: byGroup.get("") || [] };
 }
 
-async function saveGlobal() {
-  saving.value = true;
-  error.value = null;
-  successMsg.value = null;
-  try {
-    const values = {};
-    for (const entry of entries.value) {
-      values[entry.key] = entry.value;
-    }
-    const data = await put("/scanner/config", { values });
-    entries.value = data.entries;
-    successMsg.value = "Global gespeichert";
-    setTimeout(() => {
-      successMsg.value = null;
-    }, 2000);
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function saveScanSpecific() {
-  saving.value = true;
-  error.value = null;
-  successMsg.value = null;
-  try {
-    const analysis = { enabled: true };
-    for (const entry of entries.value) {
-      analysis[entry.key] = entry.value;
-    }
-    const updated = { ...props.adjustments, analysis };
-    const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
-    for (const part of partsData) {
-      const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
-      const found = scansData.find((s) => String(s.id) === String(props.scanId));
-      if (found) {
-        await put(`/scanner/projects/${props.projectId}/parts/${part.id}/scans/${props.scanId}`, {
-          adjustments_json: JSON.stringify(updated),
-        });
-        break;
-      }
-    }
-    emit("update-adjustments", updated);
-    successMsg.value = "Für diesen Scan gespeichert";
-    setTimeout(() => {
-      successMsg.value = null;
-    }, 2000);
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function resetDefaults() {
-  await loadGlobalConfig();
+function resetAll() {
+  entries.value = entries.value.map((e) => ({
+    ...e,
+    value: globalValues.value[e.key] ?? e.value,
+    is_modified: false,
+  }));
 }
 
 function toggleGroup(path) {
@@ -187,40 +156,37 @@ function toggleGroup(path) {
 
 function updateValue(key, val) {
   const entry = entries.value.find((e) => e.key === key);
-  if (entry) entry.value = val;
+  if (entry) {
+    entry.value = val;
+    entry.is_modified = String(val) !== String(globalValues.value[key]);
+  }
 }
 
-async function resetSingle(key) {
-  error.value = null;
-  try {
-    const data = await post("/scanner/config/reset", { keys: [key] });
-    entries.value = data.entries;
-  } catch (e) {
-    error.value = e.message;
+function resetSingle(key) {
+  const entry = entries.value.find((e) => e.key === key);
+  if (entry && key in globalValues.value) {
+    entry.value = globalValues.value[key];
+    entry.is_modified = false;
   }
 }
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
+  <div v-if="open" class="modal-backdrop" @click.self="close">
     <div class="modal modal-config">
       <div class="modal-header">
         <h2>Scanner-Konfiguration</h2>
-        <button class="close-btn" title="Schließen" @click="emit('close')">&#10005;</button>
+        <button class="close-btn" title="Schließen" @click="close">&#10005;</button>
       </div>
 
       <div v-if="loading" class="modal-loading">Laden...</div>
 
       <div v-else class="modal-body">
         <div v-if="error" class="config-error">{{ error }}</div>
-        <div v-if="successMsg" class="config-success">{{ successMsg }}</div>
 
-        <div v-if="scanId" class="scan-toggle">
-          <label class="toggle-label">
-            <input v-model="scanSpecific" type="checkbox" class="toggle-input" />
-            <span class="toggle-text">Scan-spezifische Parameter verwenden</span>
-          </label>
-        </div>
+        <p class="config-hint">
+          Änderungen werden beim nächsten Vorschau oder Analyse automatisch gespeichert.
+        </p>
 
         <template v-for="node in getGroupTree().roots" :key="node.path">
           <div class="config-group">
@@ -231,8 +197,30 @@ async function resetSingle(key) {
               {{ node.label }}
             </h3>
             <div v-show="!collapsedGroups.has(node.path)" class="group-fields">
-              <div v-for="entry in node.entries" :key="entry.key" class="config-field">
-                <ModalField :entry="entry" @update="updateValue" @reset="resetSingle" />
+              <div
+                v-for="entry in node.entries"
+                :key="entry.key"
+                class="config-field"
+                :class="{ 'field-modified': entry.is_modified }"
+              >
+                <FieldToggle
+                  v-if="entry.type === 'toggle'"
+                  :entry="entry"
+                  @update="updateValue"
+                  @reset="resetSingle"
+                />
+                <FieldSelect
+                  v-else-if="entry.type === 'select'"
+                  :entry="entry"
+                  @update="updateValue"
+                  @reset="resetSingle"
+                />
+                <FieldNumber
+                  v-else-if="entry.type === 'number'"
+                  :entry="entry"
+                  @update="updateValue"
+                  @reset="resetSingle"
+                />
               </div>
               <div v-for="child in node.children" :key="child.path" class="subgroup">
                 <h4 class="subgroup-title" @click="toggleGroup(child.path)">
@@ -242,8 +230,30 @@ async function resetSingle(key) {
                   {{ child.label }}
                 </h4>
                 <div v-show="!collapsedGroups.has(child.path)" class="group-fields">
-                  <div v-for="entry in child.entries" :key="entry.key" class="config-field">
-                    <ModalField :entry="entry" @update="updateValue" @reset="resetSingle" />
+                  <div
+                    v-for="entry in child.entries"
+                    :key="entry.key"
+                    class="config-field"
+                    :class="{ 'field-modified': entry.is_modified }"
+                  >
+                    <FieldToggle
+                      v-if="entry.type === 'toggle'"
+                      :entry="entry"
+                      @update="updateValue"
+                      @reset="resetSingle"
+                    />
+                    <FieldSelect
+                      v-else-if="entry.type === 'select'"
+                      :entry="entry"
+                      @update="updateValue"
+                      @reset="resetSingle"
+                    />
+                    <FieldNumber
+                      v-else-if="entry.type === 'number'"
+                      :entry="entry"
+                      @update="updateValue"
+                      @reset="resetSingle"
+                    />
                   </div>
                 </div>
               </div>
@@ -253,76 +263,13 @@ async function resetSingle(key) {
       </div>
 
       <div class="modal-footer">
-        <button class="btn" :disabled="loading" @click="resetDefaults">Zurücksetzen</button>
+        <button class="btn" :disabled="loading" @click="resetAll">Auf Global zurücksetzen</button>
         <div class="footer-spacer"></div>
-        <template v-if="scanSpecific && scanId">
-          <button class="btn btn-primary" :disabled="loading || saving" @click="saveScanSpecific">
-            {{ saving ? "Speichert..." : "Für diesen Scan speichern" }}
-          </button>
-        </template>
-        <template v-else>
-          <button class="btn btn-primary" :disabled="loading || saving" @click="saveGlobal">
-            {{ saving ? "Speichert..." : "Global speichern" }}
-          </button>
-        </template>
+        <button class="btn btn-primary" @click="close">Schließen</button>
       </div>
     </div>
   </div>
 </template>
-
-<script>
-const ModalField = {
-  props: {
-    entry: { type: Object, required: true },
-  },
-  emits: ["update", "reset"],
-  template: `
-    <div :class="{ 'field-modified': entry.is_modified }">
-      <template v-if="entry.type === 'toggle'">
-        <label class="toggle-label">
-          <input type="checkbox" class="toggle-input" :checked="entry.value" @change="$emit('update', entry.key, $event.target.checked)" />
-          <span class="toggle-text">{{ entry.label }}</span>
-          <span v-if="entry.is_modified" class="modified-dot"></span>
-          <button v-if="entry.is_modified" class="reset-btn" title="Zur\u00fccksetzen" @click.prevent="$emit('reset', entry.key)">\u21BA</button>
-        </label>
-      </template>
-
-      <template v-else-if="entry.type === 'select'">
-        <label class="field-label">
-          <span class="field-label-row">
-            {{ entry.label }}
-            <span v-if="entry.is_modified" class="modified-dot"></span>
-            <button v-if="entry.is_modified" class="reset-btn" title="Zur\u00fccksetzen" @click.prevent="$emit('reset', entry.key)">\u21BA</button>
-          </span>
-          <select class="field-select" :value="entry.value" @change="$emit('update', entry.key, $event.target.value)">
-            <option v-for="opt in entry.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-          <span v-if="entry.is_modified" class="default-hint">Standard: {{ entry.options?.find(o => o.value === entry.default_value)?.label || entry.default_value }}</span>
-        </label>
-      </template>
-
-      <template v-else-if="entry.type === 'number'">
-        <label class="field-label">
-          <span class="field-label-row">
-            {{ entry.label }}
-            <span class="field-value-group">
-              <span class="field-value">{{ entry.value }}</span>
-              <span v-if="entry.is_modified" class="default-hint">(Std: {{ entry.default_value }})</span>
-              <span v-if="entry.is_modified" class="modified-dot"></span>
-              <button v-if="entry.is_modified" class="reset-btn" title="Zur\u00fccksetzen" @click.prevent="$emit('reset', entry.key)">\u21BA</button>
-            </span>
-          </span>
-          <input type="range" class="field-slider" :value="entry.value" :min="entry.min" :max="entry.max" :step="entry.step" @input="$emit('update', entry.key, Number($event.target.value))" />
-        </label>
-      </template>
-    </div>
-  `,
-};
-
-export default {
-  components: { ModalField },
-};
-</script>
 
 <style scoped>
 .modal-backdrop {
@@ -384,17 +331,11 @@ export default {
   background: rgba(220, 38, 38, 0.08);
   border-radius: var(--radius);
 }
-.config-success {
-  color: #16a34a;
-  font-size: 0.85rem;
-  margin-bottom: 0.75rem;
-  padding: 0.5rem;
-  background: rgba(22, 163, 74, 0.08);
-  border-radius: var(--radius);
-}
-.scan-toggle {
+.config-hint {
+  font-size: 0.8rem;
+  color: var(--color-muted);
   margin-bottom: 1rem;
-  padding: 0.75rem;
+  padding: 0.5rem 0.6rem;
   background: var(--color-bg-soft);
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
@@ -456,86 +397,6 @@ export default {
 .field-modified {
   border-left: 2px solid var(--color-primary);
   padding-left: 0.5rem;
-}
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-.toggle-input {
-  width: 1.1rem;
-  height: 1.1rem;
-  accent-color: var(--color-primary);
-  cursor: pointer;
-}
-.toggle-text {
-  color: var(--color-text);
-}
-.field-label {
-  display: block;
-  font-size: 0.85rem;
-  color: var(--color-muted);
-}
-.field-label-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-.field-value {
-  font-weight: 600;
-  color: var(--color-text);
-  font-size: 0.85rem;
-}
-.field-value-group {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-}
-.field-select {
-  display: block;
-  width: 100%;
-  margin-top: 0.2rem;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: inherit;
-  font-size: 0.85rem;
-}
-.field-slider {
-  width: 100%;
-  margin-top: 0.2rem;
-  accent-color: var(--color-primary);
-}
-.modified-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  flex-shrink: 0;
-}
-.default-hint {
-  font-size: 0.75rem;
-  color: var(--color-muted);
-  font-weight: normal;
-}
-.reset-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--color-muted);
-  padding: 0 0.15rem;
-  line-height: 1;
-}
-.reset-btn:hover {
-  color: var(--color-primary);
 }
 .modal-footer {
   display: flex;
