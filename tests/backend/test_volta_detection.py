@@ -86,3 +86,51 @@ def test_group_runs_two_separate_lines():
     }
     lines = _group_runs_into_lines(runs_by_row, min_height=2)
     assert len(lines) == 2
+
+
+def test_scan_for_horizontal_lines_finds_bracket():
+    """A drawn horizontal line in a binary image region is detected."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _scan_for_horizontal_lines,
+    )
+
+    img = np.full((100, 400), 255, dtype=np.uint8)
+    # Draw a horizontal line at y=20, x=50..250 (2px thick)
+    img[20:22, 50:250] = 0
+
+    lines = _scan_for_horizontal_lines(
+        binary=img,
+        y_start=10,
+        y_end=40,
+        x_start=0,
+        x_end=400,
+        min_run_length=50,
+        min_height=2,
+    )
+    assert len(lines) == 1
+    x1, y1, x2, y2 = lines[0]
+    assert x1 <= 50
+    assert x2 >= 249
+    assert y1 >= 20
+    assert y2 <= 22
+
+
+def test_scan_for_horizontal_lines_ignores_short():
+    """Lines shorter than min_run_length are not returned."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _scan_for_horizontal_lines,
+    )
+
+    img = np.full((100, 400), 255, dtype=np.uint8)
+    img[20:22, 50:80] = 0  # 30px, below threshold
+
+    lines = _scan_for_horizontal_lines(
+        binary=img,
+        y_start=10,
+        y_end=40,
+        x_start=0,
+        x_end=400,
+        min_run_length=50,
+        min_height=2,
+    )
+    assert len(lines) == 0

@@ -154,3 +154,44 @@ def _finalize_group(
     x_start = min(sx for _, sx, _ in group)
     x_end = max(ex for _, _, ex in group)
     result.append((x_start, y_start, x_end, y_end))
+
+
+def _scan_for_horizontal_lines(
+    binary: np.ndarray,
+    y_start: int,
+    y_end: int,
+    x_start: int,
+    x_end: int,
+    min_run_length: int,
+    min_height: int,
+) -> list[tuple[int, int, int, int]]:
+    """Scan a region for horizontal line candidates via run-length analysis.
+
+    Parameters
+    ----------
+    binary : grayscale image (0=black, 255=white)
+    y_start, y_end : Y range to scan (absolute pixel coords, exclusive end)
+    x_start, x_end : X range to scan (absolute pixel coords, exclusive end)
+    min_run_length : minimum horizontal run length in pixels
+    min_height : minimum number of rows a line must span
+
+    Returns list of (x_start, y_start, x_end, y_end) bounding boxes.
+    """
+    h, w = binary.shape[:2]
+    y_start = max(0, y_start)
+    y_end = min(h, y_end)
+    x_start = max(0, x_start)
+    x_end = min(w, x_end)
+
+    if y_start >= y_end or x_start >= x_end:
+        return []
+
+    runs_by_row: dict[int, list[tuple[int, int]]] = {}
+    for y in range(y_start, y_end):
+        row_slice = binary[y, x_start:x_end]
+        runs = _find_runs(row_slice, min_run_length)
+        if runs:
+            # Shift X coordinates back to absolute
+            runs_by_row[y] = [(sx + x_start, ex + x_start) for sx, ex in runs]
+
+    return _group_runs_into_lines(runs_by_row, min_height)
