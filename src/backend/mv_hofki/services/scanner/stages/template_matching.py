@@ -171,6 +171,7 @@ class TemplateMatchingStage(ProcessingStage):
         below-staff zone).
         """
         detections: list[SymbolData] = []
+        bottom_line_y = max(staff.line_positions)
 
         for i in template_indices:
             tmpl_img = self._variant_images[i]
@@ -278,7 +279,6 @@ class TemplateMatchingStage(ProcessingStage):
                         locations[1][top_indices],
                     )
 
-                bottom_line_y = max(staff.line_positions)
                 for pt_y, pt_x in zip(locations[0], locations[1]):
                     score = float(result[pt_y, pt_x])
                     confidence = (1.0 - score) if iter_sqdiff else score
