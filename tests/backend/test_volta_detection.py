@@ -1,6 +1,13 @@
 """Tests for the volta bracket detection stage."""
 
+import cv2
 import numpy as np
+
+from mv_hofki.services.scanner.stages.base import (
+    MeasureData,
+    PipelineContext,
+    StaffData,
+)
 
 
 def test_find_runs_single_run():
@@ -134,3 +141,231 @@ def test_scan_for_horizontal_lines_ignores_short():
         min_height=2,
     )
     assert len(lines) == 0
+
+
+def _make_staff_image():
+    """Create a binary image with staff lines."""
+    img = np.full((400, 800), 255, dtype=np.uint8)
+    # Staff lines at y=200..240 (5 lines, spacing=10)
+    for y_pos in [200, 210, 220, 230, 240]:
+        img[y_pos : y_pos + 2, 20:780] = 0
+    staff = StaffData(
+        staff_index=0,
+        y_top=140,
+        y_bottom=300,
+        line_positions=[200, 210, 220, 230, 240],
+        line_spacing=10.0,
+        line_thickness=2,
+        x_start=20,
+        x_end=780,
+    )
+    return img, staff
+
+
+def test_volta_detects_bracket_before_repeat():
+    """Bracket above the measure before a repeat end is detected as volta 1."""
+    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
+
+    img, staff = _make_staff_image()
+
+    # Volta bracket above measure 2 (x=300..500): horizontal at y=170, hook at x=300
+    cv2.line(img, (300, 170), (500, 170), 0, 2)
+    cv2.line(img, (300, 170), (300, 185), 0, 2)
+
+    measures = [
+        MeasureData(
+            0, 1, 1, x_start=100, x_end=300, end_barline="Einfacher Taktstrich"
+        ),
+        MeasureData(0, 2, 2, x_start=300, x_end=500, end_barline="Wiederholung Ende"),
+        MeasureData(
+            0, 3, 3, x_start=500, x_end=700, end_barline="Einfacher Taktstrich"
+        ),
+    ]
+
+    ctx = PipelineContext(
+        image=img,
+        processed_image=img.copy(),
+        staves=[staff],
+        measures=measures,
+        metadata={"template_display_names": {60: "Wiederholungs Klammer"}},
+    )
+
+    stage = VoltaDetectionStage()
+    result = stage.process(ctx)
+
+    bracket_syms = [s for s in result.symbols if s.matched_template_id == 60]
+    assert len(bracket_syms) >= 1
+
+    # Measure 2 should be volta 1
+    m2 = [m for m in result.measures if m.global_measure_number == 2][0]
+    assert m2.volta_number == 1
+    assert m2.volta_group_id is not None
+
+
+def test_volta_detects_bracket_after_repeat():
+    """A bracket above the measure after a repeat end is detected as volta 2."""
+    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
+
+    img, staff = _make_staff_image()
+
+    # Volta 1 bracket above measure 2
+    cv2.line(img, (300, 170), (500, 170), 0, 2)
+    cv2.line(img, (300, 170), (300, 185), 0, 2)
+
+    # Volta 2 bracket above measure 3
+    cv2.line(img, (510, 170), (700, 170), 0, 2)
+    cv2.line(img, (510, 170), (510, 185), 0, 2)
+
+    measures = [
+        MeasureData(
+            0, 1, 1, x_start=100, x_end=300, end_barline="Einfacher Taktstrich"
+        ),
+        MeasureData(0, 2, 2, x_start=300, x_end=500, end_barline="Wiederholung Ende"),
+        MeasureData(
+            0, 3, 3, x_start=500, x_end=700, end_barline="Einfacher Taktstrich"
+        ),
+    ]
+
+    ctx = PipelineContext(
+        image=img,
+        processed_image=img.copy(),
+        staves=[staff],
+        measures=measures,
+        metadata={"template_display_names": {60: "Wiederholungs Klammer"}},
+    )
+
+    stage = VoltaDetectionStage()
+    result = stage.process(ctx)
+
+    bracket_syms = [s for s in result.symbols if s.matched_template_id == 60]
+    assert len(bracket_syms) == 2
+
+    m2 = [m for m in result.measures if m.global_measure_number == 2][0]
+    m3 = [m for m in result.measures if m.global_measure_number == 3][0]
+    assert m2.volta_number == 1
+    assert m3.volta_number == 2
+    assert m2.volta_group_id == m3.volta_group_id
+
+
+def test_volta_no_detection_without_repeat():
+    """No brackets are detected when there are no repeat barlines."""
+    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
+
+    img, staff = _make_staff_image()
+    cv2.line(img, (300, 170), (500, 170), 0, 2)
+
+    measures = [
+        MeasureData(
+            0, 1, 1, x_start=100, x_end=500, end_barline="Einfacher Taktstrich"
+        ),
+    ]
+
+    ctx = PipelineContext(
+        image=img,
+        processed_image=img.copy(),
+        staves=[staff],
+        measures=measures,
+        metadata={"template_display_names": {60: "Wiederholungs Klammer"}},
+    )
+
+    stage = VoltaDetectionStage()
+    result = stage.process(ctx)
+
+    bracket_syms = [s for s in result.symbols if s.matched_template_id == 60]
+    assert len(bracket_syms) == 0
+
+
+def test_volta_cross_staff():
+    """When repeat is at end of staff, volta 2 is found above next staff."""
+    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
+
+    img = np.full((600, 800), 255, dtype=np.uint8)
+
+    # Staff 0: lines at y=100..140
+    for y_pos in [100, 110, 120, 130, 140]:
+        img[y_pos : y_pos + 2, 20:780] = 0
+    staff0 = StaffData(
+        staff_index=0,
+        y_top=50,
+        y_bottom=200,
+        line_positions=[100, 110, 120, 130, 140],
+        line_spacing=10.0,
+        line_thickness=2,
+        x_start=20,
+        x_end=780,
+    )
+
+    # Staff 1: lines at y=350..390
+    for y_pos in [350, 360, 370, 380, 390]:
+        img[y_pos : y_pos + 2, 20:780] = 0
+    staff1 = StaffData(
+        staff_index=1,
+        y_top=300,
+        y_bottom=450,
+        line_positions=[350, 360, 370, 380, 390],
+        line_spacing=10.0,
+        line_thickness=2,
+        x_start=20,
+        x_end=780,
+    )
+
+    # Volta 1 bracket above staff 0, measure at end
+    cv2.line(img, (600, 70), (770, 70), 0, 2)
+    cv2.line(img, (600, 70), (600, 85), 0, 2)
+
+    # Volta 2 bracket above staff 1, measure at start
+    cv2.line(img, (30, 320), (200, 320), 0, 2)
+    cv2.line(img, (30, 320), (30, 335), 0, 2)
+
+    measures = [
+        MeasureData(0, 1, 1, x_start=20, x_end=400, end_barline="Einfacher Taktstrich"),
+        MeasureData(
+            0, 2, 2, x_start=400, x_end=600, end_barline="Einfacher Taktstrich"
+        ),
+        MeasureData(0, 3, 3, x_start=600, x_end=780, end_barline="Wiederholung Ende"),
+        MeasureData(1, 1, 4, x_start=20, x_end=200, end_barline="Einfacher Taktstrich"),
+        MeasureData(
+            1, 2, 5, x_start=200, x_end=500, end_barline="Einfacher Taktstrich"
+        ),
+    ]
+
+    ctx = PipelineContext(
+        image=img,
+        processed_image=img.copy(),
+        staves=[staff0, staff1],
+        measures=measures,
+        metadata={"template_display_names": {60: "Wiederholungs Klammer"}},
+    )
+
+    stage = VoltaDetectionStage()
+    result = stage.process(ctx)
+
+    m3 = [m for m in result.measures if m.global_measure_number == 3][0]
+    m4 = [m for m in result.measures if m.global_measure_number == 4][0]
+
+    assert m3.volta_number == 1
+    assert m4.volta_number == 2
+    assert m3.volta_group_id == m4.volta_group_id
+
+
+def test_volta_validate():
+    from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
+
+    stage = VoltaDetectionStage()
+
+    ctx = PipelineContext(image=None, processed_image=None)
+    assert stage.validate(ctx) is False
+
+    img = np.zeros((100, 100), dtype=np.uint8)
+    ctx = PipelineContext(image=img, processed_image=img)
+    assert stage.validate(ctx) is False
+
+    staff = StaffData(
+        staff_index=0,
+        y_top=0,
+        y_bottom=100,
+        line_positions=[20, 30, 40, 50, 60],
+        line_spacing=10.0,
+    )
+    ctx = PipelineContext(image=img, processed_image=img, staves=[staff])
+    assert stage.validate(ctx) is True

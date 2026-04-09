@@ -6,6 +6,14 @@ import math
 
 import numpy as np
 
+from mv_hofki.services.scanner.stages.base import (
+    MeasureData,
+    PipelineContext,
+    ProcessingStage,
+    SymbolData,
+)
+from mv_hofki.services.scanner.stages.utils import expand_to_connected
+
 # Barline names that indicate a repeat boundary
 _REPEAT_BARLINES = {
     "Wiederholung Ende",
@@ -143,9 +151,11 @@ def _finalize_group(
     if height < min_height:
         return
 
-    # Check horizontality: midpoint drift vs height
-    first_mid = (group[0][1] + group[0][2]) / 2
-    last_mid = (group[-1][1] + group[-1][2]) / 2
+    # Check horizontality: right-edge drift vs height.
+    # Using the right edge (x_end) rather than midpoint avoids false rejects
+    # when a hook pixel slightly shifts the left boundary on one row.
+    first_mid = group[0][2]
+    last_mid = group[-1][2]
     drift = abs(last_mid - first_mid)
     max_drift = math.tan(math.radians(_MAX_ANGLE_DEG)) * height
     if drift > max_drift:
@@ -195,3 +205,156 @@ def _scan_for_horizontal_lines(
             runs_by_row[y] = [(sx + x_start, ex + x_start) for sx, ex in runs]
 
     return _group_runs_into_lines(runs_by_row, min_height)
+
+
+class VoltaDetectionStage(ProcessingStage):
+    """Detect volta brackets above staves via run-length scanning,
+    seeded from repeat barline positions."""
+
+    name = "volta_detection"
+
+    def process(self, ctx: PipelineContext) -> PipelineContext:
+        binary = ctx.processed_image
+        if binary is None:
+            return ctx
+
+        staves = sorted(ctx.staves, key=lambda s: s.staff_index)
+        staff_by_index = {s.staff_index: s for s in staves}
+
+        # Look up template ID for "Wiederholungs Klammer"
+        display_names: dict[int, str] = ctx.metadata.get("template_display_names", {})
+        bracket_id: int | None = None
+        for tid, name in display_names.items():
+            if name == "Wiederholungs Klammer":
+                bracket_id = tid
+                break
+
+        # Build ordered list of all measures
+        all_measures = sorted(ctx.measures, key=lambda m: (m.staff_index, m.x_start))
+
+        # Find repeat-end measures and their neighbours
+        repeat_pairs: list[tuple[MeasureData | None, MeasureData | None, int]] = []
+        volta_group_id = 0
+
+        for idx, m in enumerate(all_measures):
+            if m.end_barline not in _REPEAT_BARLINES:
+                continue
+            volta_group_id += 1
+            # Measure before (the repeat measure itself) -> volta 1 candidate
+            before_m = m
+            # Measure after -> volta 2 candidate (may be on next staff)
+            after_m = all_measures[idx + 1] if idx + 1 < len(all_measures) else None
+            repeat_pairs.append((before_m, after_m, volta_group_id))
+
+        brackets: list[SymbolData] = []
+        debug_lines: list[dict] = []
+
+        for pair_before, pair_after, group_id in repeat_pairs:
+            candidates: list[tuple[int, MeasureData | None]] = [
+                (1, pair_before),
+                (2, pair_after),
+            ]
+            for volta_num, measure in candidates:
+                if measure is None:
+                    continue
+
+                staff = staff_by_index.get(measure.staff_index)
+                if staff is None:
+                    continue
+
+                ls = staff.line_spacing
+                top_line = min(staff.line_positions)
+                min_thickness = staff.line_thickness or 2
+
+                y_start = staff.y_top
+                y_end = top_line - int(ls)
+                if y_start >= y_end:
+                    continue
+
+                min_run_length = int(ls * 2)
+
+                line_candidates = _scan_for_horizontal_lines(
+                    binary,
+                    y_start=y_start,
+                    y_end=y_end,
+                    x_start=measure.x_start,
+                    x_end=measure.x_end,
+                    min_run_length=min_run_length,
+                    min_height=min_thickness,
+                )
+
+                for lx1, ly1, lx2, ly2 in line_candidates:
+                    debug_lines.append(
+                        {
+                            "x1": lx1,
+                            "y1": ly1,
+                            "x2": lx2,
+                            "y2": ly2,
+                            "staff_index": staff.staff_index,
+                        }
+                    )
+
+                    # Expand to full connected component
+                    bx1, by1, bx2, by2 = expand_to_connected(
+                        binary,
+                        lx1,
+                        ly1,
+                        lx2,
+                        ly2,
+                        y_start,
+                        y_end,
+                    )
+
+                    # Filter: must be wider than tall (factor 2)
+                    box_w = bx2 - bx1
+                    box_h = by2 - by1
+                    if box_h > 0 and box_w < box_h * 2:
+                        continue
+
+                    bottom_line_y = max(staff.line_positions)
+
+                    brackets.append(
+                        SymbolData(
+                            staff_index=staff.staff_index,
+                            x=bx1,
+                            y=by1,
+                            width=box_w,
+                            height=max(box_h, int(ls // 2)),
+                            staff_y_top=round((bottom_line_y - by1) / ls, 2),
+                            staff_y_bottom=round((bottom_line_y - by2) / ls, 2),
+                            staff_x_start=bx1,
+                            staff_x_end=bx2,
+                            matched_template_id=bracket_id,
+                            confidence=0.8,
+                        )
+                    )
+
+                    # Assign volta number to all overlapping measures
+                    for m in ctx.measures:
+                        if m.staff_index != staff.staff_index:
+                            continue
+                        if m.x_start < bx2 and m.x_end > bx1:
+                            m.volta_number = volta_num
+                            m.volta_group_id = group_id
+
+                    ctx.log(
+                        f"  Volta-Klammer {volta_num} erkannt: "
+                        f"System {staff.staff_index}, x={bx1}-{bx2}"
+                    )
+                    # Only use the first (longest) line candidate per measure
+                    break
+
+        # Add brackets to symbols list
+        for b in brackets:
+            b.sequence_order = len(ctx.symbols)
+            ctx.symbols.append(b)
+
+        ctx.metadata["volta_debug_lines"] = debug_lines
+        ctx.log(
+            f"Volta-Erkennung: {len(brackets)} Klammern, "
+            f"{len(debug_lines)} Linienkandidaten"
+        )
+        return ctx
+
+    def validate(self, ctx: PipelineContext) -> bool:
+        return ctx.processed_image is not None and len(ctx.staves) > 0
