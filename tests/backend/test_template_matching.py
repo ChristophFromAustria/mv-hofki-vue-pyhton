@@ -196,3 +196,92 @@ def test_below_staff_region_clamps_to_zero():
     # y_start = max(5,15,25,35,45) - 10 = 35, no clamping needed here
     assert y_start == 35
     assert y_end == 200
+
+
+def test_dynamic_template_scans_below_staff_region():
+    """A dynamic symbol placed between two staves is found via below_staff zone."""
+    spacing = 20
+    # Two staves: staff 0 lines at y=50..130, staff 1 lines at y=250..330
+    staff0 = StaffData(
+        staff_index=0,
+        y_top=10,
+        y_bottom=170,
+        line_positions=[50, 70, 90, 110, 130],
+        line_spacing=float(spacing),
+    )
+    staff1 = StaffData(
+        staff_index=1,
+        y_top=210,
+        y_bottom=370,
+        line_positions=[250, 270, 290, 310, 330],
+        line_spacing=float(spacing),
+    )
+
+    img = np.full((500, 400), 255, dtype=np.uint8)
+
+    # Place a dynamic symbol at y=180 (below staff0, above staff1)
+    # This is OUTSIDE staff0.y_bottom=170 so it would NOT be found
+    # without the below_staff zone.
+    symbol = np.full((30, 40), 255, dtype=np.uint8)
+    cv2.rectangle(symbol, (5, 5), (35, 25), 0, -1)
+    img[180:210, 100:140] = symbol
+
+    stage = TemplateMatchingStage(
+        variant_images=[symbol.copy()],
+        variant_template_ids=[50],
+        variant_heights=[1.5],
+        template_categories={50: "dynamic"},
+    )
+    ctx = PipelineContext(
+        image=img,
+        staves=[staff0, staff1],
+        config={"confidence_threshold": 0.5},
+        metadata={"template_categories": {50: "dynamic"}},
+    )
+    result = stage.process(ctx)
+
+    # Should find the dynamic between the staves
+    assert len(result.symbols) > 0
+    dynamic_hits = [s for s in result.symbols if s.matched_template_id == 50]
+    assert len(dynamic_hits) > 0
+    # Should be assigned to staff 0
+    assert dynamic_hits[0].staff_index == 0
+    # y should be near 180
+    assert any(170 <= s.y <= 215 for s in dynamic_hits)
+
+
+def test_non_dynamic_not_scanned_in_below_staff_region():
+    """Non-dynamic templates only scan the staff region, not below_staff."""
+    spacing = 20
+    staff0 = StaffData(
+        staff_index=0,
+        y_top=10,
+        y_bottom=170,
+        line_positions=[50, 70, 90, 110, 130],
+        line_spacing=float(spacing),
+    )
+
+    img = np.full((500, 400), 255, dtype=np.uint8)
+
+    # Place a note-like symbol at y=180 — outside staff region
+    symbol = np.full((30, 40), 255, dtype=np.uint8)
+    cv2.rectangle(symbol, (5, 5), (35, 25), 0, -1)
+    img[180:210, 100:140] = symbol
+
+    stage = TemplateMatchingStage(
+        variant_images=[symbol.copy()],
+        variant_template_ids=[1],
+        variant_heights=[1.5],
+        template_categories={1: "note"},
+    )
+    ctx = PipelineContext(
+        image=img,
+        staves=[staff0],
+        config={"confidence_threshold": 0.5},
+        metadata={"template_categories": {1: "note"}},
+    )
+    result = stage.process(ctx)
+
+    # Should NOT find anything — symbol is outside staff region
+    note_hits = [s for s in result.symbols if 170 <= s.y <= 215]
+    assert len(note_hits) == 0

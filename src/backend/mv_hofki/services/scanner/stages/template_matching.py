@@ -131,34 +131,70 @@ class TemplateMatchingStage(ProcessingStage):
             edge_img = cv2.Canny(img, canny_low, canny_high)
 
         raw_detections: list[SymbolData] = []
+        staff_indices, below_staff_indices = self._split_by_zone()
 
-        for staff in ctx.staves:
-            region = img[staff.y_top : staff.y_bottom, :]
-            edge_region: np.ndarray | None = None
-            if edge_img is not None:
-                edge_region = edge_img[staff.y_top : staff.y_bottom, :]
+        for si, staff in enumerate(ctx.staves):
+            next_staff = ctx.staves[si + 1] if si + 1 < len(ctx.staves) else None
 
-            all_indices = list(range(len(self._variant_images)))
-            raw_detections.extend(
-                self._match_templates_in_region(
-                    region=region,
-                    edge_region=edge_region,
-                    staff=staff,
-                    template_indices=all_indices,
-                    region_y_offset=staff.y_top,
-                    confidence_threshold=confidence_threshold,
-                    cv_method=cv_method,
-                    is_sqdiff=is_sqdiff,
-                    multi_scale_enabled=multi_scale_enabled,
-                    multi_scale_range=multi_scale_range,
-                    multi_scale_steps=multi_scale_steps,
-                    edge_matching_enabled=edge_matching_enabled,
-                    canny_low=canny_low,
-                    canny_high=canny_high,
-                    masked_matching_enabled=masked_matching_enabled,
-                    mask_threshold=mask_threshold,
+            # --- Zone 1: staff region (all non-dynamic templates) ---
+            if staff_indices:
+                region = img[staff.y_top : staff.y_bottom, :]
+                edge_region: np.ndarray | None = None
+                if edge_img is not None:
+                    edge_region = edge_img[staff.y_top : staff.y_bottom, :]
+
+                raw_detections.extend(
+                    self._match_templates_in_region(
+                        region=region,
+                        edge_region=edge_region,
+                        staff=staff,
+                        template_indices=staff_indices,
+                        region_y_offset=staff.y_top,
+                        confidence_threshold=confidence_threshold,
+                        cv_method=cv_method,
+                        is_sqdiff=is_sqdiff,
+                        multi_scale_enabled=multi_scale_enabled,
+                        multi_scale_range=multi_scale_range,
+                        multi_scale_steps=multi_scale_steps,
+                        edge_matching_enabled=edge_matching_enabled,
+                        canny_low=canny_low,
+                        canny_high=canny_high,
+                        masked_matching_enabled=masked_matching_enabled,
+                        mask_threshold=mask_threshold,
+                    )
                 )
-            )
+
+            # --- Zone 2: below_staff region (dynamic templates only) ---
+            if below_staff_indices:
+                bs_start, bs_end = self._compute_below_staff_region(
+                    staff, next_staff, img.shape[0]
+                )
+                if bs_end > bs_start:
+                    bs_region = img[bs_start:bs_end, :]
+                    bs_edge_region: np.ndarray | None = None
+                    if edge_img is not None:
+                        bs_edge_region = edge_img[bs_start:bs_end, :]
+
+                    raw_detections.extend(
+                        self._match_templates_in_region(
+                            region=bs_region,
+                            edge_region=bs_edge_region,
+                            staff=staff,
+                            template_indices=below_staff_indices,
+                            region_y_offset=bs_start,
+                            confidence_threshold=confidence_threshold,
+                            cv_method=cv_method,
+                            is_sqdiff=is_sqdiff,
+                            multi_scale_enabled=multi_scale_enabled,
+                            multi_scale_range=multi_scale_range,
+                            multi_scale_steps=multi_scale_steps,
+                            edge_matching_enabled=edge_matching_enabled,
+                            canny_low=canny_low,
+                            canny_high=canny_high,
+                            masked_matching_enabled=masked_matching_enabled,
+                            mask_threshold=mask_threshold,
+                        )
+                    )
 
         # Read NMS config
         nms_method: str = str(self._cfg(ctx, "nms_method", "standard"))
