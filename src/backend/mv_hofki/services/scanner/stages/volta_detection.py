@@ -154,9 +154,9 @@ def _finalize_group(
     # Check horizontality: right-edge drift vs height.
     # Using the right edge (x_end) rather than midpoint avoids false rejects
     # when a hook pixel slightly shifts the left boundary on one row.
-    first_mid = group[0][2]
-    last_mid = group[-1][2]
-    drift = abs(last_mid - first_mid)
+    first_right_edge = group[0][2]
+    last_right_edge = group[-1][2]
+    drift = abs(last_right_edge - first_right_edge)
     max_drift = math.tan(math.radians(_MAX_ANGLE_DEG)) * height
     if drift > max_drift:
         return
@@ -341,7 +341,7 @@ class VoltaDetectionStage(ProcessingStage):
                         f"  Volta-Klammer {volta_num} erkannt: "
                         f"System {staff.staff_index}, x={bx1}-{bx2}"
                     )
-                    # Only use the first (longest) line candidate per measure
+                    # Only use the first (topmost) line candidate per measure
                     break
 
         # Add brackets to symbols list
