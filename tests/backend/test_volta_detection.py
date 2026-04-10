@@ -65,19 +65,26 @@ def test_group_runs_simple_horizontal_line():
     assert line[3] == 12  # y_end
 
 
-def test_group_runs_rejects_non_horizontal():
-    """Runs that drift too much in X are rejected (>2 degree drift)."""
+def test_group_runs_rejects_length_mismatch():
+    """A short fragment does not merge with a much longer run on the next row."""
     from mv_hofki.services.scanner.stages.volta_detection import (
         _group_runs_into_lines,
     )
 
-    # 20 rows where the midpoint drifts 20px — that's atan(20/20)=45 degrees
-    runs_by_row = {}
-    for i in range(20):
-        start = 50 + i
-        runs_by_row[i] = [(start, start + 100)]
+    # Row 10: short fragment (50px), Row 11-13: full line (300px)
+    # The fragment is <50% of the full line length, so they should not merge.
+    # The full line rows form their own group.
+    runs_by_row = {
+        10: [(100, 149)],  # 50px
+        11: [(50, 349)],  # 300px
+        12: [(50, 349)],
+        13: [(50, 349)],
+    }
     lines = _group_runs_into_lines(runs_by_row, min_height=2)
-    assert len(lines) == 0
+    assert len(lines) == 1
+    # The group should be rows 11-13 (the full line), not 10-13
+    assert lines[0][1] == 11  # y_start
+    assert lines[0][3] == 13  # y_end
 
 
 def test_group_runs_two_separate_lines():

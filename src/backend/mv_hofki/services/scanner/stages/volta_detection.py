@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 
 from mv_hofki.services.scanner.stages.base import (
@@ -48,10 +46,6 @@ def _find_runs(row: np.ndarray, min_length: int) -> list[tuple[int, int]]:
         else:
             i += 1
     return runs
-
-
-# Maximum angle deviation from horizontal (degrees)
-_MAX_ANGLE_DEG = 2.0
 
 
 def _group_runs_into_lines(
@@ -119,15 +113,23 @@ def _best_overlap_run(
     row_runs: list[tuple[int, int]],
     used: set[int],
 ) -> int | None:
-    """Find the run in row_runs with >=80% X overlap to (last_sx, last_ex)."""
+    """Find the run in row_runs with >=80% X overlap to (last_sx, last_ex).
+
+    Also rejects runs whose length differs by more than 2× from the
+    previous run, preventing short fragments (e.g. digits on a bracket)
+    from merging with the full bracket line.
+    """
     last_len = last_ex - last_sx + 1
     best_idx = None
     best_overlap = 0
     for idx, (sx, ex) in enumerate(row_runs):
         if idx in used:
             continue
-        overlap = max(0, min(last_ex, ex) - max(last_sx, sx) + 1)
         run_len = ex - sx + 1
+        # Reject if lengths differ by more than factor 2
+        if run_len > last_len * 2 or last_len > run_len * 2:
+            continue
+        overlap = max(0, min(last_ex, ex) - max(last_sx, sx) + 1)
         min_len = min(last_len, run_len)
         if min_len > 0 and overlap >= min_len * 0.8 and overlap > best_overlap:
             best_overlap = overlap
@@ -149,16 +151,6 @@ def _finalize_group(
     height = y_end - y_start + 1
 
     if height < min_height:
-        return
-
-    # Check horizontality: right-edge drift vs height.
-    # Using the right edge (x_end) rather than midpoint avoids false rejects
-    # when a hook pixel slightly shifts the left boundary on one row.
-    first_right_edge = group[0][2]
-    last_right_edge = group[-1][2]
-    drift = abs(last_right_edge - first_right_edge)
-    max_drift = math.tan(math.radians(_MAX_ANGLE_DEG)) * height
-    if drift > max_drift:
         return
 
     x_start = min(sx for _, sx, _ in group)
@@ -264,8 +256,6 @@ class VoltaDetectionStage(ProcessingStage):
 
                 ls = staff.line_spacing
                 top_line = min(staff.line_positions)
-                min_thickness = staff.line_thickness or 2
-
                 y_start = staff.y_top
                 y_end = top_line - int(ls)
                 if y_start >= y_end:
@@ -280,7 +270,7 @@ class VoltaDetectionStage(ProcessingStage):
                     x_start=measure.x_start,
                     x_end=measure.x_end,
                     min_run_length=min_run_length,
-                    min_height=min_thickness,
+                    min_height=2,
                 )
 
                 for lx1, ly1, lx2, ly2 in line_candidates:
