@@ -7,6 +7,8 @@ WORKSPACE="$(pwd)"
 # Enable mouse scrolling in tmux sessions
 tmux set -g mouse on 2>/dev/null || true
 
+(cd src/frontend && VITE_BASE_PATH=${VITE_BASE_PATH:-/} npx vite build)
+
 # Start backend server in tmux
 tmux new-session -d -s server \
   "cd $WORKSPACE && PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 --reload"
