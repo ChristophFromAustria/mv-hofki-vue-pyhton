@@ -70,6 +70,7 @@ const avgLineThickness = computed(() => {
   if (!thicknesses.length) return null;
   return Math.round(thicknesses.reduce((a, b) => a + b, 0) / thicknesses.length);
 });
+const cacheVersion = computed(() => scan.value?.updated_at ?? null);
 const captureBox = ref(null);
 const showCaptureDialog = ref(false);
 const heightEditable = ref(false);
@@ -237,10 +238,6 @@ async function onAnalysisDone() {
       const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
       const foundScan = scansData.find((s) => String(s.id) === String(props.scanId));
       if (foundScan) {
-        // Cache-bust the processed image so the browser loads the fresh version
-        if (foundScan.processed_image_path) {
-          foundScan.processed_image_path += "?t=" + Date.now();
-        }
         scan.value = foundScan;
         break;
       }
@@ -297,8 +294,8 @@ async function startPreview() {
       adjustments_json: JSON.stringify(adjustments.value),
     });
     if (result.processed_image_path && scan.value) {
-      // Append cache-buster so the browser fetches the freshly generated image
-      scan.value.processed_image_path = result.processed_image_path + "?t=" + Date.now();
+      scan.value.processed_image_path = result.processed_image_path;
+      scan.value.updated_at = new Date().toISOString();
     }
     viewMode.value = "binary";
     showStaves.value = false;
@@ -659,6 +656,7 @@ onUnmounted(() => {
             :show-symbols="true"
             :capture-mode="captureMode"
             :view-mode="viewMode"
+            :cache-version="cacheVersion"
             :measures="measures"
             :show-measures="showMeasures"
             :show-voltas="showVoltas"
