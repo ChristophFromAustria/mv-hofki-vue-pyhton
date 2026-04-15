@@ -423,3 +423,115 @@ def test_measure_hitbox_overlap_multiple_hitboxes():
         (150, 0, 350, 10, 0),  # 75% — sufficient
     ]
     assert _measure_hitbox_overlap(m, hitboxes, 0.3) is True
+
+
+def test_assign_volta_spanning_bracket():
+    """One bracket spanning across repeat assigns volta 1 left, volta 2 right."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _assign_volta_numbers,
+    )
+
+    measures = [
+        MeasureData(0, 1, 1, x_start=100, x_end=300),
+        MeasureData(0, 2, 2, x_start=300, x_end=500, end_barline="Wiederholung Ende"),
+        MeasureData(0, 3, 3, x_start=500, x_end=700),
+    ]
+    # One hitbox spanning 150–650 on staff 0
+    hitboxes = [(150, 0, 650, 10, 0)]
+
+    _assign_volta_numbers(measures, hitboxes, measures[1], measures[2], 1, 0.3)
+
+    assert measures[0].volta_number == 1
+    assert measures[0].volta_group_id == 1
+    assert measures[1].volta_number == 1
+    assert measures[1].volta_group_id == 1
+    assert measures[2].volta_number == 2
+    assert measures[2].volta_group_id == 1
+
+
+def test_assign_volta_separate_brackets():
+    """Two separate hitboxes assign volta 1 and 2 correctly."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _assign_volta_numbers,
+    )
+
+    measures = [
+        MeasureData(0, 1, 1, x_start=100, x_end=300),
+        MeasureData(0, 2, 2, x_start=300, x_end=500, end_barline="Wiederholung Ende"),
+        MeasureData(0, 3, 3, x_start=500, x_end=700),
+    ]
+    hitboxes = [
+        (280, 0, 510, 10, 0),  # overlaps m2 (100%) and m3 (tiny)
+        (490, 0, 710, 10, 0),  # overlaps m3 (100%)
+    ]
+
+    _assign_volta_numbers(measures, hitboxes, measures[1], measures[2], 1, 0.3)
+
+    assert measures[0].volta_number is None  # no overlap
+    assert measures[1].volta_number == 1
+    assert measures[2].volta_number == 2
+
+
+def test_assign_volta_walk_stops_at_gap():
+    """Walk stops when a measure has insufficient overlap."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _assign_volta_numbers,
+    )
+
+    measures = [
+        MeasureData(0, 1, 1, x_start=100, x_end=300),  # no overlap
+        MeasureData(0, 2, 2, x_start=300, x_end=500),  # no overlap
+        MeasureData(0, 3, 3, x_start=500, x_end=700, end_barline="Wiederholung Ende"),
+        MeasureData(0, 4, 4, x_start=700, x_end=900),
+    ]
+    # Hitbox only over measures 3 and 4
+    hitboxes = [(480, 0, 920, 10, 0)]
+
+    _assign_volta_numbers(measures, hitboxes, measures[2], measures[3], 1, 0.3)
+
+    assert measures[0].volta_number is None
+    assert measures[1].volta_number is None  # walk stopped here
+    assert measures[2].volta_number == 1
+    assert measures[3].volta_number == 2
+
+
+def test_assign_volta_cross_staff():
+    """Volta 2 assigned on different staff via forward walk."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _assign_volta_numbers,
+    )
+
+    measures = [
+        MeasureData(0, 1, 1, x_start=100, x_end=400),
+        MeasureData(0, 2, 2, x_start=400, x_end=700, end_barline="Wiederholung Ende"),
+        MeasureData(1, 1, 3, x_start=50, x_end=300),
+        MeasureData(1, 2, 4, x_start=300, x_end=600),
+    ]
+    hitboxes = [
+        (350, 0, 700, 10, 0),  # staff 0
+        (50, 0, 300, 10, 1),  # staff 1
+    ]
+
+    _assign_volta_numbers(measures, hitboxes, measures[1], measures[2], 1, 0.3)
+
+    assert measures[0].volta_number is None  # insufficient overlap
+    assert measures[1].volta_number == 1
+    assert measures[2].volta_number == 2
+    assert measures[3].volta_number is None  # no overlap on staff 1
+
+
+def test_assign_volta_no_hitboxes():
+    """No hitboxes means no assignment."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _assign_volta_numbers,
+    )
+
+    measures = [
+        MeasureData(0, 1, 1, x_start=100, x_end=300, end_barline="Wiederholung Ende"),
+        MeasureData(0, 2, 2, x_start=300, x_end=500),
+    ]
+
+    _assign_volta_numbers(measures, [], measures[0], measures[1], 1, 0.3)
+
+    assert measures[0].volta_number is None
+    assert measures[1].volta_number is None

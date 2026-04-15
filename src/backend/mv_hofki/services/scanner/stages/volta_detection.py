@@ -273,6 +273,78 @@ def _measure_hitbox_overlap(
     return False
 
 
+def _assign_volta_numbers(
+    measures: list[MeasureData],
+    hitboxes: list[tuple[int, int, int, int, int]],
+    pair_before: MeasureData,
+    pair_after: MeasureData | None,
+    group_id: int,
+    min_overlap: float,
+) -> None:
+    """Assign volta numbers by walking outward from the repeat barline.
+
+    Starting at the repeat measure, walks backwards assigning volta 1,
+    then forwards assigning volta 2.  Stops in each direction when a
+    measure has insufficient overlap with the collected hitboxes.
+    """
+    if not hitboxes:
+        return
+
+    # --- Volta 1: walk backwards on pair_before's staff ---
+    staff_measures = sorted(
+        [m for m in measures if m.staff_index == pair_before.staff_index],
+        key=lambda m: m.x_start,
+    )
+    repeat_idx: int | None = None
+    for i, m in enumerate(staff_measures):
+        if m is pair_before:
+            repeat_idx = i
+            break
+
+    if repeat_idx is not None:
+        for i in range(repeat_idx, -1, -1):
+            m = staff_measures[i]
+            if _measure_hitbox_overlap(m, hitboxes, min_overlap):
+                m.volta_number = 1
+                m.volta_group_id = group_id
+            else:
+                break
+
+    # --- Volta 2: walk forwards ---
+    if pair_after is None:
+        return
+
+    if pair_after.staff_index == pair_before.staff_index:
+        # Same staff — continue from repeat_idx + 1
+        if repeat_idx is not None:
+            for i in range(repeat_idx + 1, len(staff_measures)):
+                m = staff_measures[i]
+                if _measure_hitbox_overlap(m, hitboxes, min_overlap):
+                    m.volta_number = 2
+                    m.volta_group_id = group_id
+                else:
+                    break
+    else:
+        # Cross-staff — walk forwards on pair_after's staff
+        after_staff_measures = sorted(
+            [m for m in measures if m.staff_index == pair_after.staff_index],
+            key=lambda m: m.x_start,
+        )
+        after_idx: int | None = None
+        for i, m in enumerate(after_staff_measures):
+            if m is pair_after:
+                after_idx = i
+                break
+        if after_idx is not None:
+            for i in range(after_idx, len(after_staff_measures)):
+                m = after_staff_measures[i]
+                if _measure_hitbox_overlap(m, hitboxes, min_overlap):
+                    m.volta_number = 2
+                    m.volta_group_id = group_id
+                else:
+                    break
+
+
 class VoltaDetectionStage(ProcessingStage):
     """Detect volta brackets above staves via run-length scanning,
     seeded from repeat barline positions."""
