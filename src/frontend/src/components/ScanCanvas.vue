@@ -23,21 +23,23 @@ const props = defineProps({
   showSymbols: { type: Boolean, default: true },
   captureMode: { type: Boolean, default: false },
   viewMode: { type: String, default: "original" },
+  cacheVersion: { type: String, default: null },
 });
 
 const emit = defineEmits(["select-symbol", "capture-box", "select-text-region"]);
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
-function resolveImageUrl(path) {
+function resolveImageUrl(path, cacheBust = null) {
   if (!path) return null;
   const relative = path.replace(/^data\/scans\//, "");
-  return `${BASE}/scans/${relative}`;
+  const url = `${BASE}/scans/${relative}`;
+  return cacheBust ? `${url}?v=${cacheBust}` : url;
 }
 
 const activeImageUrl = computed(() => {
   if (props.viewMode === "binary" && props.processedImagePath) {
-    return resolveImageUrl(props.processedImagePath);
+    return resolveImageUrl(props.processedImagePath, props.cacheVersion);
   }
   return resolveImageUrl(props.imagePath);
 });
