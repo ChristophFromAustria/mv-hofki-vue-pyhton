@@ -356,6 +356,8 @@ class VoltaDetectionStage(ProcessingStage):
         if binary is None:
             return ctx
 
+        min_overlap = float(ctx.config.get("volta_min_overlap_pct", 0.3))
+
         staves = sorted(ctx.staves, key=lambda s: s.staff_index)
         staff_by_index = {s.staff_index: s for s in staves}
 
@@ -371,7 +373,7 @@ class VoltaDetectionStage(ProcessingStage):
         all_measures = sorted(ctx.measures, key=lambda m: (m.staff_index, m.x_start))
 
         # Find repeat-end measures and their neighbours
-        repeat_pairs: list[tuple[MeasureData | None, MeasureData | None, int]] = []
+        repeat_pairs: list[tuple[MeasureData, MeasureData | None, int]] = []
         volta_group_id = 0
 
         for idx, m in enumerate(all_measures):
@@ -392,6 +394,7 @@ class VoltaDetectionStage(ProcessingStage):
                 (1, pair_before),
                 (2, pair_after),
             ]
+            hitboxes: list[tuple[int, int, int, int, int]] = []
             for volta_num, measure in candidates:
                 if measure is None:
                     continue
@@ -480,13 +483,7 @@ class VoltaDetectionStage(ProcessingStage):
                         )
                     )
 
-                    # Assign volta number to all overlapping measures
-                    for m in ctx.measures:
-                        if m.staff_index != staff.staff_index:
-                            continue
-                        if m.x_start < bx2 and m.x_end > bx1:
-                            m.volta_number = volta_num
-                            m.volta_group_id = group_id
+                    hitboxes.append((bx1, by1, bx2, by2, staff.staff_index))
 
                     ctx.log(
                         f"  Volta-Klammer {volta_num} erkannt: "
@@ -494,6 +491,15 @@ class VoltaDetectionStage(ProcessingStage):
                     )
                     # Only use the first (topmost) line candidate per measure
                     break
+
+            _assign_volta_numbers(
+                ctx.measures,
+                hitboxes,
+                pair_before,
+                pair_after,
+                group_id,
+                min_overlap,
+            )
 
         # Add brackets to symbols list
         for b in brackets:
