@@ -342,6 +342,18 @@ SCANNER_CONFIG_REGISTRY: list[dict] = [
         "step": 0.05,
         "sort_order": 30,
     },
+    #  ── Nachbearbeitung \ Volta-Erkennung ───────────────────────────
+    {
+        "key": "volta_min_overlap_pct",
+        "default_value": "0.3",
+        "type": "number",
+        "label": "Min. Überlappung Takt/Klammer (%)",
+        "group_path": "Nachbearbeitung\\Volta-Erkennung",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.05,
+        "sort_order": 10,
+    },
     # ═══════════════════════════════════════════════════════════════════
     #  LilyPond Layout
     # ═══════════════════════════════════════════════════════════════════
