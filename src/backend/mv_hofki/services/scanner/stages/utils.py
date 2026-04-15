@@ -14,6 +14,7 @@ def expand_to_connected(
     y_max: int,
     region_top: int,
     region_bottom: int,
+    erase: bool = False,
 ) -> tuple[int, int, int, int]:
     """Expand a bounding box to cover all connected black pixels.
 
@@ -54,6 +55,10 @@ def expand_to_connected(
 
     # Find the bounding box of all pixels with those labels
     mask = np.isin(labels, list(touching_labels))
+
+    if erase:
+        binary[roi_y1:roi_y2, :][mask] = 255
+
     coords = cv2.findNonZero(mask.astype(np.uint8))
     if coords is None:
         return x_min, y_min, x_max, y_max

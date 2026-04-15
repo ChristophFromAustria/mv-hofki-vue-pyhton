@@ -376,3 +376,50 @@ def test_volta_validate():
     )
     ctx = PipelineContext(image=img, processed_image=img, staves=[staff])
     assert stage.validate(ctx) is True
+
+
+def test_measure_hitbox_overlap_sufficient():
+    """Measure with 50% coverage passes 30% threshold."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _measure_hitbox_overlap,
+    )
+
+    m = MeasureData(0, 1, 1, x_start=100, x_end=300)
+    hitboxes = [(200, 0, 400, 10, 0)]  # covers x=200-300 = 50%
+    assert _measure_hitbox_overlap(m, hitboxes, 0.3) is True
+
+
+def test_measure_hitbox_overlap_insufficient():
+    """Measure with 10% coverage fails 30% threshold."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _measure_hitbox_overlap,
+    )
+
+    m = MeasureData(0, 1, 1, x_start=100, x_end=300)
+    hitboxes = [(280, 0, 400, 10, 0)]  # covers x=280-300 = 10%
+    assert _measure_hitbox_overlap(m, hitboxes, 0.3) is False
+
+
+def test_measure_hitbox_overlap_wrong_staff():
+    """Hitbox on different staff is ignored."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _measure_hitbox_overlap,
+    )
+
+    m = MeasureData(0, 1, 1, x_start=100, x_end=300)
+    hitboxes = [(100, 0, 300, 10, 1)]  # staff 1, not staff 0
+    assert _measure_hitbox_overlap(m, hitboxes, 0.3) is False
+
+
+def test_measure_hitbox_overlap_multiple_hitboxes():
+    """Passes if ANY hitbox on the same staff has enough overlap."""
+    from mv_hofki.services.scanner.stages.volta_detection import (
+        _measure_hitbox_overlap,
+    )
+
+    m = MeasureData(0, 1, 1, x_start=100, x_end=300)
+    hitboxes = [
+        (280, 0, 400, 10, 0),  # 10% — insufficient
+        (150, 0, 350, 10, 0),  # 75% — sufficient
+    ]
+    assert _measure_hitbox_overlap(m, hitboxes, 0.3) is True

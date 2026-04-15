@@ -199,6 +199,80 @@ def _scan_for_horizontal_lines(
     return _group_runs_into_lines(runs_by_row, min_height)
 
 
+def _bridge_bracket_gap(
+    binary: np.ndarray,
+    bx1: int,
+    by1: int,
+    bx2: int,
+    by2: int,
+    line_y1: int,
+    line_y2: int,
+    measure_x_end: int,
+    region_y_start: int,
+    region_y_end: int,
+) -> tuple[int, int, int, int]:
+    """Extend a bracket bounding box by bridging gaps in the horizontal line.
+
+    Scans from the bracket's right edge to the measure's right edge in the
+    horizontal line's Y range.  Any black pixels found are expanded via
+    connected-component analysis and merged into the bracket box.
+    """
+    search_x = bx2
+    while search_x < measure_x_end:
+        scan_slice = binary[line_y1 : line_y2 + 1, search_x:measure_x_end]
+        col_has_black = np.any(scan_slice < _BLACK_THRESHOLD, axis=0)
+        if not np.any(col_has_black):
+            break
+
+        seed_x = search_x + int(np.argmax(col_has_black))
+        gx1, gy1, gx2, gy2 = expand_to_connected(
+            binary,
+            seed_x,
+            line_y1,
+            seed_x + 1,
+            line_y2 + 1,
+            region_y_start,
+            region_y_end,
+            erase=True,
+        )
+
+        bx1 = min(bx1, gx1)
+        by1 = min(by1, gy1)
+        bx2 = max(bx2, gx2)
+        by2 = max(by2, gy2)
+
+        if gx2 <= search_x:
+            break
+        search_x = gx2
+
+    return bx1, by1, bx2, by2
+
+
+def _measure_hitbox_overlap(
+    measure: MeasureData,
+    hitboxes: list[tuple[int, int, int, int, int]],
+    min_overlap: float,
+) -> bool:
+    """Check if a measure has sufficient X overlap with any hitbox on its staff.
+
+    Parameters
+    ----------
+    measure : the measure to check
+    hitboxes : list of (x1, y1, x2, y2, staff_index) bounding boxes
+    min_overlap : minimum overlap ratio (0.0–1.0) relative to measure width
+    """
+    m_width = measure.x_end - measure.x_start
+    if m_width <= 0:
+        return False
+    for bx1, _by1, bx2, _by2, si in hitboxes:
+        if si != measure.staff_index:
+            continue
+        overlap = max(0, min(measure.x_end, bx2) - max(measure.x_start, bx1))
+        if overlap / m_width >= min_overlap:
+            return True
+    return False
+
+
 class VoltaDetectionStage(ProcessingStage):
     """Detect volta brackets above staves via run-length scanning,
     seeded from repeat barline positions."""
@@ -284,13 +358,28 @@ class VoltaDetectionStage(ProcessingStage):
                         }
                     )
 
-                    # Expand to full connected component
+                    # Expand to full connected component and erase pixels
                     bx1, by1, bx2, by2 = expand_to_connected(
                         binary,
                         lx1,
                         ly1,
                         lx2,
                         ly2,
+                        y_start,
+                        y_end,
+                        erase=True,
+                    )
+
+                    # Bridge gaps: extend bracket to measure end
+                    bx1, by1, bx2, by2 = _bridge_bracket_gap(
+                        binary,
+                        bx1,
+                        by1,
+                        bx2,
+                        by2,
+                        ly1,
+                        ly2,
+                        measure.x_end,
                         y_start,
                         y_end,
                     )
