@@ -6,6 +6,7 @@ const props = defineProps({
   lilypondCode: { type: String, default: "" },
   pdfPath: { type: String, default: null },
   pngPaths: { type: Array, default: () => [] },
+  cacheVersion: { type: String, default: null },
 });
 
 const emit = defineEmits(["close"]);
@@ -16,15 +17,16 @@ const activeTab = ref("preview");
 const pngWidth = ref(0);
 const pngHeight = ref(0);
 
-function assetUrl(path) {
+function assetUrl(path, cacheBust = null) {
   if (!path) return null;
   const relative = path.replace(/^data\/scans\//, "");
-  return `${BASE}/scans/${relative}`;
+  const url = `${BASE}/scans/${relative}`;
+  return cacheBust ? `${url}?v=${cacheBust}` : url;
 }
 
 const previewUrl = computed(() => {
   if (!props.pngPaths.length) return null;
-  return assetUrl(props.pngPaths[0]);
+  return assetUrl(props.pngPaths[0], props.cacheVersion);
 });
 
 function onPngLoad(e) {

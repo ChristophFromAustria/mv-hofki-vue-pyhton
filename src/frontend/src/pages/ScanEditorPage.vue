@@ -783,6 +783,7 @@ onUnmounted(() => {
       :lilypond-code="lilypondCode"
       :pdf-path="lilypondPdfPath"
       :png-paths="lilypondPngPaths"
+      :cache-version="cacheVersion"
       @close="showLilypond = false"
     />
 
