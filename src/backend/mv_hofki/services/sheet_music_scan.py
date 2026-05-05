@@ -258,10 +258,6 @@ async def run_pipeline(
 
     stages.append(TextMaskingStage())
 
-    from mv_hofki.services.scanner.stages.hairpin_detection import HairpinDetectionStage
-
-    stages.append(HairpinDetectionStage())
-
     from mv_hofki.services.scanner.stages.measure_detection import MeasureDetectionStage
 
     stages.append(MeasureDetectionStage())
@@ -269,6 +265,10 @@ async def run_pipeline(
     from mv_hofki.services.scanner.stages.volta_detection import VoltaDetectionStage
 
     stages.append(VoltaDetectionStage())
+
+    from mv_hofki.services.scanner.stages.hairpin_detection import HairpinDetectionStage
+
+    stages.append(HairpinDetectionStage())
 
     import asyncio
 

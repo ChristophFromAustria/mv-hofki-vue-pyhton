@@ -4,18 +4,16 @@ set -euo pipefail
 
 WORKSPACE="$(pwd)"
 
-# Enable mouse scrolling in tmux sessions
-tmux set -g mouse on 2>/dev/null || true
-
-(cd src/frontend && VITE_BASE_PATH=${VITE_BASE_PATH:-/} npx vite build)
+# Ensure frontend dependencies are installed (symlinks can break on container rebuild)
+# (cd src/frontend && npm install && VITE_BASE_PATH=${VITE_BASE_PATH:-/} node node_modules/vite/bin/vite.js build)
 
 # Start backend server in tmux
 tmux new-session -d -s server \
-  "cd $WORKSPACE && PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 --reload"
+  "cd src/frontend && npm install && VITE_BASE_PATH=${VITE_BASE_PATH:-/} node node_modules/vite/bin/vite.js build && cd $WORKSPACE && PYTHONPATH=src/backend uvicorn mv_hofki.api.app:app --host 0.0.0.0 --port 8000 --reload"
 
 # Start frontend watcher in tmux
 tmux new-session -d -s frontend \
-  "cd $WORKSPACE/src/frontend && VITE_BASE_PATH=${VITE_BASE_PATH:-/} npx vite build --watch"
+  "cd $WORKSPACE/src/frontend && VITE_BASE_PATH=${VITE_BASE_PATH:-/} node node_modules/vite/bin/vite.js build --watch"
 
 # Start web terminal (ttyd) in tmux
 if command -v ttyd &>/dev/null; then

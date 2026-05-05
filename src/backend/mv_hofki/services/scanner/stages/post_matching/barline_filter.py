@@ -40,10 +40,11 @@ class BarlineFilter:
             staff = staff_map.get(sym.staff_index)
             if staff is None:
                 continue
-            center_y = sym.y + sym.height / 2
-            allowed_top = staff.y_top - staff.line_spacing
-            allowed_bottom = staff.y_bottom + staff.line_spacing
-            if center_y < allowed_top or center_y > allowed_bottom:
+            top_line = staff.line_positions[0]
+            bottom_line = staff.line_positions[-1]
+            allowed_top = top_line - staff.line_spacing
+            allowed_bottom = bottom_line + staff.line_spacing
+            if sym.y < allowed_top or (sym.y + sym.height) > allowed_bottom:
                 sym.filtered = True
                 sym.filter_reason = "barline_position_outside_staff"
 

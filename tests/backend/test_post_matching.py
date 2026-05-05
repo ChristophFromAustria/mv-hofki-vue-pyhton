@@ -39,7 +39,7 @@ def test_template_matching_exposes_display_names():
     assert result.metadata["template_display_names"] == {42: "Einfacher Taktstrich"}
 
 
-def _make_ctx(symbols, staves=None, display_names=None):
+def _make_ctx(symbols, staves=None, display_names=None, categories=None):
     """Helper to create a PipelineContext for post-matching tests."""
     if staves is None:
         staves = [
@@ -51,11 +51,14 @@ def _make_ctx(symbols, staves=None, display_names=None):
                 line_spacing=25.0,
             )
         ]
+    metadata = {"template_display_names": display_names or {}}
+    if categories is not None:
+        metadata["template_categories"] = categories
     ctx = PipelineContext(
         image=np.full((400, 600), 255, dtype=np.uint8),
         staves=staves,
         symbols=symbols,
-        metadata={"template_display_names": display_names or {}},
+        metadata=metadata,
         config={},
     )
     return ctx
@@ -271,15 +274,15 @@ def test_barline_filter_ignores_non_barline_symbols():
 
 def test_barline_position_at_boundary():
     """A barline right at the line_spacing boundary should NOT be filtered."""
-    # Staff y_top=100, y_bottom=200, line_spacing=25
-    # Allowed range: 75 to 225
-    # Symbol center at y=75 (exactly at boundary)
+    # line_positions[0]=100, line_positions[-1]=200, line_spacing=25
+    # Allowed hitbox range: [75, 225]
+    # Hitbox top=75 (exactly at boundary), bottom=175
     sym = SymbolData(
         staff_index=0,
         x=50,
-        y=55,
+        y=75,
         width=5,
-        height=40,
+        height=100,
         matched_template_id=1,
         confidence=0.8,
     )
@@ -289,7 +292,7 @@ def test_barline_position_at_boundary():
     )
     stage = PostMatchingStage()
     result = stage.process(ctx)
-    # center_y = 55 + 20 = 75 which equals allowed_top → NOT filtered
+    # sym.y=75 equals allowed_top → NOT filtered
     assert result.symbols[0].filtered is False
 
 
@@ -340,3 +343,114 @@ def test_multiple_staves():
     result = stage.process(ctx)
     assert result.symbols[0].filtered is False  # valid on staff 0
     assert result.symbols[1].filtered is True  # outside staff 1
+
+
+# --- Rest position filter tests ---
+
+
+def test_rest_position_filter_marks_outside_staff():
+    """A rest with hitbox above the staff should be filtered."""
+    # line_positions[0]=100, line_spacing=25 → allowed_top=75
+    # sym.y=50 < 75 → filtered
+    sym = SymbolData(
+        staff_index=0,
+        x=50,
+        y=50,
+        width=10,
+        height=20,
+        matched_template_id=2,
+        confidence=0.7,
+    )
+    ctx = _make_ctx(
+        symbols=[sym],
+        categories={2: "rest"},
+    )
+    stage = PostMatchingStage()
+    result = stage.process(ctx)
+    assert result.symbols[0].filtered is True
+    assert result.symbols[0].filter_reason == "rest_position_outside_staff"
+
+
+def test_rest_position_filter_marks_below_staff():
+    """A rest with hitbox below the staff should be filtered."""
+    # line_positions[-1]=200, line_spacing=25 → allowed_bottom=225
+    # sym.y + height = 210 + 20 = 230 > 225 → filtered
+    sym = SymbolData(
+        staff_index=0,
+        x=50,
+        y=210,
+        width=10,
+        height=20,
+        matched_template_id=2,
+        confidence=0.7,
+    )
+    ctx = _make_ctx(
+        symbols=[sym],
+        categories={2: "rest"},
+    )
+    stage = PostMatchingStage()
+    result = stage.process(ctx)
+    assert result.symbols[0].filtered is True
+    assert result.symbols[0].filter_reason == "rest_position_outside_staff"
+
+
+def test_rest_position_filter_keeps_inside_staff():
+    """A rest within the staff region should not be filtered."""
+    # sym.y=130, sym.y+height=160 → within [75, 225]
+    sym = SymbolData(
+        staff_index=0,
+        x=50,
+        y=130,
+        width=10,
+        height=30,
+        matched_template_id=2,
+        confidence=0.7,
+    )
+    ctx = _make_ctx(
+        symbols=[sym],
+        categories={2: "rest"},
+    )
+    stage = PostMatchingStage()
+    result = stage.process(ctx)
+    assert result.symbols[0].filtered is False
+
+
+def test_rest_position_at_boundary():
+    """A rest exactly at the allowed boundary should NOT be filtered."""
+    # allowed_top=75, sym.y=75 → exactly at boundary
+    sym = SymbolData(
+        staff_index=0,
+        x=50,
+        y=75,
+        width=10,
+        height=30,
+        matched_template_id=2,
+        confidence=0.7,
+    )
+    ctx = _make_ctx(
+        symbols=[sym],
+        categories={2: "rest"},
+    )
+    stage = PostMatchingStage()
+    result = stage.process(ctx)
+    assert result.symbols[0].filtered is False
+
+
+def test_rest_filter_ignores_non_rest_symbols():
+    """Non-rest symbols should not be affected by the rest filter."""
+    sym = SymbolData(
+        staff_index=0,
+        x=50,
+        y=50,
+        width=10,
+        height=20,
+        matched_template_id=3,
+        confidence=0.7,
+    )
+    ctx = _make_ctx(
+        symbols=[sym],
+        categories={3: "note"},
+    )
+    stage = PostMatchingStage()
+    result = stage.process(ctx)
+    assert result.symbols[0].filtered is False

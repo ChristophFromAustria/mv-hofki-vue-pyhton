@@ -38,5 +38,6 @@
       "protocol": "http"
     }
   },
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+  "shutdownAction": "none"
 }

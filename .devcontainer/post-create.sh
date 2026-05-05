@@ -56,6 +56,9 @@ if ! grep -q 'aliases.sh' ~/.bashrc 2>/dev/null; then
   echo "[ -f ${WORKSPACE}/.devcontainer/aliases.sh ] && source ${WORKSPACE}/.devcontainer/aliases.sh" >> ~/.bashrc
 fi
 
+# Symlink tmux config so all tmux sessions get mouse support etc.
+ln -sf "${WORKSPACE}/.devcontainer/tmux.conf" ~/.tmux.conf
+
 # Superpowers plugin is enabled via .claude/settings.json (extraKnownMarketplaces + enabledPlugins).
 # # No CLI install needed — Claude Code picks it up from project settings on session start.
 
