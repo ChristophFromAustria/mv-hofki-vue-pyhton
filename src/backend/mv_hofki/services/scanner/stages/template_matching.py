@@ -57,6 +57,11 @@ class TemplateMatchingStage(ProcessingStage):
         )
         self._template_display_names = template_display_names or {}
         self._template_categories = template_categories or {}
+        # Per-template overrides. A template without an entry uses the
+        # global confidence_threshold / a weight of 1.0 / no merging.
+        self._template_min_confidence = template_min_confidence or {}
+        self._template_confidence_weight = template_confidence_weight or {}
+        self._template_merge_overlapping = template_merge_overlapping or set()
 
     def _split_by_zone(self) -> tuple[list[int], list[int]]:
         """Split variant indices into staff and below_staff groups."""
@@ -213,6 +218,11 @@ class TemplateMatchingStage(ProcessingStage):
         else:
             ctx.symbols = self._nms_with_alternatives(raw_detections, nms_iou_threshold)
 
+        if self._template_merge_overlapping:
+            ctx.symbols = self._merge_overlapping_same_template(
+                ctx.symbols, self._template_merge_overlapping, ctx.staves
+            )
+
         # Sort by staff, then left to right
         ctx.symbols.sort(key=lambda s: (s.staff_index, s.x))
         for i, sym in enumerate(ctx.symbols):
@@ -256,6 +266,15 @@ class TemplateMatchingStage(ProcessingStage):
         for i in template_indices:
             tmpl_img = self._variant_images[i]
             template_id = self._variant_template_ids[i]
+            variant_id = self._variant_ids[i] if self._variant_ids else None
+            # Effective threshold and weight for this template. The weight is
+            # applied to the raw score *before* the threshold so that every
+            # stored confidence is >= the threshold the user configured.
+            tmpl_threshold = self._template_min_confidence.get(
+                template_id, confidence_threshold
+            )
+            tmpl_weight = self._template_confidence_weight.get(template_id, 1.0)
+            raw_threshold = tmpl_threshold / tmpl_weight if tmpl_weight > 0 else 1.01
             height_in_lines = self._variant_heights[i]
             source_ls = self._variant_line_spacings[i]
 
@@ -266,15 +285,6 @@ class TemplateMatchingStage(ProcessingStage):
                 continue
 
             # Determine scales to try
-            variant_id = self._variant_ids[i] if self._variant_ids else None
-            # Effective threshold and weight for this template. The weight is
-            # applied to the raw score *before* the threshold so that every
-            # stored confidence is >= the threshold the user configured.
-            tmpl_threshold = self._template_min_confidence.get(
-                template_id, confidence_threshold
-            )
-            tmpl_weight = self._template_confidence_weight.get(template_id, 1.0)
-            raw_threshold = tmpl_threshold / tmpl_weight if tmpl_weight > 0 else 1.01
             if multi_scale_enabled and multi_scale_steps > 1:
                 scales = np.linspace(
                     base_scale * (1 - multi_scale_range),
@@ -337,9 +347,9 @@ class TemplateMatchingStage(ProcessingStage):
 
                 # Threshold logic (inverted for SQDIFF_NORMED)
                 if iter_sqdiff:
-                    locations = np.where(result <= (1 - confidence_threshold))
+                    locations = np.where(result <= (1 - raw_threshold))
                 else:
-                    locations = np.where(result >= confidence_threshold)
+                    locations = np.where(result >= raw_threshold)
 
                 n_hits = len(locations[0])
 
@@ -371,6 +381,7 @@ class TemplateMatchingStage(ProcessingStage):
                 for pt_y, pt_x in zip(locations[0], locations[1]):
                     score = float(result[pt_y, pt_x])
                     confidence = (1.0 - score) if iter_sqdiff else score
+                    confidence = min(1.0, confidence * tmpl_weight)
                     abs_y = int(region_y_offset + pt_y)
                     sym_h = int(scaled.shape[0])
                     sym_w = int(scaled.shape[1])
@@ -392,6 +403,7 @@ class TemplateMatchingStage(ProcessingStage):
                             staff_x_start=sym_x,
                             staff_x_end=sym_x + sym_w,
                             matched_template_id=template_id,
+                            matched_variant_id=variant_id,
                             confidence=confidence,
                         )
                     )
@@ -403,7 +415,6 @@ class TemplateMatchingStage(ProcessingStage):
     # ------------------------------------------------------------------
 
     @staticmethod
-                            matched_variant_id=variant_id,
     def _compute_scale(
         template: np.ndarray,
         height_in_lines: float,
@@ -502,6 +513,94 @@ class TemplateMatchingStage(ProcessingStage):
                                 (other.matched_template_id or 0, other.confidence or 0)
                             )
         return kept
+
+    @staticmethod
+    def _merge_overlapping_same_template(
+        detections: list[SymbolData],
+        merge_template_ids: set[int],
+        staves: list[StaffData] | None = None,
+        min_vertical_overlap: float = 0.5,
+    ) -> list[SymbolData]:
+        """Merge overlapping hits of the same template into one bounding box.
+
+        Wide symbols (e.g. a long half rest bar) can produce several hits of
+        a narrower template that survive NMS because their IoU stays below
+        the suppression threshold. For templates that opted in, hits on the
+        same staff whose boxes overlap horizontally and share at least
+        *min_vertical_overlap* of the smaller height are unioned into one
+        detection carrying the best confidence and the merged alternatives.
+        """
+        merged: list[SymbolData] = []
+        staff_map = {st.staff_index: st for st in (staves or [])}
+        # Highest confidence first so the survivor keeps the best score.
+        pending = sorted(detections, key=lambda d: d.confidence or 0, reverse=True)
+        consumed = [False] * len(pending)
+
+        for i, det in enumerate(pending):
+            if consumed[i]:
+                continue
+            consumed[i] = True
+            if det.matched_template_id not in merge_template_ids:
+                merged.append(det)
+                continue
+
+            # Grow the union box until no further candidate overlaps it.
+            changed = True
+            while changed:
+                changed = False
+                for j, other in enumerate(pending):
+                    if (
+                        consumed[j]
+                        or other.matched_template_id != det.matched_template_id
+                    ):
+                        continue
+                    if other.staff_index != det.staff_index:
+                        continue
+                    if not TemplateMatchingStage._overlaps_for_merge(
+                        det, other, min_vertical_overlap
+                    ):
+                        continue
+                    consumed[j] = True
+                    changed = True
+                    TemplateMatchingStage._absorb(det, other)
+            staff = staff_map.get(det.staff_index)
+            if staff is not None and staff.line_spacing > 0:
+                bottom = max(staff.line_positions)
+                det.staff_y_top = round((bottom - det.y) / staff.line_spacing, 2)
+                det.staff_y_bottom = round(
+                    (bottom - (det.y + det.height)) / staff.line_spacing, 2
+                )
+            merged.append(det)
+        return merged
+
+    @staticmethod
+    def _overlaps_for_merge(
+        a: SymbolData, b: SymbolData, min_vertical_overlap: float
+    ) -> bool:
+        x_overlap = min(a.x + a.width, b.x + b.width) - max(a.x, b.x)
+        if x_overlap <= 0:
+            return False
+        y_overlap = min(a.y + a.height, b.y + b.height) - max(a.y, b.y)
+        min_h = min(a.height, b.height)
+        return min_h > 0 and y_overlap / min_h >= min_vertical_overlap
+
+    @staticmethod
+    def _absorb(target: SymbolData, other: SymbolData) -> None:
+        """Extend *target* to the union of both boxes and merge alternatives."""
+        x1 = min(target.x, other.x)
+        y1 = min(target.y, other.y)
+        x2 = max(target.x + target.width, other.x + other.width)
+        y2 = max(target.y + target.height, other.y + other.height)
+        target.x, target.y = x1, y1
+        target.width, target.height = x2 - x1, y2 - y1
+        target.staff_x_start = x1
+        target.staff_x_end = x2
+        target.confidence = max(target.confidence or 0, other.confidence or 0)
+        best: dict[int, float] = {tid: conf for tid, conf in target.alternatives}
+        for tid, conf in other.alternatives:
+            if tid != target.matched_template_id and conf > best.get(tid, -1.0):
+                best[tid] = conf
+        target.alternatives = sorted(best.items(), key=lambda a: a[1], reverse=True)
 
     @staticmethod
     def _nms_dilate(detections: list[SymbolData]) -> list[SymbolData]:

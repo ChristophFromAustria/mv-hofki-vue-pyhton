@@ -31,7 +31,17 @@ const showCreate = ref(false);
 const createForm = ref({ name: "", display_name: "", category: "note" });
 
 const editingTemplate = ref(null);
-const editForm = ref({ display_name: "", musicxml_element: "", lilypond_token: "" });
+const editForm = ref({
+  display_name: "",
+  musicxml_element: "",
+  lilypond_token: "",
+  min_confidence: "",
+  confidence_weight: "",
+  merge_overlapping: false,
+});
+// Global confidence threshold from the scanner config, shown as the
+// placeholder so the officer sees what "leer" means.
+const globalConfidenceThreshold = ref(null);
 const variants = ref([]);
 const loadingVariants = ref(false);
 const confirmDeleteOpen = ref(false);
@@ -75,6 +85,27 @@ async function fetchTemplates() {
 function selectCategory(key) {
   activeCategory.value = key;
   currentPage.value = 1;
+async function fetchGlobalThreshold() {
+  try {
+    const data = await get("/scanner/config");
+    const entry = (data.entries || []).find((e) => e.key === "confidence_threshold");
+    if (entry) {
+      const value = entry.value ?? entry.effective_value ?? entry.default_value;
+      globalConfidenceThreshold.value = Number(value);
+    }
+  } catch {
+    // Placeholder simply stays generic.
+  }
+}
+
+async function fetchCategories() {
+  try {
+    serverCategories.value = await get("/scanner/library/categories");
+  } catch {
+    // Non-fatal: tabs fall back to the known category list.
+  }
+}
+
 }
 
 function prevPage() {
@@ -120,12 +151,49 @@ function closeEdit() {
 }
 
 async function saveTemplate() {
+function parseOptionalNumber(raw) {
+  const text = String(raw ?? "")
+    .trim()
+    .replace(",", ".");
+  if (text === "") return null;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** Percent input (0–100) → fraction, null when empty, NaN when invalid. */
+const parsedMinConfidence = computed(() => {
+  const n = parseOptionalNumber(editForm.value.min_confidence);
+  if (n === null) return null;
+  if (Number.isNaN(n) || n < 0 || n > 100) return NaN;
+  return n / 100;
+});
+
+const parsedConfidenceWeight = computed(() => {
+  const n = parseOptionalNumber(editForm.value.confidence_weight);
+  if (n === null) return null;
+  if (Number.isNaN(n) || n <= 0 || n > 2) return NaN;
+  return n;
+});
+
+const matchingParamsValid = computed(
+  () => !Number.isNaN(parsedMinConfidence.value) && !Number.isNaN(parsedConfidenceWeight.value),
+);
+
+const minConfidencePlaceholder = computed(() =>
+  globalConfidenceThreshold.value == null
+    ? "global"
+    : `global: ${Math.round(globalConfidenceThreshold.value * 100)} %`,
+);
+
   if (!editingTemplate.value) return;
   await put(`/scanner/library/templates/${editingTemplate.value.id}`, {
     display_name: editForm.value.display_name,
     musicxml_element: editForm.value.musicxml_element || null,
     lilypond_token: editForm.value.lilypond_token || null,
   });
+    min_confidence: tpl.min_confidence == null ? "" : String(Math.round(tpl.min_confidence * 100)),
+    confidence_weight: tpl.confidence_weight == null ? "" : String(tpl.confidence_weight),
+    merge_overlapping: Boolean(tpl.merge_overlapping),
   closeEdit();
   await fetchTemplates();
 }
@@ -147,6 +215,9 @@ async function deleteVariant() {
   if (!deleteVariantTarget.value || !editingTemplate.value) return;
   const vid = deleteVariantTarget.value.id;
   await del(`/scanner/library/templates/${editingTemplate.value.id}/variants/${vid}`);
+    min_confidence: parsedMinConfidence.value,
+    confidence_weight: parsedConfidenceWeight.value,
+    merge_overlapping: editForm.value.merge_overlapping,
   deleteVariantTarget.value = null;
   confirmVariantDeleteOpen.value = false;
   variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
@@ -452,6 +523,50 @@ onMounted(fetchTemplates);
           </div>
           <div v-else class="variants-grid">
             <div v-for="v in variants" :key="v.id" class="variant-item">
+        <!-- Matching parameters -->
+        <fieldset class="matching-params">
+          <legend>Erkennung</legend>
+          <div class="matching-grid">
+            <label>
+              Mindest-Konfidenz (%)
+              <input
+                v-model="editForm.min_confidence"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                max="100"
+                step="1"
+                :placeholder="minConfidencePlaceholder"
+                :aria-invalid="Number.isNaN(parsedMinConfidence)"
+              />
+            </label>
+            <label>
+              Gewichtung
+              <input
+                v-model="editForm.confidence_weight"
+                type="number"
+                inputmode="decimal"
+                min="0.05"
+                max="2"
+                step="0.05"
+                placeholder="1,0"
+                :aria-invalid="Number.isNaN(parsedConfidenceWeight)"
+              />
+            </label>
+          </div>
+          <p class="field-hint">
+            Leer bedeutet globaler Wert. Die Gewichtung wird vor dem Schwellwert auf den Rohwert
+            angewendet, ein Wert unter 1 lässt die Vorlage knappe Duelle verlieren.
+          </p>
+          <label class="checkbox-label">
+            <input v-model="editForm.merge_overlapping" type="checkbox" />
+            Überlappende Treffer dieser Vorlage zu einem Symbol zusammenführen
+          </label>
+          <p v-if="!matchingParamsValid" class="field-error">
+            Mindest-Konfidenz muss zwischen 0 und 100 liegen, Gewichtung zwischen 0 und 2.
+          </p>
+        </fieldset>
+
               <img
                 :src="variantImageUrl(v)"
                 alt="Variante"
@@ -472,7 +587,7 @@ onMounted(fetchTemplates);
             <button class="btn" @click="closeEdit">Abbrechen</button>
             <button
               class="btn btn-primary"
-              :disabled="!editForm.display_name.trim()"
+              :disabled="!editForm.display_name.trim() || !matchingParamsValid"
               @click="saveTemplate"
             >
               Speichern
@@ -639,32 +754,30 @@ onMounted(fetchTemplates);
   color: var(--color-muted);
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 500;
-}
-
-.modal {
-  background: var(--color-bg);
+.matching-params {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem 0.9rem 0.5rem;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 400px;
 }
 
-.modal-large {
-  max-width: 600px;
-  max-height: 80vh;
-  overflow-y: auto;
+.matching-params legend {
+  padding: 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
 }
 
-.modal h2 {
-  margin-bottom: 1rem;
+.matching-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.matching-grid input {
+  font-variant-numeric: tabular-nums;
 }
 
 .modal label {

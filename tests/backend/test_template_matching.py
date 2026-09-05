@@ -285,3 +285,101 @@ def test_non_dynamic_not_scanned_in_below_staff_region():
     # Should NOT find anything — symbol is outside staff region
     note_hits = [s for s in result.symbols if 170 <= s.y <= 215]
     assert len(note_hits) == 0
+
+
+def _det(x, width, tid, conf, staff_index=0, y=20, height=10, alts=()):
+    from mv_hofki.services.scanner.stages.base import SymbolData
+
+    return SymbolData(
+        staff_index=staff_index,
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        matched_template_id=tid,
+        confidence=conf,
+        alternatives=list(alts),
+    )
+
+
+def test_merge_overlapping_same_template_unions_boxes():
+    """Two offset hits of an opted-in template become one wide box."""
+    dets = [
+        _det(2132, 38, 10, 0.717, alts=[(55, 0.67)]),
+        _det(2153, 38, 10, 0.893, alts=[(12, 0.78), (55, 0.61)]),
+        _det(2400, 38, 10, 0.7),  # far away, stays separate
+    ]
+    merged = TemplateMatchingStage._merge_overlapping_same_template(
+        dets, {10}, [_make_staff(20)]
+    )
+    assert len(merged) == 2
+    wide = next(d for d in merged if d.x == 2132)
+    assert wide.width == 2153 + 38 - 2132
+    assert wide.confidence == 0.893
+    # Alternatives merged, best confidence per template id kept
+    assert dict(wide.alternatives) == {12: 0.78, 55: 0.67}
+    assert wide.staff_y_top is not None
+
+
+def test_merge_overlapping_ignores_other_templates_and_staves():
+    dets = [
+        _det(100, 38, 10, 0.8),
+        _det(120, 38, 11, 0.8),  # different template
+        _det(120, 38, 10, 0.8, staff_index=1),  # different staff
+        _det(120, 38, 10, 0.8, y=60),  # no vertical overlap
+    ]
+    merged = TemplateMatchingStage._merge_overlapping_same_template(dets, {10})
+    assert len(merged) == 4
+
+
+def test_merge_overlapping_only_for_opted_in_templates():
+    dets = [_det(100, 38, 10, 0.8), _det(120, 38, 10, 0.7)]
+    merged = TemplateMatchingStage._merge_overlapping_same_template(dets, {99})
+    assert len(merged) == 2
+
+
+def _two_symbol_scene():
+    """Blank image with the same circle placed twice; one template each."""
+    spacing = 20
+    staff = _make_staff(spacing)
+    img = np.full((200, 400), 255, dtype=np.uint8)
+    symbol = np.full((40, 20), 255, dtype=np.uint8)
+    cv2.circle(symbol, (10, 20), 8, 0, -1)
+    img[30:70, 100:120] = symbol
+    return img, staff, symbol
+
+
+def test_per_template_min_confidence_overrides_global():
+    img, staff, symbol = _two_symbol_scene()
+    stage = TemplateMatchingStage(
+        variant_images=[symbol.copy()],
+        variant_template_ids=[42],
+        variant_heights=[2.0],
+        template_min_confidence={42: 0.999},
+    )
+    ctx = PipelineContext(
+        image=img, staves=[staff], config={"confidence_threshold": 0.5}
+    )
+    perfect = [s for s in stage.process(ctx).symbols if s.confidence >= 0.999]
+    assert len(perfect) >= 1
+    assert all(s.confidence >= 0.999 for s in ctx.symbols)
+
+
+def test_per_template_weight_scales_confidence():
+    img, staff, symbol = _two_symbol_scene()
+    stage = TemplateMatchingStage(
+        variant_images=[symbol.copy()],
+        variant_template_ids=[42],
+        variant_heights=[2.0],
+        template_confidence_weight={42: 0.8},
+    )
+    ctx = PipelineContext(
+        image=img, staves=[staff], config={"confidence_threshold": 0.5}
+    )
+    result = stage.process(ctx)
+    assert result.symbols
+    best = max(s.confidence for s in result.symbols)
+    # A perfect raw match (1.0) is reported as 0.8 after weighting
+    assert abs(best - 0.8) < 0.01
+    # Weighted confidence never drops below the configured threshold
+    assert all(s.confidence >= 0.5 for s in result.symbols)

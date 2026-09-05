@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, String, Text, func
+from sqlalchemy import Boolean, Float, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mv_hofki.db.base import Base
@@ -24,6 +24,12 @@ class SymbolTemplate(Base):
     musicxml_element: Mapped[str | None] = mapped_column(Text)
     lilypond_token: Mapped[str | None] = mapped_column(String(50))
     is_seed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Per-template matching parameters (None = use global scanner config)
+    min_confidence: Mapped[float | None] = mapped_column(Float)
+    confidence_weight: Mapped[float | None] = mapped_column(Float)
+    merge_overlapping: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     variants: Mapped[list[SymbolVariant]] = relationship(

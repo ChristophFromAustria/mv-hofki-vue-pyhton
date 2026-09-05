@@ -178,3 +178,58 @@ async def test_seed_data_structure():
         assert "category" in t
         assert "name" in t
         assert "display_name" in t
+
+
+@pytest.mark.asyncio
+async def test_list_categories_reflects_stored_values(client):
+    for name, category in (("q", "note"), ("h", "note"), ("c44", "time_sig")):
+        resp = await client.post(
+            "/api/v1/scanner/library/templates",
+            json={"name": name, "display_name": name, "category": category},
+        )
+        assert resp.status_code == 201
+
+    resp = await client.get("/api/v1/scanner/library/categories")
+    assert resp.status_code == 200
+    assert resp.json() == [
+        {"category": "note", "count": 2},
+        {"category": "time_sig", "count": 1},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_update_template_matching_params(client):
+    resp = await client.post(
+        "/api/v1/scanner/library/templates",
+        json={"name": "half_rest_t", "display_name": "Halbe Pause", "category": "rest"},
+    )
+    tid = resp.json()["id"]
+    assert resp.json()["min_confidence"] is None
+    assert resp.json()["merge_overlapping"] is False
+
+    resp = await client.put(
+        f"/api/v1/scanner/library/templates/{tid}",
+        json={
+            "min_confidence": 0.8,
+            "confidence_weight": 0.9,
+            "merge_overlapping": True,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["min_confidence"] == 0.8
+    assert body["confidence_weight"] == 0.9
+    assert body["merge_overlapping"] is True
+
+    # Resetting to the global value
+    resp = await client.put(
+        f"/api/v1/scanner/library/templates/{tid}", json={"min_confidence": None}
+    )
+    assert resp.json()["min_confidence"] is None
+    assert resp.json()["confidence_weight"] == 0.9
+
+    # Validation
+    resp = await client.put(
+        f"/api/v1/scanner/library/templates/{tid}", json={"min_confidence": 1.5}
+    )
+    assert resp.status_code == 422
