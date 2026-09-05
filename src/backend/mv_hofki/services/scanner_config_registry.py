@@ -434,6 +434,66 @@ SCANNER_CONFIG_REGISTRY: list[dict] = [
         "step": 0.1,
         "sort_order": 70,
     },
+    # ═══════════════════════════════════════════════════════════════════
+    #  LilyPond Inhalt
+    # ═══════════════════════════════════════════════════════════════════
+    {
+        "key": "ly_default_clef",
+        "default_value": "bass",
+        "type": "select",
+        "label": "Standard-Schlüssel (wenn nicht erkannt)",
+        "group_path": "LilyPond Inhalt",
+        "options": [
+            {"value": "bass", "label": "Bassschlüssel"},
+            {"value": "treble", "label": "Violinschlüssel"},
+        ],
+        "sort_order": 10,
+    },
+    {
+        "key": "ly_default_time",
+        "default_value": "2/2",
+        "type": "select",
+        "label": "Standard-Taktart (wenn nicht erkannt)",
+        "group_path": "LilyPond Inhalt",
+        "options": [
+            {"value": "2/2", "label": "2/2 (Alla breve)"},
+            {"value": "4/4", "label": "4/4"},
+            {"value": "2/4", "label": "2/4"},
+            {"value": "3/4", "label": "3/4"},
+            {"value": "6/8", "label": "6/8"},
+        ],
+        "sort_order": 20,
+    },
+    {
+        "key": "ly_default_flats",
+        "default_value": "0",
+        "type": "number",
+        "label": "Standard-Tonart: Anzahl Bs (negativ = Kreuze)",
+        "group_path": "LilyPond Inhalt",
+        "min": -7.0,
+        "max": 7.0,
+        "step": 1.0,
+        "sort_order": 30,
+    },
+    {
+        "key": "ly_trio_indent",
+        "default_value": "8",
+        "type": "number",
+        "label": "Einrückung der Trio-Zeile (Staff-Einheiten)",
+        "group_path": "LilyPond Inhalt",
+        "min": 0.0,
+        "max": 30.0,
+        "step": 1.0,
+        "sort_order": 35,
+    },
+    {
+        "key": "ly_mark_errors",
+        "default_value": "true",
+        "type": "toggle",
+        "label": "Takte mit falscher Taktfüllung rot markieren",
+        "group_path": "LilyPond Inhalt",
+        "sort_order": 40,
+    },
 ]
 
 

@@ -10,12 +10,39 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["close"]);
+  warnings: { type: Array, default: () => [] },
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 const activeTab = ref("preview");
 
 const pngWidth = ref(0);
 const pngHeight = ref(0);
+const showWarnings = ref(false);
+
+// Browser editor state: edits live only in this dialog for now.
+const editedCode = ref(props.lilypondCode);
+watch(
+  () => props.lilypondCode,
+  (code) => {
+    editedCode.value = code;
+  },
+);
+const isEdited = computed(() => editedCode.value !== props.lilypondCode);
+const editorVisited = ref(false);
+watch(activeTab, (tab) => {
+  if (tab === "editor") editorVisited.value = true;
+});
+
+async function copyCode() {
+  try {
+    await navigator.clipboard.writeText(editedCode.value);
+    copied.value = true;
+    setTimeout(() => (copied.value = false), 1500);
+  } catch {
+    copied.value = false;
+  }
+}
+const copied = ref(false);
 
 function assetUrl(path, cacheBust = null) {
   if (!path) return null;
@@ -110,6 +137,28 @@ const cropRect = computed(() => {
         </a>
         <button class="btn" @click="emit('close')">Schließen</button>
       </div>
+        <!-- Warnings (measure fill mismatches etc.) -->
+        <div v-if="activeTab === 'preview' && warnings.length" class="warnings">
+          <button class="warnings-toggle" @click="showWarnings = !showWarnings">
+            {{ showWarnings ? "▾" : "▸" }} {{ warnings.length }} Hinweis{{
+              warnings.length === 1 ? "" : "e"
+            }}
+            zur Taktfüllung
+          </button>
+          <ul v-if="showWarnings" class="warnings-list">
+            <li v-for="(w, i) in warnings" :key="i">{{ w }}</li>
+          </ul>
+        </div>
+
+        <!-- Editor tab (browser rendering via VexFlow, edits not persisted) -->
+        <div v-show="activeTab === 'editor'" class="editor-tab">
+          <LilypondEditor v-if="open" v-model:code="editedCode" :original-code="lilypondCode" />
+          <p class="editor-note">
+            Die Darstellung im Browser ist eine Näherung an den LilyPond-Satz. Änderungen werden in
+            den Code übernommen, aber noch nicht gespeichert.
+          </p>
+        </div>
+
     </div>
   </div>
 </template>
@@ -230,6 +279,28 @@ const cropRect = computed(() => {
   border-radius: var(--radius);
   font-family: "Fira Code", "Cascadia Code", monospace;
   font-size: 0.8rem;
+.warnings {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.warnings-toggle {
+  background: none;
+  border: none;
+  color: var(--color-warning);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.warnings-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  max-height: 8rem;
+  overflow-y: auto;
+  color: var(--color-muted);
+}
+
   line-height: 1.5;
   overflow-x: auto;
   white-space: pre;

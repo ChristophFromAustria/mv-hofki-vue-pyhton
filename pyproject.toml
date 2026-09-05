@@ -39,6 +39,9 @@ asyncio_mode = "auto"
 [tool.setuptools.packages.find]
 where = ["src/backend"]
 
+[tool.setuptools.package-data]
+mv_hofki = ["services/*.ily"]
+
 [tool.ruff]
 src = ["src/backend"]
 target-version = "py312"

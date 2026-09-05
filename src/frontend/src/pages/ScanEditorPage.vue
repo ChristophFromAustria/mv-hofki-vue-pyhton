@@ -56,6 +56,7 @@ const lilypondCode = ref("");
 const lilypondPdfPath = ref(null);
 const lilypondPngPaths = ref([]);
 const lilypondLoading = ref(false);
+const lilypondWarnings = ref([]);
 const imageInfo = ref(null); // { width, height, type }
 const showAnalysisLog = ref(false);
 const viewMode = ref("original");
@@ -267,6 +268,7 @@ async function generateLilypond() {
     lilypondPdfPath.value = result.pdf_path;
     lilypondPngPaths.value = result.png_paths || [];
     showLilypond.value = true;
+    lilypondWarnings.value = result.warnings || [];
   } catch (e) {
     statusMessage.value = `LilyPond-Fehler: ${e.message}`;
   } finally {
@@ -772,6 +774,7 @@ onUnmounted(() => {
     <!-- Analysis log modal -->
     <AnalysisLogModal
       ref="analysisLogRef"
+      :warnings="lilypondWarnings"
       :open="showAnalysisLog"
       @close="onAnalysisLogClose"
       @done="onAnalysisDone"

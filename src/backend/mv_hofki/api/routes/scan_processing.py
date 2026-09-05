@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -501,17 +502,22 @@ async def generate_lilypond_endpoint(
     scan_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate LilyPond code and PDF from detected measures."""
+    """Generate LilyPond code and PDF from detected measures and symbols."""
     import asyncio
 
     from sqlalchemy import select
+    from sqlalchemy.orm import joinedload
 
     from mv_hofki.core.config import settings
     from mv_hofki.models.detected_measure import DetectedMeasure
+    from mv_hofki.models.detected_staff import DetectedStaff
+    from mv_hofki.models.detected_symbol import DetectedSymbol
+    from mv_hofki.models.detected_text_region import DetectedTextRegion
     from mv_hofki.models.scan_part import ScanPart
+    from mv_hofki.models.scan_project import ScanProject
     from mv_hofki.models.sheet_music_scan import SheetMusicScan
     from mv_hofki.services.lilypond_generator import (
-        generate_lilypond,
+        generate_lilypond_with_warnings,
         render_lilypond,
     )
 
@@ -544,18 +550,104 @@ async def generate_lilypond_endpoint(
             detail="Keine Takte erkannt — bitte zuerst Analyse durchführen",
         )
 
-    title = (
+    staff_result = await db.execute(
+        select(DetectedStaff)
+        .where(DetectedStaff.scan_id == scan_id)
+        .order_by(DetectedStaff.staff_index)
+    )
+    staff_rows = list(staff_result.scalars().unique().all())
+    staves = [
+        {
+            "staff_index": s.staff_index,
+            "y_top": s.y_top,
+            "y_bottom": s.y_bottom,
+            "line_spacing": s.line_spacing,
+        }
+        for s in staff_rows
+    ]
+    staff_index_by_id = {s.id: s.staff_index for s in staff_rows}
+    line_spacing_by_id = {s.id: s.line_spacing for s in staff_rows}
+
+    sym_result = await db.execute(
+        select(DetectedSymbol)
+        .join(DetectedStaff)
+        .where(DetectedStaff.scan_id == scan_id, DetectedSymbol.filtered.is_(False))
+        .options(
+            joinedload(DetectedSymbol.matched_symbol),
+            joinedload(DetectedSymbol.corrected_symbol),
+        )
+        .order_by(DetectedSymbol.sequence_order)
+    )
+    symbols: list[dict[str, Any]] = []
+    for sym in sym_result.scalars().unique().all():
+        template = sym.corrected_symbol or sym.matched_symbol
+        if template is None:
+            continue
+        symbols.append(
+            {
+                "staff_index": staff_index_by_id.get(sym.staff_id, 0),
+                "x": sym.x,
+                "y": sym.y,
+                "width": sym.width,
+                "height": sym.height,
+                "staff_y_top": sym.staff_y_top,
+                "staff_y_bottom": sym.staff_y_bottom,
+                "line_spacing": line_spacing_by_id.get(sym.staff_id),
+                "confidence": sym.confidence,
+                "template_name": template.name,
+                "template_display_name": template.display_name,
+                "template_category": template.category,
+            }
+        )
+
+    text_result = await db.execute(
+        select(DetectedTextRegion).where(DetectedTextRegion.scan_id == scan_id)
+    )
+    text_regions = [
+        {
+            "staff_index": t.staff_index,
+            "x": t.x,
+            "y": t.y,
+            "width": t.width,
+            "height": t.height,
+            "text": t.text,
+            "confidence": t.confidence,
+        }
+        for t in text_result.scalars().all()
+    ]
+
+    part = await db.get(ScanPart, scan.part_id)
+    if not part:
+        raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
+    project = await db.get(ScanProject, part.project_id)
+
+    title = (project.name if project and project.name else None) or (
         scan.original_filename.rsplit(".", 1)[0] if scan.original_filename else "Scan"
     )
+    composer = project.composer if project else None
+    arranger = _find_arranger(text_regions)
+    if not composer:
+        composer = _find_composer(text_regions)
 
-    # Load LilyPond layout settings from global config
+    # Load LilyPond settings from global config
     from mv_hofki.services.scanner_config import get_effective_config
 
     config = await get_effective_config(db)
 
-    ly_code = generate_lilypond(
+    ly_code, warnings = generate_lilypond_with_warnings(
         measures,
         title,
+        symbols=symbols,
+        staves=staves,
+        text_regions=text_regions,
+        composer=composer,
+        arranger=arranger,
+        instrument=part.part_name,
+        default_clef=config.get("ly_default_clef") or part.clef_hint or "bass",
+        default_time=config.get("ly_default_time", "2/2"),
+        default_flats=int(config.get("ly_default_flats", 0) or 0),
+        mark_errors=bool(config.get("ly_mark_errors", True)),
+        trio_indent=float(config.get("ly_trio_indent", 8) or 0),
         top_margin=config.get("ly_top_margin", 1),
         bottom_margin=config.get("ly_bottom_margin", 4),
         left_margin=config.get("ly_left_margin", 16),
@@ -565,9 +657,6 @@ async def generate_lilypond_endpoint(
         system_padding=config.get("ly_system_padding", 0.6),
     )
 
-    part = await db.get(ScanPart, scan.part_id)
-    if not part:
-        raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
     scan_dir = (
         settings.PROJECT_ROOT
         / "data"
@@ -588,7 +677,38 @@ async def generate_lilypond_endpoint(
             str(p.relative_to(settings.PROJECT_ROOT))
             for p in render_result["png_paths"]
         ],
+        "warnings": warnings,
     }
+
+
+def _find_arranger(text_regions: list[dict]) -> str | None:
+    """Pick an 'bearb. …' / 'arr. …' line from header text regions."""
+    import re
+
+    for t in text_regions:
+        text = (t.get("text") or "").strip()
+        m = re.match(
+            r"^(?:bearb\.?|arr\.?|arrangement|bearbeitet)\s*(?:von\s+)?(.+)$",
+            text,
+            re.I,
+        )
+        if m and len(m.group(1)) > 2:
+            return f"bearb. {m.group(1).strip(' :.')}"
+    return None
+
+
+def _find_composer(text_regions: list[dict]) -> str | None:
+    """Pick a 'von …' line from header text regions (staff 0 only)."""
+    import re
+
+    for t in text_regions:
+        if int(t.get("staff_index") or 0) != 0:
+            continue
+        text = (t.get("text") or "").strip()
+        m = re.match(r"^von\s+(.+)$", text, re.I)
+        if m and len(m.group(1)) > 2:
+            return m.group(1).strip(" :.")
+    return None
 
 
 @router.get("/scans/{scan_id}/symbols", response_model=list[DetectedSymbolRead])

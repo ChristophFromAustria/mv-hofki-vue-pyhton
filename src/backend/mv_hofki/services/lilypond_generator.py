@@ -1,11 +1,21 @@
-"""Generate and render LilyPond files from detected measure data."""
+"""Generate and render LilyPond files from detected scanner data."""
 
 from __future__ import annotations
 
 import shutil
 import subprocess
-from collections import defaultdict
+from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
+
+from mv_hofki.services.lilypond_score import (
+    MeasureModel,
+    ScoreModel,
+    build_score,
+    duration_tokens,
+    key_signature_name,
+    time_length,
+)
 
 _BARLINE_MAP: dict[str, str] = {
     "Doppelter Taktstrich": '\\bar "||"',
@@ -14,201 +24,413 @@ _BARLINE_MAP: dict[str, str] = {
     "Wiederholung Ende": '\\bar ":|."',
     "Wiederholung Beidseitig": '\\bar ":|.|:"',
 }
+_REPEAT_START = ("Wiederholung Anfang", "Wiederholung Beidseitig")
+_REPEAT_END = ("Wiederholung Ende", "Wiederholung Beidseitig")
+
+_COLOR_GROBS = ("NoteHead", "Stem", "Rest", "Flag", "Beam", "Dots", "Accidental")
+# Sentinel: forces the next measure to emit an explicit measureLength.
+_FORCE_LENGTH = Fraction(-1)
+
+# Indent a single system and print a label ("Trio") in front of it.
+# Inlined from samplefiles/reference_transcriptions/frisch_auf_tuba1.ly
+_PSEUDO_INDENT_SCM = (
+    Path(__file__).with_name("lilypond_pseudo_indent.ily").read_text(encoding="utf-8")
+)
 
 
-def _measure_to_ly(m: dict) -> str:
-    """Convert a single measure dict to a LilyPond note with optional barline."""
-    bar_cmd = _BARLINE_MAP.get(m.get("end_barline") or "", "")
-    return f"c1 {bar_cmd}" if bar_cmd else "c1"
+# ── Emission helpers ─────────────────────────────────────────────────────
 
 
-def _build_staff_content(measures: list[dict]) -> list[str]:
-    """Build LilyPond lines for one staff, handling volta/repeat structures."""
-    lines: list[str] = []
+def _moment(length: Fraction) -> str:
+    return f"#(ly:make-moment {length.numerator}/{length.denominator})"
 
-    # Index volta groups
-    volta_groups: dict[int, list[dict]] = {}
-    for m in measures:
-        gid = m.get("volta_group_id")
-        if gid is not None:
-            volta_groups.setdefault(gid, []).append(m)
 
-    # Track which measures are in volta groups
-    volta_measure_nums: set[int] = set()
-    for group in volta_groups.values():
-        for m in group:
-            volta_measure_nums.add(m["global_measure_number"])
+def _event_to_ly(e) -> str:  # noqa: ANN001 — Event from lilypond_score
+    if e.kind == "rest":
+        body = f"r{e.duration_token}"
+    elif len(e.pitches) == 1:
+        body = f"{e.pitches[0]}{e.duration_token}"
+    else:
+        body = f"<{' '.join(e.pitches)}>{e.duration_token}"
+    parts = [body]
+    parts.extend(e.articulations)
+    parts.extend(e.dynamics)
+    if e.hairpin_start:
+        parts.append(e.hairpin_start)
+    if e.hairpin_end and not e.dynamics:
+        parts.append("\\!")
+    for text in e.texts:
+        safe = text.replace("\\", "\\\\").replace('"', '\\"')
+        parts.append(f'_\\markup {{ \\italic "{safe}" }}')
+    return "".join(parts)
 
-    # Find repeat body start positions for each volta group
-    repeat_body_starts: dict[int, int] = {}
-    for gid, group in volta_groups.items():
-        first_volta_idx = min(
-            i for i, m in enumerate(measures) if m.get("volta_group_id") == gid
+
+@dataclass
+class _EmitState:
+    effective_len: Fraction
+    time_len: Fraction
+    last_staff: int | None = None
+    mark_errors: bool = True
+    last_music: str | None = None  # music of the last normal measure (for copies)
+    trio_indent: float = 8.0
+    used_indent: bool = False  # a \pseudoIndent was emitted → include preamble
+    instrument_unset: bool = False  # instrumentName currently ##f
+    unset_instrument_pending: bool = False
+
+
+@dataclass
+class _Item:
+    """One emitted measure, kept separately so percent repeats can wrap it."""
+
+    prefix: list[str]
+    music: str
+    suffix: str
+    wrappable: bool
+    percent: int = 0
+    break_before: bool = False
+    suppress_break: bool = False  # \pseudoIndent already breaks the line
+
+    def render(self) -> str:
+        out: list[str] = []
+        if self.break_before:
+            out.append("\\break")
+        out.extend(self.prefix)
+        if self.percent:
+            out.append(f"\\repeat percent {self.percent + 1} {{ {self.music} }}")
+        else:
+            out.append(self.music)
+        if self.suffix:
+            out.append(self.suffix)
+        return " ".join(part for part in out if part)
+
+
+def _section_prefix(
+    m: MeasureModel, state: _EmitState, line_start: bool
+) -> tuple[list[str], bool]:
+    """Prefix for a section label ("Trio") plus instrument-name bookkeeping."""
+    prefix: list[str] = []
+    suppress_break = False
+    if m.section_label and line_start:
+        label = _escape(m.section_label)
+        if state.instrument_unset:
+            prefix.append('\\set Staff.instrumentName = ""')
+            state.instrument_unset = False
+        prefix.append(
+            f'\\pseudoIndent \\markuplist {{ \\fontsize #5 \\bold "{label}" }} '
+            f"{state.trio_indent:g}"
         )
-        start_idx = 0
-        for j in range(first_volta_idx - 1, -1, -1):
-            bl = measures[j].get("end_barline") or ""
-            if "Wiederholung Anfang" in bl or "Wiederholung Beidseitig" in bl:
-                start_idx = j + 1
+        state.used_indent = True
+        state.unset_instrument_pending = True
+        suppress_break = True
+    elif m.section_label:
+        prefix.append(
+            f'\\mark \\markup {{ \\bold \\large "{_escape(m.section_label)}" }}'
+        )
+    elif line_start and state.unset_instrument_pending:
+        # Reference layout: drop the instrument name again on the next system
+        prefix.append("\\set Staff.instrumentName = ##f")
+        state.instrument_unset = True
+        state.unset_instrument_pending = False
+    return prefix, suppress_break
+
+
+def _measure_item(
+    m: MeasureModel,
+    state: _EmitState,
+    *,
+    end_barline: str | None,
+    line_start: bool = False,
+) -> _Item:
+    prefix, suppress_break = _section_prefix(m, state, line_start)
+    prefix.extend(m.marks)
+    if m.clef:
+        prefix.append(f"\\clef {m.clef}")
+    if m.key_flats is not None:
+        prefix.append(f"\\key {key_signature_name(m.key_flats)} \\major")
+    if m.time:
+        prefix.append(f"\\time {m.time}")
+        state.time_len = time_length(m.time)
+        state.effective_len = state.time_len
+
+    wrappable = True
+    if m.mmrest_measures:
+        needed = state.time_len
+        total = state.time_len * m.mmrest_measures
+        mult = (
+            str(total.numerator)
+            if total.denominator == 1
+            else f"{total.numerator}/{total.denominator}"
+        )
+        music = f"R1*{mult}"
+        if m.orphan_dynamics:
+            music = "<>" + "".join(m.orphan_dynamics) + " " + music
+        if m.events and state.mark_errors:
+            music = (
+                "\\markErr "
+                + music
+                + " "
+                + " ".join(_event_to_ly(e) for e in m.events)
+                + " \\unmarkErr"
+            )
+        wrappable = False
+    elif m.percent_repeat:
+        # Resolved by the container (wrap previous item or copy it).
+        needed = state.effective_len
+        music = ""
+    elif not m.events:
+        needed = m.expected_length
+        rests = " ".join(f"r{t}" for t in duration_tokens(needed))
+        music = f"\\markErr {rests} \\unmarkErr" if state.mark_errors else rests
+        if m.orphan_dynamics:
+            music = "<>" + "".join(m.orphan_dynamics) + " " + music
+        if m.orphan_hairpin_end:
+            music = music + " <>\\!"
+        wrappable = False
+    else:
+        needed = m.actual_length
+        body = " ".join(_event_to_ly(e) for e in m.events)
+        if m.orphan_dynamics:
+            body = "<>" + "".join(m.orphan_dynamics) + " " + body
+        if m.orphan_hairpin_end:
+            body = body + " <>\\!"
+        music = (
+            f"\\markErr {body} \\unmarkErr"
+            if (m.mismatch and state.mark_errors)
+            else body
+        )
+
+    if needed != state.effective_len:
+        prefix.append(f"\\set Timing.measureLength = {_moment(needed)}")
+        state.effective_len = needed
+
+    suffix = _BARLINE_MAP.get(end_barline or "", "")
+    if not suffix:
+        suffix = "|"
+    return _Item(
+        prefix=prefix,
+        music=music,
+        suffix=suffix,
+        wrappable=wrappable,
+        suppress_break=suppress_break,
+    )
+
+
+def _emit_container(
+    measures: list[MeasureModel],
+    state: _EmitState,
+    *,
+    drop_last_barline: bool = False,
+    drop_repeat_start_last: bool = False,
+) -> list[str]:
+    """Emit a run of consecutive measures, handling breaks and percent repeats."""
+    items: list[_Item] = []
+    for idx, m in enumerate(measures):
+        is_last = idx == len(measures) - 1
+        end_barline = m.end_barline
+        if is_last and drop_last_barline and end_barline in _REPEAT_END:
+            end_barline = None if end_barline == "Wiederholung Ende" else end_barline
+        if is_last and drop_repeat_start_last and end_barline == "Wiederholung Anfang":
+            end_barline = None
+
+        break_before = (
+            state.last_staff is not None and m.staff_index != state.last_staff
+        )
+        state.last_staff = m.staff_index
+
+        item = _measure_item(m, state, end_barline=end_barline, line_start=break_before)
+        item.break_before = break_before and not item.suppress_break
+
+        if m.percent_repeat:
+            prev = items[-1] if items else None
+            plain_prev = prev is not None and prev.wrappable and prev.suffix == "|"
+            if plain_prev and not break_before and not item.prefix:
+                prev.percent += 1  # type: ignore[union-attr]
+                prev.suffix = item.suffix  # type: ignore[union-attr]
+                continue
+            # Fall back to a greyed copy of the last known measure
+            if state.last_music:
+                item.music = f"\\markCopy {state.last_music} \\unmarkCopy"
+            else:
+                rests = " ".join(f"r{t}" for t in duration_tokens(m.expected_length))
+                item.music = (
+                    f"\\markErr {rests} \\unmarkErr" if state.mark_errors else rests
+                )
+            item.wrappable = False
+        elif item.wrappable:
+            state.last_music = item.music
+        items.append(item)
+    return [it.render() for it in items]
+
+
+def _find_repeat_bodies(measures: list[MeasureModel]) -> dict[int, tuple[int, int]]:
+    """Map volta_group_id → (body_start_idx, first_volta_idx) over all measures."""
+    groups: dict[int, list[int]] = {}
+    for i, m in enumerate(measures):
+        if m.volta_group_id is not None and m.volta_number is not None:
+            groups.setdefault(m.volta_group_id, []).append(i)
+
+    result: dict[int, tuple[int, int]] = {}
+    prev_group_end = -1
+    for gid in sorted(groups, key=lambda g: min(groups[g])):
+        first_volta = min(groups[gid])
+        start = prev_group_end + 1
+        for j in range(first_volta - 1, prev_group_end, -1):
+            bl = measures[j].end_barline or ""
+            if bl in _REPEAT_START:
+                start = j + 1
                 break
-        repeat_body_starts[gid] = start_idx
+            if bl in ("Wiederholung Ende", "Schlusstaktstrich"):
+                start = j + 1
+                break
+        result[gid] = (start, first_volta)
+        prev_group_end = max(groups[gid])
+    return result
 
-    # Track repeat body measures per group
-    repeat_body_nums: dict[int, set[int]] = {}
-    for gid, start_idx in repeat_body_starts.items():
-        first_volta_idx = min(
-            i for i, m in enumerate(measures) if m.get("volta_group_id") == gid
-        )
-        repeat_body_nums[gid] = {
-            measures[j]["global_measure_number"]
-            for j in range(start_idx, first_volta_idx)
-        }
 
-    # All repeat body measure nums (across all groups) — used to know where
-    # a plain run should stop before a repeat block begins.
-    all_repeat_body_nums: set[int] = set()
-    for body_set in repeat_body_nums.values():
-        all_repeat_body_nums.update(body_set)
+def _emit_score(
+    model: ScoreModel,
+    *,
+    mark_errors: bool,
+    default_time: str,
+    trio_indent: float = 8.0,
+) -> tuple[list[str], bool]:
+    """Return (content lines, whether the pseudo-indent preamble is needed)."""
+    measures = sorted(model.measures, key=lambda m: m.global_measure_number)
+    if not measures:
+        return [], False
 
-    emitted: set[int] = set()
+    state = _EmitState(
+        effective_len=time_length(default_time),
+        time_len=time_length(default_time),
+        mark_errors=mark_errors,
+        trio_indent=trio_indent,
+    )
+    bodies = _find_repeat_bodies(measures)
+    body_starts = {start: gid for gid, (start, _first) in bodies.items()}
+    volta_groups: dict[int, list[MeasureModel]] = {}
+    for m in measures:
+        if m.volta_group_id is not None and m.volta_number is not None:
+            volta_groups.setdefault(m.volta_group_id, []).append(m)
+
+    lines: list[str] = []
     i = 0
-    while i < len(measures):
-        m = measures[i]
-        gnum = m["global_measure_number"]
+    n = len(measures)
+    while i < n:
+        gid = body_starts.get(i)
+        if gid is not None:
+            start, first_volta = bodies[gid]
+            group = volta_groups[gid]
+            last_idx = max(measures.index(g) for g in group)
+            body = measures[start:first_volta]
+            volta1 = [g for g in group if g.volta_number == 1]
+            volta2 = [g for g in group if g.volta_number == 2]
 
-        if gnum in emitted:
-            i += 1
+            if body:
+                body_lines = _emit_container(body, state)
+                lines.append("\\repeat volta 2 {")
+                lines.extend(f"  {ln}" for ln in body_lines)
+                lines.append("}")
+                lines.append("\\alternative {")
+                # LilyPond does not carry a measureLength set inside one
+                # alternative over to the next, so force re-emission.
+                if volta1:
+                    state.effective_len = _FORCE_LENGTH
+                    v1 = _emit_container(volta1, state, drop_last_barline=True)
+                    lines.append("  \\volta 1 { " + " ".join(v1) + " }")
+                if volta2:
+                    state.effective_len = _FORCE_LENGTH
+                    v2 = _emit_container(volta2, state)
+                    lines.append("  \\volta 2 { " + " ".join(v2) + " }")
+                lines.append("}")
+                state.effective_len = _FORCE_LENGTH
+            else:
+                # Degenerate group without a body — emit alternatives plainly.
+                lines.extend(_emit_container(group, state))
+            i = last_idx + 1
             continue
 
-        # Check if this measure starts a repeat body for a volta group
-        started_group = None
-        for gid, start_idx in repeat_body_starts.items():
-            if i == start_idx:
-                started_group = gid
-                break
-
-        if started_group is not None:
-            gid = started_group
-            body_nums = repeat_body_nums[gid]
-            group = volta_groups[gid]
-            volta1 = sorted(
-                [g for g in group if g.get("volta_number") == 1],
-                key=lambda x: x["measure_number_in_staff"],
-            )
-            volta2 = sorted(
-                [g for g in group if g.get("volta_number") == 2],
-                key=lambda x: x["measure_number_in_staff"],
-            )
-
-            # Emit repeat body
-            body_notes = []
-            for j in range(i, len(measures)):
-                if measures[j]["global_measure_number"] in body_nums:
-                    body_notes.append(_measure_to_ly(measures[j]))
-                    emitted.add(measures[j]["global_measure_number"])
-                else:
-                    break
-
-            lines.append("\\repeat volta 2 { " + " ".join(body_notes) + " }")
-
-            # Emit alternatives
-            lines.append("\\alternative {")
-            if volta1:
-                v1 = " ".join(_measure_to_ly(vm) for vm in volta1)
-                lines.append(f"  \\volta 1 {{ {v1} }}")
-                for vm in volta1:
-                    emitted.add(vm["global_measure_number"])
-            if volta2:
-                v2 = " ".join(_measure_to_ly(vm) for vm in volta2)
-                lines.append(f"  \\volta 2 {{ {v2} }}")
-                for vm in volta2:
-                    emitted.add(vm["global_measure_number"])
-            lines.append("}")
-
-            # Advance past all emitted measures
-            while i < len(measures) and measures[i]["global_measure_number"] in emitted:
-                i += 1
-        else:
-            # Collect a run of plain (non-repeat-body, non-volta) measures
-            # and emit them on a single line.
-            plain_notes: list[str] = []
-            while i < len(measures):
-                cur = measures[i]
-                cnum = cur["global_measure_number"]
-                if cnum in emitted:
-                    i += 1
-                    continue
-                # Stop if this position starts a repeat body
-                is_repeat_start = any(
-                    i == start_idx for start_idx in repeat_body_starts.values()
-                )
-                if is_repeat_start:
-                    break
-                # Stop if this measure is in a volta group (shouldn't emit plain)
-                if cnum in volta_measure_nums or cnum in all_repeat_body_nums:
-                    i += 1
-                    continue
-                plain_notes.append(_measure_to_ly(cur))
-                emitted.add(cnum)
-                i += 1
-            if plain_notes:
-                lines.append(" ".join(plain_notes))
-
-    return lines
+        # Plain run up to the next repeat body start (or volta measure)
+        j = i
+        while j < n and j not in body_starts and measures[j].volta_group_id is None:
+            j += 1
+        if j == i:
+            # A stray volta measure not covered by a body — emit plainly.
+            j = i + 1
+        next_is_body = j in body_starts
+        lines.extend(
+            _emit_container(measures[i:j], state, drop_repeat_start_last=next_is_body)
+        )
+        i = j
+    return lines, state.used_indent
 
 
-def generate_lilypond(
+def _escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+# ── Public API ───────────────────────────────────────────────────────────
+
+
+def generate_lilypond_with_warnings(
     measures: list[dict],
     title: str,
     *,
-    top_margin: int = 1,
-    bottom_margin: int = 4,
-    left_margin: int = 16,
-    right_margin: int = 16,
-    staff_size: int = 17,
-    system_distance: int = 6,
+    symbols: list[dict] | None = None,
+    staves: list[dict] | None = None,
+    text_regions: list[dict] | None = None,
+    composer: str | None = None,
+    arranger: str | None = None,
+    instrument: str | None = None,
+    default_clef: str = "bass",
+    default_time: str = "2/2",
+    default_flats: int = 0,
+    mark_errors: bool = True,
+    trio_indent: float = 8.0,
+    top_margin: float = 1,
+    bottom_margin: float = 4,
+    left_margin: float = 16,
+    right_margin: float = 16,
+    staff_size: float = 17,
+    system_distance: float = 6,
     system_padding: float = 0.6,
-) -> str:
-    """Generate LilyPond source code from detected measures.
+) -> tuple[str, list[str]]:
+    """Generate LilyPond source from detected data; also return warnings."""
+    model = build_score(
+        measures,
+        symbols,
+        staves=staves,
+        text_regions=text_regions,
+        default_clef=default_clef,
+        default_time=default_time,
+        default_flats=default_flats,
+    )
+    content_lines, used_indent = _emit_score(
+        model,
+        mark_errors=mark_errors,
+        default_time=default_time,
+        trio_indent=trio_indent,
+    )
+    if not content_lines:
+        content_lines = [f"\\clef {default_clef}", f"\\time {default_time}"]
+    content = "\n".join(f"    {line}" for line in content_lines)
+    preamble = _PSEUDO_INDENT_SCM if used_indent else ""
 
-    Args:
-        measures: List of measure dicts with keys: staff_index,
-                  measure_number_in_staff, global_measure_number,
-                  end_barline (optional display name of the barline type).
-        title: Title for the score header.
-        top_margin: Top margin in mm.
-        bottom_margin: Bottom margin in mm.
-        left_margin: Left margin in mm.
-        right_margin: Right margin in mm.
-        staff_size: LilyPond staff size (default 17).
+    header_fields = [f'  title = "{_escape(title)}"']
+    if instrument:
+        header_fields.append(f'  subtitle = "{_escape(instrument)}"')
+    if composer:
+        header_fields.append(f'  composer = "{_escape(composer)}"')
+    if arranger:
+        header_fields.append(f'  arranger = "{_escape(arranger)}"')
+    header_fields.append("  tagline = ##f")
+    header = "\n".join(header_fields)
 
-    Returns:
-        Complete LilyPond source code as a string.
-    """
-    # Group measures by staff_index, preserving order
-    systems: dict[int, list[dict]] = defaultdict(list)
-    for m in measures:
-        systems[m["staff_index"]].append(m)
+    overrides = " ".join(f"\\override {g}.color = #red" for g in _COLOR_GROBS)
+    reverts = " ".join(f"\\revert {g}.color" for g in _COLOR_GROBS)
+    copy_overrides = " ".join(f"\\override {g}.color = #grey" for g in _COLOR_GROBS)
 
-    # Sort each system's measures by local number
-    for staff_idx in systems:
-        systems[staff_idx].sort(key=lambda m: m["measure_number_in_staff"])
-
-    # Build note content with volta/repeat structures
-    staff_indices = sorted(systems.keys())
-    content_lines: list[str] = []
-
-    for i, staff_idx in enumerate(staff_indices):
-        staff_measures = systems[staff_idx]
-        lines = _build_staff_content(staff_measures)
-        content_lines.extend(f"    {line}" for line in lines)
-        if i < len(staff_indices) - 1:
-            content_lines.append("    \\break")
-
-    content = "\n".join(content_lines)
-
-    return f"""\\version "2.24.0"
-
+    code = f"""\\version "2.24.0"
+{preamble}
 #(set-default-paper-size "a5" 'landscape)
 
 \\paper {{
@@ -224,17 +446,35 @@ def generate_lilypond(
   last-bottom-spacing.basic-distance = #4
   indent = 0\\mm
   short-indent = 0\\mm
+  bookTitleMarkup = \\markup {{
+    \\fill-line {{
+      ""
+      \\center-column {{
+        \\fontsize #5 \\bold \\fromproperty #'header:title
+        \\fromproperty #'header:subtitle
+      }}
+      \\right-column {{
+        \\fromproperty #'header:composer
+        \\fromproperty #'header:arranger
+      }}
+    }}
+  }}
 }}
 
 \\header {{
-  title = "{title}"
-  tagline = ##f
+{header}
 }}
+
+markErr = {{ {overrides} }}
+unmarkErr = {{ {reverts} }}
+markCopy = {{ {copy_overrides} }}
+unmarkCopy = {{ {reverts} }}
 
 \\score {{
   \\new Staff {{
-    \\clef bass
-    \\time 2/2
+    \\set Staff.instrumentName = ""
+    \\set Staff.shortInstrumentName = ""
+    \\compressEmptyMeasures
 {content}
   }}
   \\layout {{
@@ -248,6 +488,13 @@ def generate_lilypond(
   }}
 }}
 """
+    return code, model.warnings
+
+
+def generate_lilypond(measures: list[dict], title: str, **kwargs) -> str:
+    """Generate LilyPond source code (see :func:`generate_lilypond_with_warnings`)."""
+    code, _warnings = generate_lilypond_with_warnings(measures, title, **kwargs)
+    return code
 
 
 # Crop mark constants
