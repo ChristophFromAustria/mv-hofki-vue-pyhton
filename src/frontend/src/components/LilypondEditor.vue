@@ -21,7 +21,7 @@ import {
   Articulation,
   Volta,
   Modifier,
-  StaveText,
+  StaveHairpin,
 } from "vexflow/bravura";
 import {
   parseLilypond,
@@ -34,6 +34,8 @@ import {
   toggleRest,
   deleteEvent,
   insertEvent,
+  insertBarline,
+  removeBarline,
   normalizeDocument,
   keyFlats,
   keyAlteration,
@@ -116,7 +118,7 @@ function measureHints(m) {
   if (m.mismatch) {
     lines.push(`Taktfüllung ${fracToString(m.actualLen)} statt ${m.time.beats}/${m.time.beatType}`);
   }
-  if (m.percent !== null) lines.push(`Wiederholung ${m.percent}×`);
+  if (m.percent !== null) lines.push(`Wird ${m.percent}× gespielt (Taktwiederholung)`);
   if (m.copy) lines.push("Aus Vorlage übernommen");
   if (m.volta) lines.push(`Volta ${m.volta.count}`);
   return lines;
@@ -247,10 +249,46 @@ function restToggle() {
 function remove() {
   if (!selectedToken.value) return;
   const m = measureOfToken(selected.value);
-  const next = deleteEvent(doc.value, selected.value);
-  selectedMeasure.value = m ? m.index : null;
-  commit(next, null);
+  const cur = selected.value;
+  // Keep working in the same measure: select the following note, else the previous one
+  let neighbour = null;
+  if (m) {
+    const pos = m.events.indexOf(cur);
+    neighbour = m.events[pos + 1] ?? m.events[pos - 1] ?? null;
+  }
+  const next = deleteEvent(doc.value, cur);
+  selectedMeasure.value = neighbour === null && m ? m.index : null;
+  const nextSelected = neighbour === null ? null : neighbour > cur ? neighbour - 1 : neighbour;
+  commit(next, nextSelected);
 }
+
+function barlineInsert() {
+  if (!selectedToken.value) return;
+  const next = insertBarline(doc.value, measures.value, selected.value);
+  if (next !== doc.value) commit(next);
+}
+
+function barlineRemove() {
+  const m = currentMeasure();
+  if (!m) return;
+  const keep = selected.value;
+  const next = removeBarline(doc.value, m);
+  if (next !== doc.value) commit(next, keep);
+}
+
+const canInsertBarline = computed(() => {
+  const t = selectedToken.value;
+  if (!t) return false;
+  const m = measureOfToken(selected.value);
+  if (!m || m.percent !== null) return false;
+  const pos = m.events.indexOf(selected.value);
+  return pos >= 0 && pos < m.events.length - 1;
+});
+
+const canRemoveBarline = computed(() => {
+  const m = currentMeasure();
+  return !!m && m.endToken !== null && m.endToken !== undefined;
+});
 
 function defaultPitchForSelection() {
   const t = selectedToken.value;
@@ -364,6 +402,13 @@ function onKeydown(e) {
     case "t":
       restToggle();
       break;
+    case "b":
+    case "|":
+      barlineInsert();
+      break;
+    case "B":
+      barlineRemove();
+      break;
     case "Escape":
       selected.value = null;
       scheduleRender();
@@ -420,40 +465,58 @@ function vexDuration(t) {
   return t.kind === "note" ? base : `${base}r`;
 }
 
-function measureWidth(m, tokens, isRowStart, prev) {
-  let w = 34 + m.events.length * 30;
-  if (isRowStart || m.showClef) w += 32;
-  if (isRowStart || m.showKey) w += 12 + 8 * Math.abs(keyFlats(m.keyName, m.mode));
-  if (m.showTime || !prev) w += 28;
-  if (m.startBarline === "repeat-begin") w += 12;
-  if (m.percent !== null) w += 24;
-  return Math.max(w, 70);
+const PERCENT_CELL_WIDTH = 64;
+const PERCENT_GLYPH = ""; // SMuFL repeat1Bar
+
+/** Expand measures into drawable cells: music cell + N-1 percent cells. */
+function buildCells(ms) {
+  const cells = [];
+  for (const m of ms) {
+    cells.push({ m, kind: "music", number: m.number });
+    for (let k = 1; k < m.span; k += 1) {
+      cells.push({ m, kind: "percent", number: m.number + k });
+    }
+  }
+  return cells;
+}
+
+function cellWidth(cell, isRowStart, prevCell) {
+  const m = cell.m;
+  let w = cell.kind === "percent" ? PERCENT_CELL_WIDTH : 34 + m.events.length * 30;
+  if (isRowStart || (cell.kind === "music" && m.showClef)) w += 32;
+  if (isRowStart || (cell.kind === "music" && m.showKey)) {
+    w += 12 + 8 * Math.abs(keyFlats(m.keyName, m.mode));
+  }
+  if (cell.kind === "music" && (m.showTime || !prevCell)) w += 28;
+  if (cell.kind === "music" && m.startBarline === "repeat-begin") w += 12;
+  return Math.max(w, cell.kind === "percent" ? PERCENT_CELL_WIDTH : 70);
 }
 
 const MIN_LILYPOND_SCALE = 0.55;
 
 /**
- * Pack measures into rows. Returns { rows, width } where width is the
- * content width (may exceed availableWidth in "lilypond" mode, the host
- * then scrolls horizontally).
+ * Pack cells into rows. Returns { rows, width } where width is the content
+ * width (may exceed availableWidth in "lilypond" mode, the host then scrolls
+ * horizontally).
  */
-function layoutRows(ms, tokens, availableWidth, mode) {
+function layoutRows(cells, availableWidth, mode) {
   const rows = [];
   let row = [];
   let rowWidth = 0;
-  for (let i = 0; i < ms.length; i += 1) {
-    const m = ms[i];
-    const prev = i > 0 ? ms[i - 1] : null;
-    const w = measureWidth(m, tokens, row.length === 0, prev);
+  for (let i = 0; i < cells.length; i += 1) {
+    const cell = cells[i];
+    const prev = i > 0 ? cells[i - 1] : null;
+    const w = cellWidth(cell, row.length === 0, prev);
+    const breakBefore = cell.kind === "music" && cell.m.breakBefore;
     const overflow = mode === "auto" && rowWidth + w > availableWidth;
-    if (row.length && (m.breakBefore || overflow)) {
+    if (row.length && (breakBefore || overflow)) {
       rows.push(row);
       row = [];
       rowWidth = 0;
     }
-    const cellW = row.length === 0 ? measureWidth(m, tokens, true, prev) : w;
-    row.push({ m, w: cellW });
-    rowWidth += cellW;
+    const cw = row.length === 0 ? cellWidth(cell, true, prev) : w;
+    row.push({ cell, w: cw });
+    rowWidth += cw;
   }
   if (row.length) rows.push(row);
 
@@ -462,7 +525,6 @@ function layoutRows(ms, tokens, availableWidth, mode) {
     const natural = r.reduce((sum, x) => sum + x.w, 0);
     let scale;
     if (mode === "lilypond") {
-      // Fill the row like LilyPond does, but never squeeze below a legible size.
       scale = Math.max(MIN_LILYPOND_SCALE, availableWidth / natural);
       if (natural * scale > contentWidth) contentWidth = Math.ceil(natural * scale);
     } else {
@@ -481,6 +543,16 @@ function cssVar(name, fallback) {
   return v || fallback;
 }
 
+const END_BAR = {
+  single: Barline.type.SINGLE,
+  double: Barline.type.DOUBLE,
+  end: Barline.type.END,
+  "repeat-begin": Barline.type.REPEAT_BEGIN,
+  "repeat-end": Barline.type.REPEAT_END,
+  "repeat-both": Barline.type.REPEAT_BOTH,
+  none: Barline.type.NONE,
+};
+
 function render() {
   const el = host.value;
   if (!el) return;
@@ -493,7 +565,8 @@ function render() {
   measureBoxes = [];
   tooltip.value = null;
   const availableWidth = Math.max(320, width.value - 2 * SIDE_PAD);
-  const { rows, width: contentWidth } = layoutRows(ms, tokens, availableWidth, layoutMode.value);
+  const cells = buildCells(ms);
+  const { rows, width: contentWidth } = layoutRows(cells, availableWidth, layoutMode.value);
   const totalHeight = TOP_PAD + rows.length * ROW_HEIGHT + 20;
 
   const colorInk = cssVar("--color-text", "#1c2733");
@@ -520,66 +593,72 @@ function render() {
   ctx.setStrokeStyle(colorInk);
 
   const noteMap = new Map(); // svg id → token index
+  // Event sequence in score order for hairpins: { tok, note|null, row }
+  const sequence = [];
   let y = TOP_PAD;
 
   rows.forEach((row, rowIdx) => {
     let x = SIDE_PAD;
-    row.forEach((cell, cellIdx) => {
+    row.forEach((item, cellIdx) => {
+      const { cell } = item;
       const m = cell.m;
-      const stave = new Stave(x, y, cell.w, { spaceAboveStaffLn: 3 });
-      measureBoxes.push({ x, y, w: cell.w, h: ROW_HEIGHT, m });
-      stave.setStyle({ strokeStyle: colorInk, fillStyle: colorInk });
       const isRowStart = cellIdx === 0;
-      if (isRowStart || m.showClef) stave.addClef(m.clef);
-      if (isRowStart || m.showKey) stave.addKeySignature(lilyKeyToVex(m.keyName, m.mode));
-      if (m.showTime || (rowIdx === 0 && isRowStart))
+      const isMusic = cell.kind === "music";
+      const isLastCellOfMeasure = isMusic ? m.span === 1 : cell.number === m.number + m.span - 1;
+
+      const stave = new Stave(x, y, item.w, { spaceAboveStaffLn: 3 });
+      measureBoxes.push({ x, y, w: item.w, h: ROW_HEIGHT, m, cell });
+      stave.setStyle({ strokeStyle: colorInk, fillStyle: colorInk });
+      if (isRowStart || (isMusic && m.showClef)) stave.addClef(m.clef);
+      if (isRowStart || (isMusic && m.showKey)) {
+        stave.addKeySignature(lilyKeyToVex(m.keyName, m.mode));
+      }
+      if (isMusic && (m.showTime || (rowIdx === 0 && isRowStart))) {
         stave.addTimeSignature(`${m.time.beats}/${m.time.beatType}`);
+      }
 
-      if (m.startBarline === "repeat-begin") stave.setBegBarType(Barline.type.REPEAT_BEGIN);
-      const endMap = {
-        single: Barline.type.SINGLE,
-        double: Barline.type.DOUBLE,
-        end: Barline.type.END,
-        "repeat-begin": Barline.type.REPEAT_BEGIN,
-        "repeat-end": Barline.type.REPEAT_END,
-        "repeat-both": Barline.type.REPEAT_BOTH,
-        none: Barline.type.NONE,
-      };
-      stave.setEndBarType(endMap[m.endBarline] ?? Barline.type.SINGLE);
+      if (isMusic && m.startBarline === "repeat-begin") {
+        stave.setBegBarType(Barline.type.REPEAT_BEGIN);
+      }
+      const endType = isLastCellOfMeasure ? END_BAR[m.endBarline] : Barline.type.SINGLE;
+      stave.setEndBarType(endType ?? Barline.type.SINGLE);
 
-      if (m.volta) {
+      if (isMusic && m.volta) {
         const vt = {
           begin: Volta.type.BEGIN,
           mid: Volta.type.MID,
           end: Volta.type.END,
           "begin-end": Volta.type.BEGIN_END,
         };
+        const showNumber = m.volta.position === "begin" || m.volta.position === "begin-end";
         stave.setVoltaType(
           vt[m.volta.position] || Volta.type.BEGIN,
-          m.volta.position === "begin" || m.volta.position === "begin-end"
-            ? `${m.volta.count}.`
-            : "",
+          showNumber ? `${m.volta.count}.` : "",
           -5,
         );
       }
-      if (m.section) stave.setSection(m.section, 0, 0, 12, false);
-      if (m.percent !== null) {
-        const label = new StaveText(`${m.percent}×`, Modifier.Position.ABOVE, {
-          shiftX: -8,
-          shiftY: 14,
-          justification: 3,
-        });
-        label.setFont("Academico", 11, "normal", "normal");
-        stave.addModifier(label);
-      }
+      if (isMusic && m.section) stave.setSection(m.section, 0, 0, 12, false);
       stave.setContext(ctx).draw();
 
       // Printed measure number, small and muted, at the top left of the measure
       ctx.save();
       ctx.setFont("Academico", 9, "normal", "normal");
       ctx.setFillStyle(colorNumber);
-      ctx.fillText(String(m.number), x + 3, stave.getYForTopText(0) + 2);
+      ctx.fillText(String(cell.number), x + 3, stave.getYForTopText(0) + 2);
       ctx.restore();
+
+      if (!isMusic) {
+        // Percent repeat: the "%"-like repeat sign centred on the middle line
+        ctx.save();
+        ctx.setFont("Bravura", 30, "normal", "normal");
+        ctx.setFillStyle(m.copy ? colorCopy : colorInk);
+        const glyphWidth = ctx.measureText(PERCENT_GLYPH).width || 20;
+        const cx = stave.getNoteStartX() + (stave.getNoteEndX() - stave.getNoteStartX()) / 2;
+        ctx.fillText(PERCENT_GLYPH, cx - glyphWidth / 2, stave.getYForLine(2));
+        ctx.restore();
+        x += item.w;
+        return;
+      }
 
       // Notes
       const notes = [];
@@ -589,6 +668,7 @@ function render() {
         const t = tokens[ti];
         if (t.kind === "spacer") {
           pendingDynamics.push(...extractDynamics(t.suffix));
+          sequence.push({ tok: t, note: null, row: rowIdx });
           continue;
         }
         const keys =
@@ -625,6 +705,7 @@ function render() {
         if (typeof note.setStemStyle === "function") note.setStemStyle({ strokeStyle: color });
         notes.push(note);
         tokenForNote.push(ti);
+        sequence.push({ tok: t, note, row: rowIdx });
       }
 
       if (notes.length) {
@@ -663,27 +744,23 @@ function render() {
       } else {
         // Empty measure: make it selectable for inserts
         const g = ctx.openGroup("empty-measure", `empty-${m.index}`);
-        ctx.rect(x + 2, y + 20, cell.w - 4, 50, { fill: "transparent", stroke: "none" });
+        ctx.rect(x + 2, y + 20, Math.max(1, item.w - 4), 50, {
+          fill: "transparent",
+          stroke: "none",
+        });
         ctx.closeGroup();
         if (g) {
           g.style.cursor = "pointer";
           g.dataset.measure = String(m.index);
         }
       }
-      // Highlight background of the selected empty measure
-      if (selectedMeasure.value === m.index && selected.value === null) {
-        ctx.save();
-        ctx.setFillStyle(colorSel);
-        ctx.globalAlpha = 0.08;
-        ctx.fillRect(x, y + 10, cell.w, 70);
-        ctx.restore();
-      }
-      x += cell.w;
+      x += item.w;
     });
     y += ROW_HEIGHT;
   });
 
-  // Attach click handlers
+  drawHairpins(ctx, sequence);
+
   const svg = el.querySelector("svg");
   if (svg) {
     if (contentWidth > availableWidth) {
@@ -717,6 +794,73 @@ function render() {
   }
 }
 
+/**
+ * Crescendo / decrescendo hairpins. A hairpin opens on an event carrying
+ * \< or \> and closes on the next event with \! or a dynamic. Spacers
+ * (<>\!) close on the previous drawn note with a right shift. Spans over a
+ * row break are drawn in two pieces: to the row end and from the row start.
+ */
+function drawHairpins(ctx, sequence) {
+  const drawn = sequence.filter((s) => s.note);
+  let open = null; // { type, startNote, startRow, startIdx }
+
+  const draw = (type, first, last, leftShift, rightShift) => {
+    if (!first || !last) return;
+    try {
+      const hp = new StaveHairpin({ firstNote: first, lastNote: last }, type);
+      hp.setPosition(Modifier.Position.BELOW);
+      hp.setRenderOptions({
+        height: 9,
+        yShift: 8,
+        leftShiftPx: leftShift,
+        rightShiftPx: rightShift,
+      });
+      hp.setContext(ctx).draw();
+    } catch {
+      // a hairpin that cannot be drawn is not worth breaking the score
+    }
+  };
+
+  const close = (endNote, endRow, rightShift) => {
+    if (!open) return;
+    if (endRow === open.startRow) {
+      draw(open.type, open.startNote, endNote, 0, rightShift);
+    } else {
+      const rowNotes = drawn.filter((d) => d.row === open.startRow);
+      const lastInRow = rowNotes[rowNotes.length - 1]?.note;
+      const endRowNotes = drawn.filter((d) => d.row === endRow);
+      const firstInEndRow = endRowNotes[0]?.note;
+      draw(open.type, open.startNote, lastInRow, 0, 18);
+      draw(open.type, firstInEndRow, endNote, -6, rightShift);
+    }
+    open = null;
+  };
+
+  let lastNote = null;
+  let lastRow = 0;
+  let pendingStart = null;
+  for (const item of sequence) {
+    const suffix = item.tok.suffix || "";
+    const starts = suffix.includes("\\<") ? 1 : suffix.includes("\\>") ? 2 : 0;
+    const ends = suffix.includes("\\!") || DYNAMIC_RE.test(suffix);
+    DYNAMIC_RE.lastIndex = 0;
+    if (item.note) {
+      if (open && (ends || starts) && item.note !== open.startNote) close(item.note, item.row, 0);
+      if (pendingStart) {
+        open = { type: pendingStart, startNote: item.note, startRow: item.row };
+        pendingStart = null;
+      }
+      if (starts) open = { type: starts, startNote: item.note, startRow: item.row };
+      lastNote = item.note;
+      lastRow = item.row;
+    } else {
+      // spacer <>\< / <>\!
+      if (open && ends) close(lastNote, lastRow, 22);
+      if (starts) pendingStart = starts;
+    }
+  }
+}
+
 function extractDynamics(suffix) {
   if (!suffix) return [];
   const out = [];
@@ -742,17 +886,20 @@ function measureAtPointer(ev) {
 function onPointerMove(ev) {
   if (ev.pointerType === "touch") return;
   const box = measureAtPointer(ev);
-  const lines = box ? measureHints(box.m) : [];
+  let lines = [];
+  let title = "";
+  if (box && box.cell && box.cell.kind === "percent") {
+    title = `Takt ${box.cell.number}`;
+    lines = [`Wiederholung von Takt ${box.m.number}`];
+  } else if (box) {
+    title = measureLabel(box.m);
+    lines = measureHints(box.m);
+  }
   if (!box || !lines.length) {
     tooltip.value = null;
     return;
   }
-  tooltip.value = {
-    x: ev.clientX + 12,
-    y: ev.clientY + 16,
-    title: measureLabel(box.m),
-    lines,
-  };
+  tooltip.value = { x: ev.clientX + 12, y: ev.clientY + 16, title, lines };
 }
 
 function onPointerLeave() {
@@ -902,6 +1049,26 @@ onBeforeUnmount(() => {
           Löschen
         </button>
       </div>
+      <div class="tool-group">
+        <button
+          type="button"
+          class="tool"
+          :disabled="!canInsertBarline"
+          title="Taktstrich nach der Note einfügen (b)"
+          @click="barlineInsert"
+        >
+          Taktstrich +
+        </button>
+        <button
+          type="button"
+          class="tool"
+          :disabled="!canRemoveBarline"
+          title="Taktstrich am Taktende entfernen, Takte zusammenlegen (Shift+B)"
+          @click="barlineRemove"
+        >
+          Taktstrich −
+        </button>
+      </div>
       <div class="tool-group layout-toggle" role="group" aria-label="Zeilenanordnung">
         <button
           type="button"
@@ -964,7 +1131,7 @@ onBeforeUnmount(() => {
         >{{ selectedMeasureInfo }} (leer)</span
       >
       <span v-else class="status-hint"
-        >Note anklicken, dann Pfeiltasten, Ziffern 1 2 4 8 6, Punkt, n, r, t, Entf</span
+        >Note anklicken, dann Pfeiltasten, Ziffern 1 2 4 8 6, Punkt, n, r, t, b, Entf</span
       >
       <span class="status-measures">
         {{ measureSummary.total }} Takte

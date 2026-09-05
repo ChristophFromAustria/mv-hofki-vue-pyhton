@@ -11,6 +11,8 @@ import {
   setEventDuration,
   deleteEvent,
   insertEvent,
+  insertBarline,
+  removeBarline,
   toggleRest,
   normalizeDocument,
   parsePitch,
@@ -179,6 +181,31 @@ describe("editing", () => {
     });
     expect(d3.tokens[tokenIndex].kind).toBe("note");
     expect(serializeDocument(d3)).toContain("f4 r4 g8 f,2-> |");
+  });
+
+  it("inserts a barline after an event", () => {
+    const idx = ms[2].events[1]; // f4 r4 | f,2
+    const d2 = normalizeDocument(insertBarline(doc, ms, idx));
+    const code = serializeDocument(d2);
+    expect(code).toContain(
+      "\\set Timing.measureLength = #(ly:make-moment 1/2) \\markErr f4 r4 \\unmarkErr |",
+    );
+    expect(code).toContain("\\markErr f,2-> \\unmarkErr |");
+    // Not after the last event of a measure, not inside percent repeats
+    expect(insertBarline(doc, ms, ms[2].events[2])).toBe(doc);
+    expect(insertBarline(doc, ms, ms[4].events[0])).toBe(doc);
+  });
+
+  it("removes a barline and merges measures", () => {
+    const d2 = normalizeDocument(removeBarline(doc, ms[1]));
+    const code = serializeDocument(d2);
+    expect(code).toContain(
+      "\\set Timing.measureLength = #(ly:make-moment 2/1) \\markErr f2-> a2-> f4 r4 f,2-> \\unmarkErr |",
+    );
+    // A special barline is reduced to a plain one first
+    const d3 = removeBarline(doc, ms[3]);
+    expect(serializeDocument(d3)).toContain("bes,4 bes,4 bes,4 r4 |");
+    expect(serializeDocument(d3)).not.toContain('\\bar ".|:"');
   });
 
   it("toggles note and rest", () => {

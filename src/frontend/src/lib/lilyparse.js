@@ -980,6 +980,42 @@ export function insertEvent(doc, measure, afterTokenIndex, event) {
   return { doc: { ...doc, tokens }, tokenIndex: at };
 }
 
+/**
+ * Insert a plain barline right after the event at `tokenIndex`, splitting
+ * its measure in two. Refused inside percent repeats and when no further
+ * event follows in the measure (that would only create an empty measure).
+ */
+export function insertBarline(doc, measures, tokenIndex) {
+  const m = measures.find((mm) => tokenIndex >= mm.tokenStart && tokenIndex < mm.tokenEnd);
+  if (!m || m.percent !== null) return doc;
+  const pos = m.events.indexOf(tokenIndex);
+  if (pos === -1 || pos === m.events.length - 1) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  tokens.splice(tokenIndex + 1, 0, { type: "bar", raw: "|", ws: " ", uid: nextUid() });
+  return { ...doc, tokens };
+}
+
+/**
+ * Remove the barline that ends `measure`, merging it with the next one.
+ * A special barline (repeat, double, final) is first reduced to a plain
+ * barline; a second call then removes it.
+ */
+export function removeBarline(doc, measure) {
+  if (!measure || measure.endToken === null || measure.endToken === undefined) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  const t = tokens[measure.endToken];
+  if (!t) return doc;
+  if (t.type === "barline") {
+    tokens[measure.endToken] = { type: "bar", raw: "|", ws: t.ws, uid: nextUid() };
+    return { ...doc, tokens };
+  }
+  if (t.type !== "bar") return doc;
+  tokens.splice(measure.endToken, 1);
+  const next = tokens[measure.endToken];
+  if (next) next.ws = " ";
+  return { ...doc, tokens };
+}
+
 // ── Normalization (measureLength / markErr bookkeeping) ──────────────────
 
 const MOMENT = (f) => `\\set Timing.measureLength = #(ly:make-moment ${f.n}/${f.d})`;
