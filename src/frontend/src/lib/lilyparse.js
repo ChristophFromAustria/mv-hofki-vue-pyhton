@@ -498,6 +498,15 @@ export function tokenize(src) {
           i = k;
           continue;
         }
+      } else if (cmd === "\\tuplet" || cmd === "\\times") {
+        const t = /^\s+(\d+)\/(\d+)/.exec(src.slice(j));
+        if (t) {
+          const num = cmd === "\\tuplet" ? Number(t[1]) : Number(t[2]);
+          const den = cmd === "\\tuplet" ? Number(t[2]) : Number(t[1]);
+          push("tuplet", src.slice(i, j + t[0].length), ws, { num, den });
+          i = j + t[0].length;
+          continue;
+        }
       } else if (cmd === "\\tempo") {
         const t = /^\s+(?:"(?:[^"\\]|\\.)*"\s*)?(?:\d+\.*\s*=\s*\d+)?/.exec(src.slice(j));
         if (t) {
@@ -621,6 +630,7 @@ export function buildMeasures(tokens) {
   let voltaOpen = null; // { count, measures: [] }
   let afterRepeatClose = false;
   let percentPending = null;
+  let tupletPending = null;
   // brace stack entries: kind
   const stack = [];
 
@@ -650,6 +660,7 @@ export function buildMeasures(tokens) {
       showTime: false,
       err: false,
       copy: inCopy,
+      tuplets: [], // [{ num, den, tokenIndex, events }]
     };
     pendingRepeatBegin = false;
     pendingBreak = false;
@@ -738,9 +749,16 @@ export function buildMeasures(tokens) {
           stack.push({ kind: "volta-pending", count: t.count });
         }
         break;
+      case "tuplet":
+        tupletPending = { num: t.num, den: t.den, tokenIndex: i };
+        break;
       case "open": {
         const top = stack[stack.length - 1];
-        if (percentPending !== null) {
+        if (tupletPending !== null) {
+          stack.push({ kind: "tuplet", ...tupletPending, events: [] });
+          cur.tuplets.push(stack[stack.length - 1]);
+          tupletPending = null;
+        } else if (percentPending !== null) {
           cur.percent = percentPending;
           percentPending = null;
           stack.push({ kind: "percent" });
@@ -762,6 +780,7 @@ export function buildMeasures(tokens) {
       }
       case "close": {
         const top = stack.pop();
+        if (top && top.kind === "tuplet") break;
         if (top && top.kind === "repeat-volta") {
           // Repeat end bar goes on the last measure of the body unless an
           // \alternative follows (then on the first alternative's end).
@@ -794,11 +813,23 @@ export function buildMeasures(tokens) {
         }
         break;
       }
-      case "event":
+      case "event": {
         if (t.kind === "skip") break;
         cur.events.push(i);
         if (inErr) cur.err = true;
+        // duration scaling from enclosing \\tuplet blocks
+        let factor = frac(1, 1);
+        let tupletCtx = null;
+        for (const ctx of stack) {
+          if (ctx.kind === "tuplet") {
+            factor = fracMul(factor, frac(ctx.den, ctx.num));
+            tupletCtx = ctx;
+          }
+        }
+        t.tupletFactor = factor.n === factor.d ? null : factor;
+        if (tupletCtx) tupletCtx.events.push(i);
         break;
+      }
       case "bar":
         finishMeasure(i, "single", i);
         break;
@@ -860,7 +891,9 @@ export function measureActualLength(tokens, m) {
   for (const i of m.events) {
     const t = tokens[i];
     if (!t.duration || t.kind === "spacer") continue;
-    total = fracAdd(total, durationLength(t.duration));
+    let len = durationLength(t.duration);
+    if (t.tupletFactor) len = fracMul(len, t.tupletFactor);
+    total = fracAdd(total, len);
   }
   return total;
 }
@@ -1558,6 +1591,101 @@ function dropEmptyPercentRepeats(tokens) {
   return tokens;
 }
 
+// ── Tuplets and multi-measure rests ──────────────────────────────────────
+
+export const TUPLET_PRESETS = [
+  { num: 3, den: 2, label: "Triole (3:2)" },
+  { num: 5, den: 4, label: "Quintole (5:4)" },
+  { num: 6, den: 4, label: "Sextole (6:4)" },
+  { num: 7, den: 4, label: "Septole (7:4)" },
+];
+
+/** Wrap consecutive event tokens (same measure) in \\tuplet num/den { … }. */
+export function wrapTuplet(doc, indices, num, den) {
+  if (!indices.length) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  const first = Math.min(...indices);
+  const last = Math.max(...indices);
+  for (let i = first; i <= last; i += 1) {
+    const t = tokens[i];
+    if (t.type === "bar" || t.type === "barline" || t.type === "open" || t.type === "close")
+      return doc;
+    if (t.type === "tuplet") return doc;
+  }
+  tokens.splice(last + 1, 0, { type: "close", raw: "}", ws: " ", uid: nextUid() });
+  tokens.splice(
+    first,
+    0,
+    {
+      type: "tuplet",
+      raw: `\\tuplet ${num}/${den}`,
+      ws: tokens[first].ws,
+      uid: nextUid(),
+      num,
+      den,
+    },
+    { type: "open", raw: "{", ws: " ", uid: nextUid() },
+  );
+  tokens[first + 2] = { ...tokens[first + 2], ws: " " };
+  return { ...doc, tokens };
+}
+
+/** Remove the \\tuplet wrapper whose command token is at `tupletIndex`. */
+export function unwrapTuplet(doc, tupletIndex) {
+  const tokens = cloneTokens(doc.tokens);
+  const rep = tokens[tupletIndex];
+  if (!rep || rep.type !== "tuplet") return doc;
+  const open = tokens.findIndex((t, i) => i > tupletIndex && t.type === "open");
+  const close = percentCloseIndex(tokens, tupletIndex);
+  if (open === -1 || close === -1) return doc;
+  for (const i of [close, open, tupletIndex]) {
+    const ws = tokens[i].ws;
+    tokens.splice(i, 1);
+    if (tokens[i] && /\n/.test(ws) && !/\n/.test(tokens[i].ws)) tokens[i].ws = ws;
+  }
+  return { ...doc, tokens };
+}
+
+/** Number of measures of a multi-measure rest token (R1*N). */
+export function mmrestCount(tok) {
+  if (!tok || tok.kind !== "mmrest" || !tok.duration) return 1;
+  return tok.duration.mult ? Math.max(1, Math.round(tok.duration.mult.n / tok.duration.mult.d)) : 1;
+}
+
+export function setMmrestCount(doc, tokenIndex, count) {
+  const tokens = cloneTokens(doc.tokens);
+  const t = tokens[tokenIndex];
+  if (!t || t.kind !== "mmrest" || !t.duration) return doc;
+  const n = Math.max(1, Math.round(count));
+  t.duration = { ...t.duration, mult: n === 1 ? null : frac(n, 1) };
+  return { ...doc, tokens };
+}
+
+/**
+ * Compact multi-measure rest for marches: inserted after `measure` as
+ * \\compressMMRests { \\once \\override MultiMeasureRestNumber.direction = #DOWN R1*N } |
+ * (the rest length follows the time signature).
+ */
+export function insertCompactRest(doc, measure, count) {
+  if (!measure) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  const durs = durationTokensFor(measure.timeLen);
+  const restDur = durs.length === 1 ? durationToLily(durs[0]) : "1";
+  const n = Math.max(1, Math.round(count));
+  const snippet = `\\compressMMRests { \\once \\override MultiMeasureRestNumber.direction = #DOWN R${restDur}*${n} } |`;
+  const inserted = tokenize(snippet);
+  inserted[0].ws = "\n    ";
+  let at;
+  if (measure.endToken !== null && measure.endToken !== undefined) at = measure.endToken + 1;
+  else {
+    at = measure.tokenEnd;
+    inserted.unshift({ type: "bar", raw: "|", ws: " ", uid: nextUid() });
+    inserted[1].ws = "\n    ";
+  }
+  tokens.splice(at, 0, ...inserted);
+  return { ...doc, tokens };
+}
+
 // ── Normalization (measureLength / markErr bookkeeping) ──────────────────
 
 const MOMENT = (f) => `\\set Timing.measureLength = #(ly:make-moment ${f.n}/${f.d})`;
@@ -1582,8 +1710,23 @@ function dropBareSpacers(tokens) {
   return tokens;
 }
 
+/** \\tuplet blocks without events are dropped (LilyPond rejects them). */
+function dropEmptyTuplets(tokens) {
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    if (tokens[i].type !== "tuplet") continue;
+    const open = tokens.findIndex((x, k) => k > i && x.type === "open");
+    const close = percentCloseIndex(tokens, i);
+    if (open === -1 || close === -1) continue;
+    if (tokens.slice(open + 1, close).some((x) => x.type === "event")) continue;
+    for (const k of [close, open, i]) tokens.splice(k, 1);
+  }
+  return tokens;
+}
+
 export function normalizeDocument(doc) {
-  const tokens = dropEmptyPercentRepeats(dropBareSpacers(cloneTokens(doc.tokens)));
+  const tokens = dropEmptyTuplets(
+    dropEmptyPercentRepeats(dropBareSpacers(cloneTokens(doc.tokens))),
+  );
   const measures = buildMeasures(tokens);
   let effective = null;
   let timeLen = null;
@@ -1646,8 +1789,31 @@ export function normalizeDocument(doc) {
     const last = eventPos[eventPos.length - 1];
     // measureLength goes in front of the percent-repeat wrapper, the error
     // marking around the events inside it
-    const repeatPos = kept.findIndex((t) => t.type === "repeat" && t.repeatKind === "percent");
-    const setAnchor = repeatPos >= 0 ? repeatPos : first;
+    // Where the bookkeeping goes: in front of a wrapper (percent repeat,
+    // compressMMRests, tuplet) that starts the music, else at the first event.
+    const isWrapper = (t) =>
+      (t.type === "repeat" && t.repeatKind === "percent") ||
+      (t.type === "command" && t.command === "\\compressMMRests") ||
+      t.type === "tuplet";
+    const wrapperPos = kept.findIndex((t, i) => isWrapper(t) && i < first);
+    const setAnchor = wrapperPos >= 0 ? wrapperPos : first;
+    const percentWrapper = wrapperPos >= 0 && kept[wrapperPos].type === "repeat";
+    // markErr sits inside a percent repeat body, otherwise with the set
+    const errStart = percentWrapper ? first : setAnchor;
+    // unmarkErr after the last event, but outside a tuplet that closes right after it
+    let errEnd = last;
+    let depth = 0;
+    kept.forEach((t, i) => {
+      if (i > last) return;
+      if (t.type === "tuplet") depth += 1;
+      else if (t.type === "close" && depth > 0) depth -= 1;
+    });
+    for (let i = last + 1; i < kept.length && depth > 0; i += 1) {
+      if (kept[i].type === "close") {
+        depth -= 1;
+        errEnd = i;
+      } else break;
+    }
     const rebuilt = [];
     kept.forEach((t, i) => {
       if (i === setAnchor && needsSet) {
@@ -1663,7 +1829,7 @@ export function normalizeDocument(doc) {
         });
         t = { ...t, ws: " " };
       }
-      if (i === first && needsErr) {
+      if (i === errStart && needsErr) {
         rebuilt.push({
           type: "command",
           uid: nextUid(),
@@ -1674,7 +1840,7 @@ export function normalizeDocument(doc) {
         t = { ...t, ws: " " };
       }
       rebuilt.push(t);
-      if (i === last && needsErr) {
+      if (i === errEnd && needsErr) {
         rebuilt.push({
           type: "command",
           uid: nextUid(),

@@ -29,6 +29,11 @@ import {
   placeSlur,
   removeSlur,
   findSlurs,
+  wrapTuplet,
+  unwrapTuplet,
+  setMmrestCount,
+  insertCompactRest,
+  mmrestCount,
   setHairpin,
   removeHairpin,
   placeHairpin,
@@ -420,6 +425,46 @@ describe("editing", () => {
     expect(serializeDocument(d)).toContain("f4( r4 f,2->) |");
     d = removeSlur(d, ms[2].events[0], ms[2].events[2]);
     expect(serializeDocument(d)).toContain("f4 r4 f,2-> |");
+  });
+
+  it("parses, wraps and unwraps tuplets", () => {
+    const src = String.raw`\score { \new Staff { \time 2/2 c4 \tuplet 3/2 { d8 e8 f8 } g2 | c1 | } }`;
+    const d = parseLilypond(src);
+    const m = buildMeasures(d.tokens);
+    expect(m[0].mismatch).toBe(false); // 1/4 + 2/8 + 1/2 = 1
+    expect(m[0].tuplets).toHaveLength(1);
+    expect(m[0].tuplets[0].events).toHaveLength(3);
+    // wrap three quarters of the sample's measure 4 into a triplet
+    const idx = ms[3].events.slice(0, 3);
+    let d2 = wrapTuplet(doc, idx, 3, 2);
+    expect(serializeDocument(d2)).toContain("\\tuplet 3/2 { bes,4 bes,4 bes,4 } r4 \\bar");
+    const m2 = buildMeasures(d2.tokens);
+    expect(m2[3].mismatch).toBe(true); // 2/4 + 1/4 = 3/4 now
+    const tupletIdx = d2.tokens.findIndex((t) => t.type === "tuplet");
+    d2 = unwrapTuplet(d2, tupletIdx);
+    expect(serializeDocument(d2)).toContain("bes,4 bes,4 bes,4 r4 \\bar");
+    // bookkeeping goes around the tuplet, not into it
+    const norm = serializeDocument(normalizeDocument(wrapTuplet(doc, idx, 3, 2)));
+    expect(norm).toContain(
+      "\\set Timing.measureLength = #(ly:make-moment 3/4) \\markErr \\tuplet 3/2 { bes,4 bes,4 bes,4 } r4 \\unmarkErr \\bar",
+    );
+    // deleting all notes of a tuplet drops the wrapper
+    let d3 = wrapTuplet(doc, idx, 3, 2);
+    for (const i of [...buildMeasures(d3.tokens)[3].events.slice(0, 3)].reverse()) d3 = deleteEvent(d3, i);
+    expect(serializeDocument(normalizeDocument(d3))).not.toContain("tuplet");
+  });
+
+  it("inserts compact multi-measure rests and changes their length", () => {
+    let d = normalizeDocument(insertCompactRest(doc, ms[1], 2));
+    const code = serializeDocument(d);
+    expect(code).toContain(
+      "f2-> a2-> |\n    \\set Timing.measureLength = #(ly:make-moment 2/1) \\compressMMRests { \\once \\override MultiMeasureRestNumber.direction = #DOWN R1*2 } |",
+    );
+    const m = buildMeasures(d.tokens);
+    expect(m[2].events).toHaveLength(1);
+    expect(mmrestCount(d.tokens[m[2].events[0]])).toBe(2);
+    d = normalizeDocument(setMmrestCount(d, m[2].events[0], 4));
+    expect(serializeDocument(d)).toContain("#(ly:make-moment 4/1) \\compressMMRests { \\once \\override MultiMeasureRestNumber.direction = #DOWN R1*4 } |");
   });
 
   it("toggles note and rest", () => {

@@ -24,6 +24,7 @@ import {
   StaveHairpin,
   StaveTie,
   Curve,
+  Tuplet,
 } from "vexflow/bravura";
 import {
   parseLilypond,
@@ -58,6 +59,12 @@ import {
   placeSlur,
   removeSlur,
   findSlurs,
+  wrapTuplet,
+  unwrapTuplet,
+  setMmrestCount,
+  insertCompactRest,
+  mmrestCount,
+  TUPLET_PRESETS,
   removeHairpin,
   placeHairpin,
   normalizeDocument,
@@ -209,7 +216,7 @@ const selectedInfo = computed(() => {
   const parts = [];
   if (t.kind === "note") parts.push(t.pitches.map(pitchLabel).join(" "));
   else if (t.kind === "rest") parts.push("Pause");
-  else if (t.kind === "mmrest") parts.push("Mehrtaktpause");
+  else if (t.kind === "mmrest") parts.push(`Mehrtaktpause · ${mmrestCount(t)} Takte`);
   else parts.push("Platzhalter");
   if (t.duration) parts.push(durationLabel(t.duration));
   return parts.join(" · ");
@@ -495,6 +502,61 @@ function stepPitch(delta) {
 function stepAccidental(delta) {
   if (!requireNote()) return;
   commit(alterEvent(doc.value, selected.value, delta));
+}
+
+/** The \\tuplet wrapper enclosing the selected note, if any (token index). */
+function tupletOfSelection() {
+  const m = selected.value !== null ? measureOfToken(selected.value) : null;
+  if (!m) return null;
+  const tp = m.tuplets.find((t) => t.events.includes(selected.value));
+  return tp ? tp.tokenIndex : null;
+}
+
+/** A note range can become a tuplet when it is contiguous inside one measure. */
+const tupletRangeOk = computed(() => {
+  const idx = noteRangeIndices.value;
+  if (idx.length < 2 || !doc.value) return false;
+  const m = measureOfToken(idx[0]);
+  if (!m || m.percent !== null) return false;
+  if (!idx.every((i) => i >= m.tokenStart && i < m.tokenEnd)) return false;
+  if (idx.some((i) => doc.value.tokens[i].tupletFactor)) return false;
+  // no structural token between first and last selected event
+  for (let i = idx[0]; i <= idx[idx.length - 1]; i += 1) {
+    const t = doc.value.tokens[i];
+    if (["bar", "barline", "open", "close", "tuplet", "repeat"].includes(t.type)) return false;
+  }
+  return true;
+});
+
+function tupletWrap(num, den) {
+  if (!tupletRangeOk.value) return;
+  const idx = noteRangeIndices.value;
+  const keep = selected.value;
+  const end = selectedNoteEnd.value;
+  commit(wrapTuplet(doc.value, idx, num, den), keep);
+  selectedNoteEnd.value = end;
+  scheduleRender();
+}
+
+function tupletUnwrap() {
+  const tp = tupletOfSelection();
+  if (tp === null) return;
+  commit(unwrapTuplet(doc.value, tp));
+}
+
+function mmrestChange(delta) {
+  const t = selectedToken.value;
+  if (!t || t.kind !== "mmrest") return;
+  commit(setMmrestCount(doc.value, selected.value, mmrestCount(t) + delta));
+}
+
+function compactRestInsert(count) {
+  const m = currentMeasure();
+  if (!m) return;
+  const idx = m.index;
+  commit(insertCompactRest(doc.value, m, count), null);
+  if (measures.value[idx + 1]) selectMeasure(idx + 1);
+  scheduleRender();
 }
 
 function setDuration(base) {
@@ -851,6 +913,18 @@ const menuItems = computed(() => {
       action: tieRange,
     });
     items.push({ type: "item", label: "Bindebogen über die Auswahl", action: slurOverRange });
+    items.push({ type: "header", label: "N-tole" });
+    for (const preset of TUPLET_PRESETS) {
+      items.push({
+        type: "item",
+        label: preset.label,
+        disabled: !tupletRangeOk.value,
+        action: () => tupletWrap(preset.num, preset.den),
+      });
+    }
+    if (tupletOfSelection() !== null) {
+      items.push({ type: "item", label: "N-tole auflösen", action: tupletUnwrap });
+    }
     items.push({ type: "sep" });
     items.push({ type: "item", label: "Noten löschen", danger: true, action: deleteSelection });
     return items;
@@ -917,11 +991,24 @@ const menuItems = computed(() => {
         disabled: !tieOk && !deco.tie,
         action: tieToggle,
       });
+      if (tupletOfSelection() !== null) {
+        items.push({ type: "item", label: "N-tole auflösen", action: tupletUnwrap });
+      }
       items.push({
         type: "check",
         label: "Bindebogen zur nächsten Note",
         checked: deco.slurStart,
         action: slurToggle,
+      });
+    }
+    if (t.kind === "mmrest") {
+      items.push({ type: "header", label: `Mehrtaktpause · ${mmrestCount(t)} Takte` });
+      items.push({ type: "item", label: "Ein Takt mehr", action: () => mmrestChange(1) });
+      items.push({
+        type: "item",
+        label: "Ein Takt weniger",
+        disabled: mmrestCount(t) <= 1,
+        action: () => mmrestChange(-1),
       });
     }
     if (t.kind !== "spacer" && t.kind !== "mmrest") {
@@ -987,6 +1074,10 @@ const menuItems = computed(() => {
       label: "Leeren Takt danach einfügen",
       action: () => measureInsert("after"),
     });
+    items.push({ type: "header", label: "Mehrtaktpause danach einfügen" });
+    for (const n of [2, 4, 8]) {
+      items.push({ type: "item", label: `${n} Takte Pause`, action: () => compactRestInsert(n) });
+    }
     items.push({ type: "header", label: "Taktwiederholung" });
     items.push({
       type: "item",
@@ -1648,7 +1739,7 @@ function render() {
           note.addModifier(ann);
         }
         if (t.kind === "mmrest" && t.duration && t.duration.mult) {
-          const ann = new Annotation(`${fracToString(t.duration.mult)} Takte`);
+          const ann = new Annotation(`${mmrestCount(t)} Takte`);
           ann.setFont("Academico", 11, "normal", "normal");
           ann.setVerticalJustification(Annotation.VerticalJustify.TOP);
           note.addModifier(ann);
@@ -1674,10 +1765,20 @@ function render() {
           // ignore accidental errors, notes still render
         }
         const beams = Beam.generateBeams(notes.filter((n) => !n.isRest()));
+        const tuplets = [];
+        for (const tp of m.tuplets) {
+          const tnotes = tp.events.map((ti) => notes[tokenForNote.indexOf(ti)]).filter(Boolean);
+          if (tnotes.length) {
+            tuplets.push(
+              new Tuplet(tnotes, { numNotes: tp.num, notesOccupied: tp.den, bracketed: true }),
+            );
+          }
+        }
         try {
           new Formatter().joinVoices([voice]).formatToStave([voice], stave, { alignRests: true });
           voice.draw(ctx, stave);
           beams.forEach((b) => b.setContext(ctx).draw());
+          tuplets.forEach((tp) => tp.setContext(ctx).draw());
           notes.forEach((n, k) =>
             notePositions.push({
               ti: tokenForNote[k],
