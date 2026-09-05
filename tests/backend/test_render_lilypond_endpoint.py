@@ -102,3 +102,46 @@ async def test_render_lilypond_unknown_scan(client):
         json={"lilypond_code": MINIMAL_LY},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_edited_version_is_stored_and_reused(
+    client, scan_id, monkeypatch, tmp_path
+):
+    from mv_hofki.core.config import settings
+    from mv_hofki.services import lilypond_generator
+
+    monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
+    calls: list[str] = []
+
+    def fake_render(code: str, output_dir: Path) -> dict:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        calls.append(code)
+        pdf = output_dir / "generated.pdf"
+        pdf.write_bytes(b"%PDF")
+        return {"pdf_path": pdf, "png_paths": []}
+
+    monkeypatch.setattr(lilypond_generator, "render_lilypond", fake_render)
+
+    resp = await client.post(
+        f"/api/v1/scanner/scans/{scan_id}/render-lilypond",
+        json={"lilypond_code": MINIMAL_LY},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["source"] == "edited"
+    assert resp.json()["edited_at"]
+
+    # generate-lilypond now returns the edited version instead of analysing
+    resp = await client.post(f"/api/v1/scanner/scans/{scan_id}/generate-lilypond")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["source"] == "edited"
+    assert resp.json()["lilypond_code"] == MINIMAL_LY
+    assert calls == [MINIMAL_LY, MINIMAL_LY]
+
+    # reset discards the edit; without measures the analysis path answers 400
+    resp = await client.post(
+        f"/api/v1/scanner/scans/{scan_id}/generate-lilypond?reset=true"
+    )
+    assert resp.status_code == 400
+    resp = await client.post(f"/api/v1/scanner/scans/{scan_id}/generate-lilypond")
+    assert resp.status_code == 400

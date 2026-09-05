@@ -16,6 +16,8 @@ class SheetMusicScanRead(BaseModel):
     processed_image_path: str | None
     status: str
     adjustments_json: str | None
+    has_lilypond_edit: bool = False
+    lilypond_edited_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

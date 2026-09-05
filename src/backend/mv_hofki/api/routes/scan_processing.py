@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -545,6 +546,11 @@ async def render_lilypond_endpoint(
     except RuntimeError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # The rendered version is the edited version from now on.
+    scan.lilypond_edited = code
+    scan.lilypond_edited_at = datetime.now(UTC).replace(tzinfo=None)
+    await db.commit()
+
     return {
         "lilypond_code": code,
         "pdf_path": str(render_result["pdf_path"].relative_to(settings.PROJECT_ROOT)),
@@ -554,15 +560,23 @@ async def render_lilypond_endpoint(
             for p in render_result["png_paths"]
         ],
         "warnings": [],
+        "source": "edited",
+        "edited_at": scan.lilypond_edited_at.isoformat(),
     }
 
 
 @router.post("/scans/{scan_id}/generate-lilypond")
 async def generate_lilypond_endpoint(
     scan_id: int,
+    reset: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate LilyPond code and PDF from detected measures and symbols."""
+    """LilyPond code and PDF for a scan.
+
+    A version edited in the browser takes precedence and is re-rendered as
+    is. With ``reset=true`` the edited version is discarded and the code is
+    generated from the analysis again.
+    """
     import asyncio
 
     from sqlalchemy import select
@@ -584,6 +598,48 @@ async def generate_lilypond_endpoint(
     scan = await db.get(SheetMusicScan, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+
+    if reset and scan.lilypond_edited is not None:
+        scan.lilypond_edited = None
+        scan.lilypond_edited_at = None
+        await db.commit()
+
+    if scan.lilypond_edited is not None:
+        part = await db.get(ScanPart, scan.part_id)
+        if not part:
+            raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
+        scan_dir = (
+            settings.PROJECT_ROOT
+            / "data"
+            / "scans"
+            / str(part.project_id)
+            / str(part.id)
+            / str(scan_id)
+        )
+        try:
+            render_result = await asyncio.to_thread(
+                render_lilypond, scan.lilypond_edited, scan_dir
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "lilypond_code": scan.lilypond_edited,
+            "pdf_path": str(
+                render_result["pdf_path"].relative_to(settings.PROJECT_ROOT)
+            ),
+            "ly_path": str(
+                (scan_dir / "generated.ly").relative_to(settings.PROJECT_ROOT)
+            ),
+            "png_paths": [
+                str(p.relative_to(settings.PROJECT_ROOT))
+                for p in render_result["png_paths"]
+            ],
+            "warnings": [],
+            "source": "edited",
+            "edited_at": scan.lilypond_edited_at.isoformat()
+            if scan.lilypond_edited_at
+            else None,
+        }
 
     result = await db.execute(
         select(DetectedMeasure)
@@ -762,6 +818,7 @@ async def generate_lilypond_endpoint(
             for p in render_result["png_paths"]
         ],
         "warnings": warnings,
+        "source": "analysis",
     }
 
 

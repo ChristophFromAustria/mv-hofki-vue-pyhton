@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mv_hofki.db.base import Base
@@ -28,6 +28,9 @@ class SheetMusicScan(Base):
     processed_image_path: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploaded")
     adjustments_json: Mapped[str | None] = mapped_column(Text)
+    # LilyPond source edited in the browser editor; None = use the analysis
+    lilypond_edited: Mapped[str | None] = mapped_column(Text)
+    lilypond_edited_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
@@ -37,3 +40,7 @@ class SheetMusicScan(Base):
     staves: Mapped[list[DetectedStaff]] = relationship(
         back_populates="scan", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    @property
+    def has_lilypond_edit(self) -> bool:
+        return self.lilypond_edited is not None
