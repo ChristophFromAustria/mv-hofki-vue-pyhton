@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -154,6 +155,8 @@ def _measure_item(
 
     wrappable = True
     if m.mmrest_measures:
+        # The measure length stays at the time signature: with a longer
+        # measureLength LilyPond treats R1*N as one measure and drops the number.
         needed = state.time_len
         total = state.time_len * m.mmrest_measures
         mult = (
@@ -373,6 +376,59 @@ def _escape(text: str) -> str:
 
 
 # ── Public API ───────────────────────────────────────────────────────────
+
+
+_LAYOUT_PATTERNS: tuple[tuple[str, str, str], ...] = (
+    ("ly_top_margin", r"(?m)^(\s*top-margin = )\S+", "{v}"),
+    ("ly_bottom_margin", r"(?m)^(\s*bottom-margin = )\S+", "{v}"),
+    ("ly_left_margin", r"(?m)^(\s*left-margin = )\S+", "{v}"),
+    ("ly_right_margin", r"(?m)^(\s*right-margin = )\S+", "{v}"),
+    (
+        "ly_system_distance",
+        r"(?m)^(\s*system-system-spacing\.basic-distance = #)\S+",
+        "{v}",
+    ),
+    ("ly_system_padding", r"(?m)^(\s*system-system-spacing\.padding = #)\S+", "{v}"),
+    ("ly_staff_size", r"(#\(layout-set-staff-size )[^)]+", "{v}"),
+)
+
+
+def _fmt(value: object) -> str:
+    """Format a config number the way the generator writes it (17 not 17.0)."""
+    try:
+        f = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return str(value)
+    return str(int(f)) if f.is_integer() else f"{f:g}"
+
+
+def apply_layout_config(code: str, config: dict) -> str:
+    """Rewrite the paper/layout values of existing LilyPond code from config.
+
+    Used for versions edited in the browser, whose paper block would
+    otherwise keep the values from the moment they were generated.
+    """
+    out = code
+    for key, pattern, template in _LAYOUT_PATTERNS:
+        if key not in config or config[key] is None or config[key] == "":
+            continue
+        out = _replace_value(out, pattern, template.format(v=_fmt(config[key])))
+    distance = config.get("ly_system_distance")
+    if distance is not None and distance != "":
+        minimum = max(float(distance) - 1, 1)
+        out = _replace_value(
+            out,
+            r"(?m)^(\s*system-system-spacing\.minimum-distance = #)\S+",
+            _fmt(minimum),
+        )
+    return out
+
+
+def _replace_value(text: str, pattern: str, value: str) -> str:
+    def _sub(match: re.Match[str]) -> str:
+        return match.group(1) + value
+
+    return re.sub(pattern, _sub, text, count=1)
 
 
 def generate_lilypond_with_warnings(

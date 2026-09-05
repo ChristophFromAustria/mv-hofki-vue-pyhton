@@ -526,3 +526,39 @@ def test_header_puts_part_left_of_title_and_aligns_dynamics():
     assert sub < title  # part first (left), title centred
     assert "\\center-column" not in title_block
     assert "\\override DynamicText.self-alignment-X = #3" in code
+
+
+def test_multi_measure_rest_keeps_measure_length():
+    """A longer measureLength would make LilyPond drop the rest's number."""
+    measures = _measures([(0, 2)])
+    symbols = [
+        _mark(0, 40, "zwei_takte_kompakt_pause", "2 Takte Pause Kompakt", "rest"),
+        _note(0, 140, "Ganze Note", 2.5, 1.5),
+    ]
+    code = generate_lilypond(measures, "T", symbols=symbols)
+    assert "R1*2" in code
+    assert "ly:make-moment 2/1" not in code
+
+
+def test_apply_layout_config_rewrites_paper_values():
+    from mv_hofki.services.lilypond_generator import apply_layout_config
+
+    code = generate_lilypond(_measures([(0, 1)]), "Test", left_margin=16, staff_size=17)
+    out = apply_layout_config(
+        code,
+        {
+            "ly_left_margin": 22,
+            "ly_staff_size": 19.0,
+            "ly_system_distance": 8,
+            "ly_top_margin": 2.5,
+        },
+    )
+    assert "\n  left-margin = 22\n" in out
+    assert "#(layout-set-staff-size 19)" in out
+    assert "system-system-spacing.basic-distance = #8\n" in out
+    assert "system-system-spacing.minimum-distance = #7\n" in out
+    assert "\n  top-margin = 2.5\n" in out
+    # untouched values stay
+    assert "right-margin = 16" in out
+    # idempotent
+    assert apply_layout_config(out, {"ly_left_margin": 22}) == out

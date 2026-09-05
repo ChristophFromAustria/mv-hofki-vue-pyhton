@@ -518,7 +518,12 @@ async def render_lilypond_endpoint(
     from mv_hofki.core.config import settings
     from mv_hofki.models.scan_part import ScanPart
     from mv_hofki.models.sheet_music_scan import SheetMusicScan
-    from mv_hofki.services.lilypond_generator import render_lilypond
+    from mv_hofki.services.lilypond_generator import (
+        apply_layout_config,
+        render_lilypond,
+    )
+    from mv_hofki.services.scanner_config import get_effective_config
+    from mv_hofki.services.sheet_music_scan import merge_scan_adjustments
 
     code = body.lilypond_code
     if not code.strip() or "\\score" not in code:
@@ -541,6 +546,11 @@ async def render_lilypond_endpoint(
         / str(part.id)
         / str(scan_id)
     )
+    # Layout values (margins, staff size …) always follow the configuration
+    config = await get_effective_config(db)
+    merge_scan_adjustments(config, scan.adjustments_json)
+    code = apply_layout_config(code, config)
+
     try:
         render_result = await asyncio.to_thread(render_lilypond, code, scan_dir)
     except RuntimeError as exc:
@@ -608,6 +618,16 @@ async def generate_lilypond_endpoint(
         part = await db.get(ScanPart, scan.part_id)
         if not part:
             raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
+        from mv_hofki.services.lilypond_generator import apply_layout_config
+        from mv_hofki.services.scanner_config import get_effective_config
+        from mv_hofki.services.sheet_music_scan import merge_scan_adjustments
+
+        layout_config = await get_effective_config(db)
+        merge_scan_adjustments(layout_config, scan.adjustments_json)
+        applied = apply_layout_config(scan.lilypond_edited, layout_config)
+        if applied != scan.lilypond_edited:
+            scan.lilypond_edited = applied
+            await db.commit()
         scan_dir = (
             settings.PROJECT_ROOT
             / "data"
@@ -771,8 +791,10 @@ async def generate_lilypond_endpoint(
 
     # Load LilyPond settings from global config
     from mv_hofki.services.scanner_config import get_effective_config
+    from mv_hofki.services.sheet_music_scan import merge_scan_adjustments
 
     config = await get_effective_config(db)
+    merge_scan_adjustments(config, scan.adjustments_json)
 
     ly_code, warnings = generate_lilypond_with_warnings(
         measures,
