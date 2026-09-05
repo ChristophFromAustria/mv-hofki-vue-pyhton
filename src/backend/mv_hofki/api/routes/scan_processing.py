@@ -497,6 +497,66 @@ async def get_hairpin_debug(scan_id: int, db: AsyncSession = Depends(get_db)):
     return json.loads(debug_path.read_text())
 
 
+class RenderLilypondRequest(BaseModel):
+    lilypond_code: str
+
+
+@router.post("/scans/{scan_id}/render-lilypond")
+async def render_lilypond_endpoint(
+    scan_id: int,
+    body: RenderLilypondRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Render user-edited LilyPond code for a scan (PDF + PNG preview).
+
+    Overwrites the generated files in the scan directory with the edited
+    version. The edit itself is not stored anywhere else.
+    """
+    import asyncio
+
+    from mv_hofki.core.config import settings
+    from mv_hofki.models.scan_part import ScanPart
+    from mv_hofki.models.sheet_music_scan import SheetMusicScan
+    from mv_hofki.services.lilypond_generator import render_lilypond
+
+    code = body.lilypond_code
+    if not code.strip() or "\\score" not in code:
+        raise HTTPException(
+            status_code=422, detail="Der LilyPond-Code enthält keinen \\score-Block"
+        )
+
+    scan = await db.get(SheetMusicScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+    part = await db.get(ScanPart, scan.part_id)
+    if not part:
+        raise HTTPException(status_code=404, detail="Scan-Part nicht gefunden")
+
+    scan_dir = (
+        settings.PROJECT_ROOT
+        / "data"
+        / "scans"
+        / str(part.project_id)
+        / str(part.id)
+        / str(scan_id)
+    )
+    try:
+        render_result = await asyncio.to_thread(render_lilypond, code, scan_dir)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "lilypond_code": code,
+        "pdf_path": str(render_result["pdf_path"].relative_to(settings.PROJECT_ROOT)),
+        "ly_path": str((scan_dir / "generated.ly").relative_to(settings.PROJECT_ROOT)),
+        "png_paths": [
+            str(p.relative_to(settings.PROJECT_ROOT))
+            for p in render_result["png_paths"]
+        ],
+        "warnings": [],
+    }
+
+
 @router.post("/scans/{scan_id}/generate-lilypond")
 async def generate_lilypond_endpoint(
     scan_id: int,
