@@ -56,6 +56,25 @@ const previewNatH = ref(0);
 const cropDrawing = ref(false);
 const cropStart = ref({ x: 0, y: 0 });
 const cropEnd = ref({ x: 0, y: 0 });
+const tightening = ref(false);
+const tightenMessage = ref(null);
+
+async function tightenVariants() {
+  if (tightening.value) return;
+  tightening.value = true;
+  try {
+    const r = await post("/scanner/library/variants/tighten");
+    tightenMessage.value = `${r.cropped} von ${r.checked} Varianten zugeschnitten, ${r.unchanged} unverändert${
+      r.skipped.length ? `, ${r.skipped.length} übersprungen` : ""
+    }`;
+    await fetchTemplates();
+  } catch (e) {
+    tightenMessage.value = `Zuschneiden fehlgeschlagen: ${e.message}`;
+  } finally {
+    tightening.value = false;
+  }
+}
+
 const cropRect = ref(null);
 const svgOverlay = ref(null);
 
@@ -395,10 +414,20 @@ onMounted(fetchTemplates);
 
     <!-- Category filter tabs -->
     <div class="category-tabs">
+        <button
+          class="btn btn-sm"
+          :disabled="tightening"
+          title="Alle Noten- und Pausen-Varianten exakt auf die schwarzen Pixel zuschneiden"
+          @click="tightenVariants"
+        >
+          {{ tightening ? "Schneide zu…" : "Varianten zuschneiden" }}
+        </button>
       <button
         v-for="cat in CATEGORIES"
         :key="cat.key"
         :class="['tab-btn', { active: activeCategory === cat.key }]"
+    <p v-if="tightenMessage" class="tighten-message" role="status">{{ tightenMessage }}</p>
+
         @click="selectCategory(cat.key)"
       >
         {{ cat.label }}
@@ -1008,3 +1037,8 @@ onMounted(fetchTemplates);
   padding: 4px;
 }
 </style>
+.tighten-message {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}

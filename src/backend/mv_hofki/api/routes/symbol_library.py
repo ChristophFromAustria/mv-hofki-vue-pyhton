@@ -33,6 +33,17 @@ async def list_templates(
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 
 
+class CategoryCount(BaseModel):
+    category: str
+    count: int
+
+
+@router.get("/categories", response_model=list[CategoryCount])
+async def list_categories(db: AsyncSession = Depends(get_db)):
+    """All categories currently in use, with template counts."""
+    return await lib_service.get_categories(db)
+
+
 @router.post("/templates", response_model=SymbolTemplateRead, status_code=201)
 async def create_template(
     data: SymbolTemplateCreate, db: AsyncSession = Depends(get_db)
@@ -74,6 +85,18 @@ async def delete_variant(
 ):
     await lib_service.delete_variant(db, template_id, variant_id)
     return {"status": "ok"}
+
+
+@router.post("/variants/tighten")
+async def tighten_variants(db: AsyncSession = Depends(get_db)):
+    """Crop all note/rest variant images tightly to their ink."""
+    result = await lib_service.tighten_all_variants(db)
+    return {
+        "checked": result.checked,
+        "cropped": result.cropped,
+        "unchanged": result.unchanged,
+        "skipped": result.skipped,
+    }
 
 
 @router.post("/templates/{template_id}/variants/{variant_id}/crop")
