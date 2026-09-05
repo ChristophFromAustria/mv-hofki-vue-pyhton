@@ -1,5 +1,8 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch, defineAsyncComponent } from "vue";
+
+// VexFlow is large; load the editor (and VexFlow) only when the tab is opened.
+const LilypondEditor = defineAsyncComponent(() => import("./LilypondEditor.vue"));
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -7,16 +10,13 @@ const props = defineProps({
   pdfPath: { type: String, default: null },
   pngPaths: { type: Array, default: () => [] },
   cacheVersion: { type: String, default: null },
+  warnings: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(["close"]);
-  warnings: { type: Array, default: () => [] },
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 const activeTab = ref("preview");
-
-const pngWidth = ref(0);
-const pngHeight = ref(0);
 const showWarnings = ref(false);
 
 // Browser editor state: edits live only in this dialog for now.
@@ -43,6 +43,9 @@ async function copyCode() {
   }
 }
 const copied = ref(false);
+
+const pngWidth = ref(0);
+const pngHeight = ref(0);
 
 function assetUrl(path, cacheBust = null) {
   if (!path) return null;
@@ -75,9 +78,9 @@ const cropRect = computed(() => {
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal modal-lilypond">
-      <div class="modal-header">
+  <div v-if="open" class="overlay" @click.self="emit('close')">
+    <div class="dialog dialog-xl dialog-flush">
+      <div class="dialog-header">
         <h2>LilyPond</h2>
         <div class="tab-bar">
           <button
@@ -89,16 +92,25 @@ const cropRect = computed(() => {
           </button>
           <button
             class="tab-btn"
+            :class="{ active: activeTab === 'editor' }"
+            @click="activeTab = 'editor'"
+          >
+            Editor
+            <span class="tab-badge">Beta</span>
+          </button>
+          <button
+            class="tab-btn"
             :class="{ active: activeTab === 'code' }"
             @click="activeTab = 'code'"
           >
             Code
+            <span v-if="isEdited" class="tab-dot" title="Geändert"></span>
           </button>
         </div>
-        <button class="close-btn" title="Schließen" @click="emit('close')">✕</button>
+        <button class="dialog-close" title="Schließen" @click="emit('close')">✕</button>
       </div>
 
-      <div class="modal-body">
+      <div class="dialog-body">
         <!-- Preview tab -->
         <div v-if="activeTab === 'preview'" class="preview-container">
           <div v-if="previewUrl" class="preview-wrap">
@@ -115,7 +127,7 @@ const cropRect = computed(() => {
                 :width="cropRect.w"
                 :height="cropRect.h"
                 fill="none"
-                stroke="#06b6d4"
+                stroke="var(--overlay-measure)"
                 stroke-width="2"
                 stroke-dasharray="8 4"
                 opacity="0.8"
@@ -125,18 +137,6 @@ const cropRect = computed(() => {
           <div v-else class="preview-empty">Keine Vorschau verfügbar</div>
         </div>
 
-        <!-- Code tab -->
-        <div v-if="activeTab === 'code'">
-          <pre class="ly-code">{{ lilypondCode }}</pre>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <a v-if="pdfPath" :href="assetUrl(pdfPath)" target="_blank" class="btn btn-primary">
-          PDF öffnen
-        </a>
-        <button class="btn" @click="emit('close')">Schließen</button>
-      </div>
         <!-- Warnings (measure fill mismatches etc.) -->
         <div v-if="activeTab === 'preview' && warnings.length" class="warnings">
           <button class="warnings-toggle" @click="showWarnings = !showWarnings">
@@ -159,44 +159,30 @@ const cropRect = computed(() => {
           </p>
         </div>
 
+        <!-- Code tab -->
+        <div v-if="activeTab === 'code'">
+          <div class="code-bar">
+            <span v-if="isEdited" class="code-edited">Enthält Änderungen aus dem Editor</span>
+            <span v-else class="code-unchanged">Generierter Code</span>
+            <button class="btn btn-sm" type="button" @click="copyCode">
+              {{ copied ? "Kopiert" : "Code kopieren" }}
+            </button>
+          </div>
+          <pre class="ly-code">{{ editedCode }}</pre>
+        </div>
+      </div>
+
+      <div class="dialog-footer">
+        <a v-if="pdfPath" :href="assetUrl(pdfPath)" target="_blank" class="btn btn-primary">
+          PDF öffnen
+        </a>
+        <button class="btn" @click="emit('close')">Schließen</button>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 550;
-}
-
-.modal-lilypond {
-  background: var(--color-bg);
-  border-radius: var(--radius);
-  width: 100%;
-  max-width: 800px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.5rem 0.75rem;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
 .tab-bar {
   display: flex;
   gap: 0.25rem;
@@ -215,28 +201,49 @@ const cropRect = computed(() => {
 .tab-btn.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: #fff;
+  color: var(--color-on-primary);
 }
 
-.close-btn {
-  margin-left: auto;
-  background: none;
-  border: none;
-  font-size: 1.2rem;
-  cursor: pointer;
+.tab-badge {
+  margin-left: 0.3rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.tab-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 0.35rem;
+  border-radius: 50%;
+  background: var(--color-warning);
+  vertical-align: middle;
+}
+
+.editor-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
   color: var(--color-muted);
-  padding: 0.25rem;
-  line-height: 1;
 }
 
-.close-btn:hover {
-  color: var(--color-text);
+.code-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
 }
 
-.modal-body {
-  padding: 1rem 1.5rem;
-  overflow-y: auto;
-  flex: 1;
+.code-edited {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.code-unchanged {
+  color: var(--color-muted);
 }
 
 .preview-container {
@@ -272,13 +279,6 @@ const cropRect = computed(() => {
   color: var(--color-muted);
 }
 
-.ly-code {
-  background: #1a1a2e;
-  color: #e0e0e0;
-  padding: 1rem;
-  border-radius: var(--radius);
-  font-family: "Fira Code", "Cascadia Code", monospace;
-  font-size: 0.8rem;
 .warnings {
   margin-top: 0.75rem;
   font-size: 0.85rem;
@@ -301,18 +301,16 @@ const cropRect = computed(() => {
   color: var(--color-muted);
 }
 
+.ly-code {
+  background: var(--color-canvas-bg);
+  color: var(--color-canvas-text);
+  padding: 1rem;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
   line-height: 1.5;
   overflow-x: auto;
   white-space: pre;
   margin: 0;
-}
-
-.modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-top: 1px solid var(--color-border);
 }
 </style>
