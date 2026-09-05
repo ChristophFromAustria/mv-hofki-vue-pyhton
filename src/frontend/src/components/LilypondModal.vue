@@ -1,7 +1,10 @@
 <script setup>
 import { ref, computed, watch, defineAsyncComponent } from "vue";
-import { post } from "../lib/api.js";
+import { get, post } from "../lib/api.js";
 import ConfirmDialog from "./ConfirmDialog.vue";
+import FieldNumber from "./config/FieldNumber.vue";
+import FieldSelect from "./config/FieldSelect.vue";
+import FieldToggle from "./config/FieldToggle.vue";
 
 // VexFlow is large; load the editor (and VexFlow) only when the tab is opened.
 const LilypondEditor = defineAsyncComponent(() => import("./LilypondEditor.vue"));
@@ -19,9 +22,85 @@ const props = defineProps({
   /** "analysis" = generated from the scan, "edited" = saved editor version */
   source: { type: String, default: "analysis" },
   resetting: { type: Boolean, default: false },
+  /** Per-scan adjustments; analysis.* may override LilyPond layout values */
+  adjustments: { type: Object, default: () => ({}) },
 });
 
-const emit = defineEmits(["close", "rendered", "reset"]);
+const emit = defineEmits(["close", "rendered", "reset", "apply-layout"]);
+
+// ── LilyPond layout panel (preview tab) ─────────────────────────────────
+const layoutEntries = ref([]); // config entries of the LilyPond groups
+const layoutGlobals = ref({});
+const layoutOpen = ref(false);
+const layoutLoading = ref(false);
+const layoutError = ref(null);
+
+async function loadLayoutEntries() {
+  layoutLoading.value = true;
+  layoutError.value = null;
+  try {
+    const data = await get("/scanner/config");
+    const analysis = props.adjustments?.analysis;
+    layoutGlobals.value = {};
+    layoutEntries.value = (data.entries || [])
+      .filter((e) => (e.group_path || "").startsWith("LilyPond"))
+      .sort((a, b) => a.group_path.localeCompare(b.group_path) || a.sort_order - b.sort_order)
+      .map((e) => {
+        layoutGlobals.value[e.key] = e.value;
+        const overridden = analysis && analysis.enabled && e.key in analysis;
+        const value = overridden ? analysis[e.key] : e.value;
+        return { ...e, value, is_modified: overridden && String(value) !== String(e.value) };
+      });
+  } catch (e) {
+    layoutError.value = e.message;
+  } finally {
+    layoutLoading.value = false;
+  }
+}
+
+watch(
+  () => [props.open, props.adjustments],
+  ([isOpen]) => {
+    if (isOpen) loadLayoutEntries();
+  },
+  { immediate: true },
+);
+
+const layoutGroups = computed(() => {
+  const groups = new Map();
+  for (const e of layoutEntries.value) {
+    const label = (e.group_path || "LilyPond").replace(/^LilyPond\s*/, "") || "Allgemein";
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(e);
+  }
+  return [...groups.entries()].map(([label, entries]) => ({ label, entries }));
+});
+
+const layoutHasOverrides = computed(() => layoutEntries.value.some((e) => e.is_modified));
+
+function layoutUpdate(key, value) {
+  const e = layoutEntries.value.find((x) => x.key === key);
+  if (!e) return;
+  e.value = value;
+  e.is_modified = String(value) !== String(layoutGlobals.value[key]);
+}
+
+function layoutReset(key) {
+  layoutUpdate(key, layoutGlobals.value[key]);
+}
+
+function applyLayout() {
+  const values = {};
+  for (const e of layoutEntries.value) {
+    if (e.is_modified) values[e.key] = e.value;
+  }
+  emit("apply-layout", { values, reset: Object.keys(values).length === 0 });
+}
+
+function resetLayout() {
+  for (const e of layoutEntries.value) layoutReset(e.key);
+  emit("apply-layout", { values: {}, reset: true });
+}
 const confirmResetOpen = ref(false);
 function confirmReset() {
   confirmResetOpen.value = false;
@@ -216,6 +295,64 @@ const cropRect = computed(() => {
           <div v-else class="preview-empty">Keine Vorschau verfügbar</div>
         </div>
 
+        <!-- LilyPond layout parameters: per-scan overrides, re-render on apply -->
+        <details
+          v-if="activeTab === 'preview'"
+          class="layout-panel"
+          :open="layoutOpen"
+          @toggle="layoutOpen = $event.target.open"
+        >
+          <summary>
+            LilyPond-Layout
+            <span v-if="layoutHasOverrides" class="layout-badge">für diesen Scan angepasst</span>
+          </summary>
+          <p v-if="layoutError" class="render-error-msg">{{ layoutError }}</p>
+          <div v-else-if="layoutLoading" class="layout-loading">Lade Einstellungen…</div>
+          <div v-else class="layout-groups">
+            <section v-for="group in layoutGroups" :key="group.label" class="layout-group">
+              <h4>{{ group.label }}</h4>
+              <template v-for="entry in group.entries" :key="entry.key">
+                <FieldToggle
+                  v-if="entry.type === 'toggle'"
+                  :entry="entry"
+                  @update="layoutUpdate"
+                  @reset="layoutReset"
+                />
+                <FieldSelect
+                  v-else-if="entry.type === 'select'"
+                  :entry="entry"
+                  @update="layoutUpdate"
+                  @reset="layoutReset"
+                />
+                <FieldNumber v-else :entry="entry" @update="layoutUpdate" @reset="layoutReset" />
+              </template>
+            </section>
+          </div>
+          <div class="layout-actions">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              :disabled="resetting || layoutLoading"
+              @click="applyLayout"
+            >
+              Übernehmen & neu rendern
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              :disabled="resetting || layoutLoading || !layoutHasOverrides"
+              title="Globale Standardwerte für diesen Scan wiederherstellen"
+              @click="resetLayout"
+            >
+              Standardwerte
+            </button>
+            <span class="layout-hint">
+              Werte gelten nur für diesen Scan. Globale Standards unter Notenscanner →
+              Konfiguration.
+            </span>
+          </div>
+        </details>
+
         <!-- Warnings (measure fill mismatches etc.) -->
         <div v-if="activeTab === 'preview' && warnings.length" class="warnings">
           <button class="warnings-toggle" @click="showWarnings = !showWarnings">
@@ -322,6 +459,63 @@ const cropRect = computed(() => {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-on-primary);
+}
+
+.layout-panel {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.75rem 0.5rem;
+}
+
+.layout-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.35rem 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.layout-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.layout-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.75rem 1.5rem;
+}
+
+.layout-group h4 {
+  margin: 0.25rem 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.layout-loading {
+  padding: 0.5rem 0;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.layout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.layout-hint {
+  font-size: 0.75rem;
+  color: var(--color-muted);
 }
 
 .source-badge {

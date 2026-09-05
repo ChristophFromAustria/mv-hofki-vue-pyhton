@@ -1723,9 +1723,28 @@ function dropEmptyTuplets(tokens) {
   return tokens;
 }
 
+/**
+ * An explicit \\bar ":|." right before \\repeat volta hides LilyPond's
+ * automatic start repeat; write both sides so the start shows up.
+ */
+function fixRepeatEndBeforeVolta(tokens) {
+  tokens.forEach((t, i) => {
+    if (t.type !== "barline" || t.barType !== ":|.") return;
+    for (let k = i + 1; k < tokens.length; k += 1) {
+      const n = tokens[k];
+      if (n.type === "comment" || (n.type === "command" && n.command === "\\break")) continue;
+      if (n.type === "repeat" && n.repeatKind === "volta") {
+        tokens[i] = { ...t, raw: '\\bar ":|.|:"', barType: ":|.|:" };
+      }
+      break;
+    }
+  });
+  return tokens;
+}
+
 export function normalizeDocument(doc) {
-  const tokens = dropEmptyTuplets(
-    dropEmptyPercentRepeats(dropBareSpacers(cloneTokens(doc.tokens))),
+  const tokens = fixRepeatEndBeforeVolta(
+    dropEmptyTuplets(dropEmptyPercentRepeats(dropBareSpacers(cloneTokens(doc.tokens)))),
   );
   const measures = buildMeasures(tokens);
   let effective = null;
@@ -1745,12 +1764,15 @@ export function normalizeDocument(doc) {
     }
     // Percent repeats and multi-measure rests take part too: their length may
     // have changed through editing, and a stale measureLength derails LilyPond.
-    const needed = m.actualLen;
+    // A multi-measure rest keeps the plain measure length: with a longer
+    // measureLength LilyPond treats R1*N as one measure and drops the number.
+    const isMm = isMmrestMeasure(tokens, m);
+    const needed = isMm ? m.timeLen : m.actualLen;
     plan.push({
       m,
       needsSet: !fracEq(needed, effective),
       needed,
-      needsErr: !isMmrestMeasure(tokens, m) && !fracEq(needed, m.timeLen),
+      needsErr: !isMm && !fracEq(needed, m.timeLen),
     });
     effective = needed;
   }

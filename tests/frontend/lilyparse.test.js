@@ -370,8 +370,9 @@ describe("editing", () => {
     // the leftover of a deleted measure disappears, the following measure needs no set
     expect(code).toContain("\n    \\repeat percent 2 { g4 r4 a4 r4 } |");
     expect(code).not.toContain("1/8");
-    // multi-measure rest: explicit length, no error marking
-    expect(code).toContain("\\set Timing.measureLength = #(ly:make-moment 3/1) R1*3 |");
+    // multi-measure rest: plain measure length, no error marking
+    expect(code).toContain("\n    R1*3 |");
+    expect(code).not.toContain("ly:make-moment 3/1");
     // short percent body: length before the wrapper, marking inside it
     expect(code).toContain(
       "\\set Timing.measureLength = #(ly:make-moment 1/2) \\repeat percent 2 { \\markErr c2 \\unmarkErr } |",
@@ -458,13 +459,26 @@ describe("editing", () => {
     let d = normalizeDocument(insertCompactRest(doc, ms[1], 2));
     const code = serializeDocument(d);
     expect(code).toContain(
-      "f2-> a2-> |\n    \\set Timing.measureLength = #(ly:make-moment 2/1) \\compressMMRests { \\once \\override MultiMeasureRestNumber.direction = #DOWN R1*2 } |",
+      "f2-> a2-> |\n    \\compressMMRests { \\once \\override MultiMeasureRestNumber.direction = #DOWN R1*2 } |",
     );
+    expect(code).not.toContain("ly:make-moment 2/1");
     const m = buildMeasures(d.tokens);
     expect(m[2].events).toHaveLength(1);
     expect(mmrestCount(d.tokens[m[2].events[0]])).toBe(2);
     d = normalizeDocument(setMmrestCount(d, m[2].events[0], 4));
-    expect(serializeDocument(d)).toContain("#(ly:make-moment 4/1) \\compressMMRests { \\once \\override MultiMeasureRestNumber.direction = #DOWN R1*4 } |");
+    expect(serializeDocument(d)).toContain(
+      "\n    \\compressMMRests { \\once \\override MultiMeasureRestNumber.direction = #DOWN R1*4 } |",
+    );
+    expect(serializeDocument(d)).not.toContain("ly:make-moment 4/1");
+  });
+
+  it("writes a double-sided repeat bar before \\repeat volta", () => {
+    const src = String.raw`\score { \new Staff { \time 2/2 c1 \bar ":|."
+    \break
+    \repeat volta 2 { d1 | e1 | } c1 \bar ":|." d1 | } }`;
+    const code = serializeDocument(normalizeDocument(parseLilypond(src)));
+    expect(code).toContain('c1 \\bar ":|.|:"\n    \\break\n    \\repeat volta 2');
+    expect(code).toContain('c1 \\bar ":|." d1'); // not before a repeat: unchanged
   });
 
   it("toggles note and rest", () => {

@@ -511,6 +511,27 @@ function onUpdateAdjustments(updated) {
   adjustments.value = updated;
 }
 
+/**
+ * LilyPond layout values from the preview panel become per-scan overrides
+ * (adjustments.analysis) and the score is rendered again.
+ */
+async function onApplyLayout({ values, reset }) {
+  const analysis = { ...(adjustments.value.analysis || {}) };
+  for (const key of Object.keys(analysis)) {
+    if (key.startsWith("ly_")) delete analysis[key];
+  }
+  if (!reset) Object.assign(analysis, values);
+  analysis.enabled = Object.keys(analysis).some((k) => k !== "enabled");
+  adjustments.value = { ...adjustments.value, analysis };
+  try {
+    await saveAdjustments();
+  } catch (e) {
+    statusMessage.value = `Einstellungen konnten nicht gespeichert werden: ${e.message}`;
+    return;
+  }
+  await generateLilypond(false);
+}
+
 async function fetchLibraryIfNeeded() {
   if (libraryTemplates.value.length === 0) {
     const data = await get("/scanner/library/templates?limit=200");
@@ -794,8 +815,10 @@ onUnmounted(() => {
       :staves="staves"
       :source="lilypondSource"
       :resetting="lilypondLoading"
+      :adjustments="adjustments"
       @close="showLilypond = false"
       @reset="generateLilypond(true)"
+      @apply-layout="onApplyLayout"
       @rendered="onLilypondRendered"
     />
 
