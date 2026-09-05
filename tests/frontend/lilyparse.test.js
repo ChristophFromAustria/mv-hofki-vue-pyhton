@@ -126,6 +126,9 @@ describe("document", () => {
     expect(ms[11].volta).toEqual({ count: 2, position: "begin-end" });
     expect(ms[11].endBarline).toBe("repeat-end");
     expect(ms[12].mismatch).toBe(false); // R1*4 is exempt
+    // Printed numbering: the percent repeat (measure 5) counts twice
+    expect(ms.map((m) => m.number).slice(0, 7)).toEqual([1, 2, 3, 4, 5, 7, 8]);
+    expect(ms[4].span).toBe(2);
   });
 });
 

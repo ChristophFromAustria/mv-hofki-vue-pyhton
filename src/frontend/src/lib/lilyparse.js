@@ -828,6 +828,15 @@ export function buildMeasures(tokens) {
     }
   }
 
+  // Physical measure numbers as printed on the page: a percent repeat
+  // stands for N measures, a multi-measure rest is one printed measure.
+  let number = 1;
+  for (const m of measures) {
+    m.number = number;
+    m.span = m.percent !== null ? m.percent : 1;
+    number += m.span;
+  }
+
   // Derived values
   for (const m of measures) {
     m.actualLen = measureActualLength(tokens, m);

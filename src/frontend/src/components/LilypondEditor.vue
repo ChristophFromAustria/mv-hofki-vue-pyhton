@@ -107,6 +107,10 @@ const selectedInfo = computed(() => {
   return parts.join(" · ");
 });
 
+function measureLabel(m) {
+  return m.span > 1 ? `Takte ${m.number}–${m.number + m.span - 1}` : `Takt ${m.number}`;
+}
+
 function measureHints(m) {
   const lines = [];
   if (m.mismatch) {
@@ -122,7 +126,7 @@ const selectedMeasureInfo = computed(() => {
   const m = currentMeasure();
   if (!m) return null;
   const hints = measureHints(m);
-  return `Takt ${m.index + 1}${hints.length ? " · " + hints.join(" · ") : ""}`;
+  return `${measureLabel(m)}${hints.length ? " · " + hints.join(" · ") : ""}`;
 });
 
 const measureSummary = computed(() => {
@@ -496,6 +500,7 @@ function render() {
   const colorErr = cssVar("--color-danger", "#b3261e");
   const colorSel = cssVar("--color-primary", "#2f5d9e");
   const colorCopy = cssVar("--color-muted", "#7a8794");
+  const colorNumber = cssVar("--color-muted", "#7a8794");
 
   let renderer;
   try {
@@ -560,6 +565,7 @@ function render() {
       if (m.section) stave.setSection(m.section, 0, 0, 12, false);
       if (m.percent !== null) {
         const label = new StaveText(`${m.percent}×`, Modifier.Position.ABOVE, {
+          shiftX: -8,
           shiftY: 14,
           justification: 3,
         });
@@ -567,6 +573,13 @@ function render() {
         stave.addModifier(label);
       }
       stave.setContext(ctx).draw();
+
+      // Printed measure number, small and muted, at the top left of the measure
+      ctx.save();
+      ctx.setFont("Academico", 9, "normal", "normal");
+      ctx.setFillStyle(colorNumber);
+      ctx.fillText(String(m.number), x + 3, stave.getYForTopText(0) + 2);
+      ctx.restore();
 
       // Notes
       const notes = [];
@@ -644,7 +657,7 @@ function render() {
             });
           }
         } catch (e) {
-          renderError.value = `Takt ${m.index + 1}: ${e.message}`;
+          renderError.value = `${measureLabel(m)}: ${e.message}`;
         }
         notes.forEach((n, i) => noteMap.set(n.getAttribute("id"), tokenForNote[i]));
       } else {
@@ -737,7 +750,7 @@ function onPointerMove(ev) {
   tooltip.value = {
     x: ev.clientX + 12,
     y: ev.clientY + 16,
-    title: `Takt ${box.m.index + 1}`,
+    title: measureLabel(box.m),
     lines,
   };
 }
