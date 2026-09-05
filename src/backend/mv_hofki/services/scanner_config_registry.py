@@ -343,6 +343,18 @@ SCANNER_CONFIG_REGISTRY: list[dict] = [
         "sort_order": 30,
     },
     #  ── Nachbearbeitung \ Volta-Erkennung ───────────────────────────
+    #  ── Nachbearbeitung \ Wiederholungszeichen ────────────────────────
+    {
+        "key": "repeat_overlap_min_fraction",
+        "default_value": "0.5",
+        "type": "number",
+        "label": "Noten/Pausen verwerfen ab x-Überlappung mit Wiederholungszeichen",
+        "group_path": "Nachbearbeitung\\Wiederholungszeichen",
+        "min": 0.1,
+        "max": 1.0,
+        "step": 0.05,
+        "sort_order": 10,
+    },
     {
         "key": "volta_min_overlap_pct",
         "default_value": "0.3",
