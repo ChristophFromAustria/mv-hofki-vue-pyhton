@@ -785,6 +785,8 @@ onUnmounted(() => {
       :warnings="lilypondWarnings"
       :cache-version="cacheVersion"
       :scan-id="scanId"
+      :scan-image-path="scan?.image_path ?? null"
+      :staves="staves"
       @close="showLilypond = false"
       @rendered="onLilypondRendered"
     />

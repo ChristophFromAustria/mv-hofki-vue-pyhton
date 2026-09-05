@@ -13,6 +13,8 @@ const props = defineProps({
   cacheVersion: { type: String, default: null },
   warnings: { type: Array, default: () => [] },
   scanId: { type: [Number, String], default: null },
+  scanImagePath: { type: String, default: null },
+  staves: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(["close", "rendered"]);
@@ -212,7 +214,13 @@ const cropRect = computed(() => {
 
         <!-- Editor tab (browser rendering via VexFlow, edits not persisted) -->
         <div v-show="activeTab === 'editor'" class="editor-tab">
-          <LilypondEditor v-if="open" v-model:code="editedCode" :original-code="lilypondCode" />
+          <LilypondEditor
+            v-if="open && editorVisited"
+            v-model:code="editedCode"
+            :original-code="lilypondCode"
+            :staff-image-url="assetUrl(scanImagePath)"
+            :staves="staves"
+          />
           <p class="editor-note">
             Die Darstellung im Browser ist eine Näherung an den LilyPond-Satz. Änderungen werden in
             den Code übernommen. „Vorschau rendern" schickt den Code ans Backend und erneuert PDF

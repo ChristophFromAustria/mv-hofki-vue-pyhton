@@ -58,6 +58,10 @@ import {
 const props = defineProps({
   code: { type: String, default: "" },
   originalCode: { type: String, default: "" },
+  /** URL of the scan image; together with `staves` it provides the original line snippets. */
+  staffImageUrl: { type: String, default: null },
+  /** Detected staves of the scan (y_top, y_bottom, line_spacing in image pixels). */
+  staves: { type: Array, default: () => [] },
 });
 const emit = defineEmits(["update:code"]);
 
@@ -95,6 +99,51 @@ try {
 } catch {
   // storage unavailable
 }
+// Original line snippets above each row (only meaningful in the LilyPond layout,
+// where rows correspond to the scanned systems).
+const showSnippets = ref(false);
+try {
+  showSnippets.value = localStorage.getItem("lilypondEditorSnippets") === "1";
+} catch {
+  // storage unavailable
+}
+const imageSize = ref(null); // { w, h } of the scan image once loaded
+const canShowSnippets = computed(() => !!props.staffImageUrl && props.staves.length > 0);
+
+function toggleSnippets() {
+  showSnippets.value = !showSnippets.value;
+  try {
+    localStorage.setItem("lilypondEditorSnippets", showSnippets.value ? "1" : "0");
+  } catch {
+    // ignore
+  }
+  if (showSnippets.value && layoutMode.value !== "lilypond") setLayoutMode("lilypond");
+  else scheduleRender();
+}
+
+function loadImageSize(url) {
+  imageSize.value = null;
+  if (!url) return;
+  const img = new Image();
+  img.onload = () => {
+    imageSize.value = { w: img.naturalWidth, h: img.naturalHeight };
+    scheduleRender();
+  };
+  img.src = url;
+}
+watch(() => props.staffImageUrl, loadImageSize, { immediate: true });
+
+/** Crop rectangle (image pixels) of the scanned system for editor row `rowIdx`. */
+function snippetCrop(rowIdx) {
+  const st = props.staves[rowIdx];
+  const img = imageSize.value;
+  if (!st || !img) return null;
+  const margin = 1.5 * (st.line_spacing || 20);
+  const top = Math.max(0, Math.floor(st.y_top - margin));
+  const bottom = Math.min(img.h, Math.ceil(st.y_bottom + margin));
+  return bottom > top ? { top, height: bottom - top } : null;
+}
+
 function setLayoutMode(mode) {
   layoutMode.value = mode;
   try {
@@ -890,7 +939,26 @@ function render() {
   const availableWidth = Math.max(320, width.value - 2 * SIDE_PAD);
   const cells = buildCells(ms);
   const { rows, width: contentWidth } = layoutRows(cells, availableWidth, layoutMode.value);
-  const totalHeight = TOP_PAD + rows.length * ROW_HEIGHT + 20;
+
+  // Optional scan snippets above each row: their height follows the crop height
+  const snippetsOn =
+    showSnippets.value &&
+    canShowSnippets.value &&
+    imageSize.value &&
+    layoutMode.value === "lilypond";
+  const snippetScale = imageSize.value ? contentWidth / imageSize.value.w : 0;
+  const snippets = rows.map((_, rowIdx) => {
+    if (!snippetsOn) return null;
+    const crop = snippetCrop(rowIdx);
+    return crop ? { ...crop, px: Math.ceil(crop.height * snippetScale) } : null;
+  });
+  const rowTops = [];
+  let cursorY = TOP_PAD;
+  snippets.forEach((sn) => {
+    rowTops.push(cursorY + (sn ? sn.px + 6 : 0));
+    cursorY += ROW_HEIGHT + (sn ? sn.px + 6 : 0);
+  });
+  const totalHeight = cursorY + 20;
 
   const colorInk = cssVar("--color-text", "#1c2733");
   const colorErr = cssVar("--color-danger", "#b3261e");
@@ -918,9 +986,8 @@ function render() {
   const noteMap = new Map(); // svg id → token index
   // Event sequence in score order for hairpins: { tok, note|null, row }
   const sequence = [];
-  let y = TOP_PAD;
-
   rows.forEach((row, rowIdx) => {
+    const y = rowTops[rowIdx];
     let x = SIDE_PAD;
     row.forEach((item, cellIdx) => {
       const { cell } = item;
@@ -1127,12 +1194,34 @@ function render() {
       }
       x += item.w;
     });
-    y += ROW_HEIGHT;
   });
 
   drawHairpins(ctx, sequence);
 
   const svg = el.querySelector("svg");
+  if (svg && snippetsOn) {
+    // Scan snippets as nested <svg> elements whose viewBox crops the page image
+    const NS = "http://www.w3.org/2000/svg";
+    const XLINK = "http://www.w3.org/1999/xlink";
+    snippets.forEach((sn, rowIdx) => {
+      if (!sn) return;
+      const nested = document.createElementNS(NS, "svg");
+      nested.setAttribute("x", String(SIDE_PAD));
+      nested.setAttribute("y", String(rowTops[rowIdx] - sn.px - 6));
+      nested.setAttribute("width", String(contentWidth));
+      nested.setAttribute("height", String(sn.px));
+      nested.setAttribute("viewBox", `0 ${sn.top} ${imageSize.value.w} ${sn.height}`);
+      nested.setAttribute("preserveAspectRatio", "none");
+      nested.setAttribute("class", "scan-snippet");
+      const image = document.createElementNS(NS, "image");
+      image.setAttribute("href", props.staffImageUrl);
+      image.setAttributeNS(XLINK, "xlink:href", props.staffImageUrl);
+      image.setAttribute("width", String(imageSize.value.w));
+      image.setAttribute("height", String(imageSize.value.h));
+      nested.appendChild(image);
+      svg.insertBefore(nested, svg.firstChild);
+    });
+  }
   if (svg) {
     if (contentWidth > availableWidth) {
       svg.style.maxWidth = "none";
@@ -1452,6 +1541,17 @@ onBeforeUnmount(() => {
           @click="setLayoutMode('lilypond')"
         >
           Wie LilyPond
+        </button>
+        <button
+          type="button"
+          class="tool"
+          :class="{ active: showSnippets && canShowSnippets }"
+          :aria-pressed="showSnippets && canShowSnippets"
+          :disabled="!canShowSnippets"
+          title="Über jeder Zeile den Ausschnitt der Original-Zeile aus dem Scan zeigen (schaltet auf „Wie LilyPond“)"
+          @click="toggleSnippets"
+        >
+          Original-Zeilen
         </button>
       </div>
       <div class="tool-group">
