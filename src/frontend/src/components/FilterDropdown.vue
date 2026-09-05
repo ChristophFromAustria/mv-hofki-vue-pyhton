@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import { compareSymbolCategories, symbolCategoryLabel } from "../lib/symbolCategories.js";
 
 const props = defineProps({
   showStaves: { type: Boolean, default: true },
@@ -23,19 +24,6 @@ const emit = defineEmits([
 const open = ref(false);
 const dropdownRef = ref(null);
 
-const CATEGORY_LABELS = {
-  note: "Noten",
-  rest: "Pausen",
-  barline: "Taktstriche",
-  clef: "Schlüssel",
-  time_sig: "Taktarten",
-  time_signature: "Taktarten",
-  dynamic: "Dynamik",
-  ornament: "Verzierungen",
-  accidental: "Vorzeichen",
-  other: "Sonstige",
-};
-
 const categoryCounts = computed(() => {
   const counts = {};
   for (const sym of props.symbols) {
@@ -46,25 +34,9 @@ const categoryCounts = computed(() => {
   return counts;
 });
 
-const sortedCategories = computed(() => {
-  const order = [
-    "note",
-    "rest",
-    "barline",
-    "clef",
-    "time_sig",
-    "time_signature",
-    "dynamic",
-    "ornament",
-    "accidental",
-    "other",
-  ];
-  return Object.keys(categoryCounts.value).sort(
-    (a, b) =>
-      (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) -
-      (order.indexOf(b) === -1 ? 99 : order.indexOf(b)),
-  );
-});
+const sortedCategories = computed(() =>
+  Object.keys(categoryCounts.value).sort(compareSymbolCategories),
+);
 
 const allHidden = computed(() => {
   return (
@@ -159,7 +131,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
         </label>
         <label v-for="cat in sortedCategories" :key="cat" class="filter-item">
           <span class="filter-label">
-            {{ CATEGORY_LABELS[cat] || cat }}
+            {{ symbolCategoryLabel(cat) }}
             <span class="filter-count">({{ categoryCounts[cat] }})</span>
           </span>
           <input
@@ -188,8 +160,8 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside, true));
   border-radius: var(--radius);
   padding: 0.75rem;
   width: 240px;
-  z-index: 100;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: var(--z-dropdown);
+  box-shadow: var(--shadow-float);
 }
 
 .filter-heading {

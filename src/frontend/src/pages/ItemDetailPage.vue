@@ -207,13 +207,13 @@ async function onEditSave() {
   <div v-if="item">
     <div class="page-header">
       <h1>{{ item.display_nr }} — {{ item.label }}</h1>
-      <div style="display: flex; gap: 0.5rem">
+      <div class="cluster">
         <button class="btn" @click="showEditModal = true">Bearbeiten</button>
         <button class="btn-danger" @click="showDelete = true">Löschen</button>
       </div>
     </div>
 
-    <div class="card" style="margin-bottom: 1.5rem">
+    <section class="page-section">
       <ImageGallery
         :images="images"
         :can-upload="true"
@@ -222,9 +222,12 @@ async function onEditSave() {
         @set-profile="setProfile"
         @delete="deleteImage"
       />
-    </div>
+    </section>
 
-    <div class="card" style="margin-bottom: 1.5rem">
+    <section class="page-section">
+      <div class="section-header">
+        <h2>Stammdaten</h2>
+      </div>
       <dl class="detail-grid">
         <dt>Inventarnummer</dt>
         <dd>{{ item.display_nr }}</dd>
@@ -295,15 +298,17 @@ async function onEditSave() {
         <dt>Notizen</dt>
         <dd>{{ item.notes || "—" }}</dd>
       </dl>
-    </div>
+    </section>
 
     <!-- Loan management section -->
-    <div v-if="cat.hasLoans" class="card" style="margin-bottom: 1.5rem">
-      <h2 style="font-size: 1.1rem; margin-bottom: 1rem">Ausleihe</h2>
+    <section v-if="cat.hasLoans" class="page-section">
+      <div class="section-header">
+        <h2>Ausleihe</h2>
+      </div>
 
       <!-- Currently loaned out -->
       <div v-if="activeLoan">
-        <p style="margin-bottom: 0.75rem">
+        <p class="section-lead">
           Ausgeliehen an
           <router-link :to="`/musiker/${activeLoan.musician.id}`">
             <strong
@@ -312,14 +317,14 @@ async function onEditSave() {
           </router-link>
           seit {{ activeLoan.start_date }}
         </p>
-        <div v-if="!showReturnDatePicker" style="display: flex; gap: 0.5rem">
+        <div v-if="!showReturnDatePicker" class="cluster">
           <button class="btn-primary" @click="returnToday">Heute zurückgeben</button>
           <button class="btn" @click="showReturnDatePicker = true">Datum wählen</button>
         </div>
-        <div v-else style="display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap">
-          <div class="form-group" style="margin: 0">
+        <div v-else class="cluster cluster-end">
+          <div class="form-group">
             <label>Rückgabedatum</label>
-            <input v-model="returnDate" type="date" style="max-width: 180px" />
+            <input v-model="returnDate" type="date" class="input-narrow" />
           </div>
           <button class="btn-primary" :disabled="!returnDate" @click="returnWithDate">
             Zurückgeben
@@ -330,18 +335,11 @@ async function onEditSave() {
 
       <!-- Available — loan form -->
       <div v-else>
-        <p style="margin-bottom: 0.75rem; color: var(--color-muted)">
+        <p class="section-lead">
           <span class="badge badge-green">Verfügbar</span>
         </p>
-        <form
-          style="display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap"
-          @submit.prevent="createLoan"
-        >
-          <div
-            class="form-group"
-            style="margin: 0; flex: 1"
-            :class="{ error: loanErrors.musician_id }"
-          >
+        <form class="cluster cluster-end" @submit.prevent="createLoan">
+          <div class="form-group grow" :class="{ error: loanErrors.musician_id }">
             <label>Musiker</label>
             <select v-model.number="loanForm.musician_id">
               <option :value="null" disabled>Auswählen...</option>
@@ -353,35 +351,26 @@ async function onEditSave() {
               loanErrors.musician_id
             }}</span>
           </div>
-          <div class="form-group" style="margin: 0" :class="{ error: loanErrors.start_date }">
+          <div class="form-group" :class="{ error: loanErrors.start_date }">
             <label>Datum</label>
-            <input v-model="loanForm.start_date" type="date" style="max-width: 160px" />
+            <input v-model="loanForm.start_date" type="date" class="input-narrow" />
             <span v-if="loanErrors.start_date" class="form-error">{{ loanErrors.start_date }}</span>
           </div>
           <button type="submit" class="btn-primary" :disabled="loanSaving">Ausleihen</button>
         </form>
       </div>
-    </div>
+    </section>
 
     <!-- Invoices section -->
-    <div v-if="cat.hasInvoices" class="card" style="margin-bottom: 1.5rem">
-      <div
-        style="
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-        "
-      >
-        <h2 style="font-size: 1.1rem; margin: 0">Rechnungen</h2>
+    <section v-if="cat.hasInvoices" class="page-section">
+      <div class="section-header">
+        <h2>Rechnungen</h2>
         <button class="btn-sm" @click="newInvoice">Neue Rechnung</button>
       </div>
 
-      <div v-if="!invoices.length" style="color: var(--color-muted)">
-        Keine Rechnungen vorhanden.
-      </div>
+      <p v-if="!invoices.length" class="empty-note">Keine Rechnungen vorhanden.</p>
 
-      <div v-else style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+      <div v-else class="table-scroll">
         <table>
           <thead>
             <tr>
@@ -411,12 +400,14 @@ async function onEditSave() {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
 
     <!-- Loan history -->
-    <div v-if="cat.hasLoans && loans.length" class="card">
-      <h2 style="font-size: 1.1rem; margin-bottom: 1rem">Leihhistorie</h2>
-      <div style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+    <section v-if="cat.hasLoans && loans.length" class="page-section">
+      <div class="section-header">
+        <h2>Leihhistorie</h2>
+      </div>
+      <div class="table-scroll">
         <table>
           <thead>
             <tr>
@@ -444,7 +435,7 @@ async function onEditSave() {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
 
     <ConfirmDialog
       :open="showDelete"

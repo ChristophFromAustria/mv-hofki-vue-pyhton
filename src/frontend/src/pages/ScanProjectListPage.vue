@@ -196,7 +196,7 @@ onMounted(fetchProjects);
             </span>
             <span
               v-if="p.scan_count && !p.status_uploaded && !p.status_processing && !p.status_error"
-              class="badge badge-done"
+              class="badge badge-success"
               title="Alle analysiert"
             >
               Fertig
@@ -211,8 +211,8 @@ onMounted(fetchProjects);
     </template>
 
     <!-- Create dialog -->
-    <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false">
-      <div class="modal">
+    <div v-if="showCreate" class="overlay" @click.self="showCreate = false">
+      <div class="dialog">
         <h2>Neues Scan-Projekt</h2>
         <label>
           Name des Stücks
@@ -230,7 +230,7 @@ onMounted(fetchProjects);
           Nr. im Inhaltsverzeichnis (optional)
           <input v-model.number="newCatalogNumber" type="number" min="1" placeholder="z.B. 14" />
         </label>
-        <div class="modal-actions">
+        <div class="dialog-actions">
           <button class="btn" @click="showCreate = false">Abbrechen</button>
           <button class="btn btn-primary" :disabled="!newName.trim()" @click="createProject">
             Erstellen
@@ -370,40 +370,6 @@ onMounted(fetchProjects);
   white-space: nowrap;
 }
 
-.badge {
-  display: inline-block;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: var(--radius);
-  white-space: nowrap;
-}
-
-.badge-green {
-  color: #16a34a;
-  background: rgba(22, 163, 74, 0.1);
-}
-
-.badge-gray {
-  color: var(--color-muted);
-  background: var(--color-bg-soft);
-}
-
-.badge-blue {
-  color: var(--color-primary);
-  background: var(--color-primary-light);
-}
-
-.badge-red {
-  color: var(--color-danger);
-  background: rgba(220, 38, 38, 0.1);
-}
-
-.badge-done {
-  color: #16a34a;
-  background: rgba(22, 163, 74, 0.1);
-}
-
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
@@ -412,52 +378,6 @@ onMounted(fetchProjects);
 
 .empty-state .btn {
   margin-top: 1rem;
-}
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 500;
-}
-
-.modal {
-  background: var(--color-bg);
-  border-radius: var(--radius);
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 400px;
-}
-
-.modal h2 {
-  margin-bottom: 1rem;
-}
-
-.modal label {
-  display: block;
-  margin-bottom: 1rem;
-  font-size: 0.9rem;
-  color: var(--color-muted);
-}
-
-.modal input {
-  display: block;
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
-.modal-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
 }
 
 .header-actions {

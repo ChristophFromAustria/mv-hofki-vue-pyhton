@@ -4,6 +4,7 @@ import { get, put, post } from "../lib/api.js";
 import FieldToggle from "../components/config/FieldToggle.vue";
 import FieldSelect from "../components/config/FieldSelect.vue";
 import FieldNumber from "../components/config/FieldNumber.vue";
+import LoadingSpinner from "../components/LoadingSpinner.vue";
 
 const entries = ref([]);
 const loading = ref(true);
@@ -14,17 +15,22 @@ const collapsedGroups = ref(new Set());
 
 const groupTree = computed(() => buildGroupTree(entries.value));
 
-onMounted(async () => {
-  await loadConfig();
-  // Collapse all groups by default after first load
-  const tree = groupTree.value;
-  for (const node of tree.roots) {
-    collapsedGroups.value.add(node.path);
-    for (const child of node.children) {
-      collapsedGroups.value.add(child.path);
-    }
-  }
-});
+onMounted(loadConfig);
+
+function groupId(path) {
+  return "cfg-" + path.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+function countEntries(node) {
+  return node.entries.length + node.children.reduce((n, c) => n + countEntries(c), 0);
+}
+
+function jumpTo(id) {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document
+    .getElementById(id)
+    ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+}
 
 function buildGroupTree(items) {
   const byGroup = new Map();
@@ -143,56 +149,85 @@ function updateValue(key, val) {
       </button>
     </div>
 
-    <div v-if="error" class="msg msg-error">{{ error }}</div>
-    <div v-if="successMsg" class="msg msg-success">{{ successMsg }}</div>
+    <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
+    <div v-if="successMsg" class="alert alert-success" role="status">{{ successMsg }}</div>
 
-    <div v-if="loading" style="text-align: center; padding: 2rem; color: var(--color-muted)">
-      Laden...
-    </div>
+    <LoadingSpinner v-if="loading" />
 
-    <div v-else class="config-grid">
-      <!-- Root-level entries -->
-      <div v-if="groupTree.rootEntries.length" class="card config-card">
-        <div class="card-fields">
-          <div
-            v-for="entry in groupTree.rootEntries"
-            :key="entry.key"
-            class="field-row"
-            :class="{ 'is-modified': entry.is_modified }"
-          >
-            <FieldToggle
-              v-if="entry.type === 'toggle'"
-              :entry="entry"
-              @update="updateValue"
-              @reset="resetSingle"
-            />
-            <FieldSelect
-              v-else-if="entry.type === 'select'"
-              :entry="entry"
-              @update="updateValue"
-              @reset="resetSingle"
-            />
-            <FieldNumber
-              v-else-if="entry.type === 'number'"
-              :entry="entry"
-              @update="updateValue"
-              @reset="resetSingle"
-            />
+    <div v-else class="config-layout">
+      <nav class="config-nav" aria-label="Konfigurationsgruppen">
+        <ul>
+          <li v-if="groupTree.rootEntries.length">
+            <a href="#cfg-allgemein" @click.prevent="jumpTo('cfg-allgemein')">Allgemein</a>
+          </li>
+          <li v-for="node in groupTree.roots" :key="node.path">
+            <a :href="'#' + groupId(node.path)" @click.prevent="jumpTo(groupId(node.path))">
+              {{ node.label }}
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="config-sections">
+        <section v-if="groupTree.rootEntries.length" id="cfg-allgemein" class="page-section">
+          <div class="section-header">
+            <h2>Allgemein</h2>
           </div>
-        </div>
-      </div>
+          <div class="field-list">
+            <div
+              v-for="entry in groupTree.rootEntries"
+              :key="entry.key"
+              class="field-row"
+              :class="{ 'is-modified': entry.is_modified }"
+            >
+              <FieldToggle
+                v-if="entry.type === 'toggle'"
+                :entry="entry"
+                @update="updateValue"
+                @reset="resetSingle"
+              />
+              <FieldSelect
+                v-else-if="entry.type === 'select'"
+                :entry="entry"
+                @update="updateValue"
+                @reset="resetSingle"
+              />
+              <FieldNumber
+                v-else-if="entry.type === 'number'"
+                :entry="entry"
+                @update="updateValue"
+                @reset="resetSingle"
+              />
+            </div>
+          </div>
+        </section>
 
-      <!-- Grouped entries -->
-      <template v-for="node in groupTree.roots" :key="node.path">
-        <div class="card config-card">
-          <h2 class="card-title" @click="toggleGroup(node.path)">
-            <span class="group-chevron">{{
-              collapsedGroups.has(node.path) ? "\u25B8" : "\u25BE"
-            }}</span>
-            {{ node.label }}
-          </h2>
-          <div v-show="!collapsedGroups.has(node.path)">
-            <div class="card-fields">
+        <section
+          v-for="node in groupTree.roots"
+          :id="groupId(node.path)"
+          :key="node.path"
+          class="page-section"
+        >
+          <div class="section-header">
+            <h2>
+              <button
+                type="button"
+                class="group-toggle"
+                :aria-expanded="!collapsedGroups.has(node.path)"
+                :aria-controls="groupId(node.path) + '-body'"
+                @click="toggleGroup(node.path)"
+              >
+                <span class="group-chevron" aria-hidden="true">{{
+                  collapsedGroups.has(node.path) ? "\u25B8" : "\u25BE"
+                }}</span>
+                {{ node.label }}
+              </button>
+            </h2>
+            <span class="section-count">{{ countEntries(node) }} Felder</span>
+          </div>
+
+          <div v-show="!collapsedGroups.has(node.path)" :id="groupId(node.path) + '-body'">
+            <div v-if="node.entries.length" class="field-list">
               <div
                 v-for="entry in node.entries"
                 :key="entry.key"
@@ -219,14 +254,27 @@ function updateValue(key, val) {
                 />
               </div>
             </div>
+
             <div v-for="child in node.children" :key="child.path" class="subgroup">
-              <h3 class="subgroup-title" @click="toggleGroup(child.path)">
-                <span class="group-chevron">{{
-                  collapsedGroups.has(child.path) ? "\u25B8" : "\u25BE"
-                }}</span>
-                {{ child.label }}
+              <h3 class="subgroup-title">
+                <button
+                  type="button"
+                  class="group-toggle"
+                  :aria-expanded="!collapsedGroups.has(child.path)"
+                  :aria-controls="groupId(child.path) + '-body'"
+                  @click="toggleGroup(child.path)"
+                >
+                  <span class="group-chevron" aria-hidden="true">{{
+                    collapsedGroups.has(child.path) ? "\u25B8" : "\u25BE"
+                  }}</span>
+                  {{ child.label }}
+                </button>
               </h3>
-              <div v-show="!collapsedGroups.has(child.path)" class="card-fields">
+              <div
+                v-show="!collapsedGroups.has(child.path)"
+                :id="groupId(child.path) + '-body'"
+                class="field-list"
+              >
                 <div
                   v-for="entry in child.entries"
                   :key="entry.key"
@@ -255,102 +303,132 @@ function updateValue(key, val) {
               </div>
             </div>
           </div>
-        </div>
-      </template>
+        </section>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-}
-
-.msg {
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius);
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
-}
-.msg-error {
-  color: var(--color-danger);
-  background: rgba(220, 38, 38, 0.08);
-}
-.msg-success {
-  color: #16a34a;
-  background: rgba(22, 163, 74, 0.08);
-}
-
-.config-grid {
+.config-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 1rem;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  gap: var(--space-7);
+  align-items: start;
 }
 
-.config-card {
-  padding: 1.25rem;
+.config-nav {
+  position: sticky;
+  top: 5rem;
 }
 
-.card-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--color-border);
+.config-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 2px solid var(--color-border);
+}
+
+.config-nav a {
+  display: block;
+  padding: var(--space-1) var(--space-3);
+  margin-left: -2px;
+  border-left: 2px solid transparent;
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.config-nav a:hover {
+  color: var(--color-text);
+  border-left-color: var(--color-primary);
+}
+
+.config-sections {
+  max-width: 42rem;
+  min-width: 0;
+}
+
+.group-toggle {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  gap: var(--space-2);
   cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
+  text-align: left;
 }
-.card-title:hover {
+
+.group-toggle:hover {
   color: var(--color-primary);
+  background: none;
 }
 
 .group-chevron {
   font-size: 0.7rem;
   width: 0.8rem;
   text-align: center;
-}
-
-.subgroup {
-  margin-top: 0.75rem;
-  margin-left: 0.75rem;
-  padding-left: 0.75rem;
-  border-left: 2px solid var(--color-border);
-}
-
-.subgroup-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--color-muted);
-  margin-bottom: 0.5rem;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.subgroup-title:hover {
-  color: var(--color-text);
 }
 
-.card-fields {
+.section-count {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.field-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
+
 .field-row {
   padding: 0.1rem 0;
 }
 
 .is-modified {
   border-left: 2px solid var(--color-primary);
-  padding-left: 0.5rem;
+  padding-left: var(--space-2);
+}
+
+.subgroup {
+  margin-top: var(--space-5);
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--color-border);
+}
+
+.subgroup-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  margin-bottom: var(--space-3);
+}
+
+@media (max-width: 768px) {
+  .config-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .config-nav {
+    position: static;
+  }
+
+  .config-nav ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+    border-left: 0;
+  }
+
+  .config-nav a {
+    padding: var(--space-1) 0;
+    margin-left: 0;
+    border-left: 0;
+  }
 }
 </style>

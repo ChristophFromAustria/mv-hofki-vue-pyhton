@@ -21,12 +21,12 @@ const version = __APP_VERSION__;
 .container {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: var(--space-page) var(--space-4) var(--space-8);
 }
 
 @media (max-width: 768px) {
   .container {
-    padding: 1rem 0.75rem;
+    padding: var(--space-4) var(--space-3) var(--space-7);
   }
 }
 

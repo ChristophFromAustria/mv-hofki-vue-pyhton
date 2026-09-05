@@ -172,16 +172,16 @@ function resetSingle(key) {
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="close">
-    <div class="modal modal-config">
-      <div class="modal-header">
+  <div v-if="open" class="overlay" @click.self="close">
+    <div class="dialog dialog-md dialog-flush">
+      <div class="dialog-header">
         <h2>Scanner-Konfiguration</h2>
-        <button class="close-btn" title="Schließen" @click="close">&#10005;</button>
+        <button class="dialog-close" title="Schließen" @click="close">&#10005;</button>
       </div>
 
       <div v-if="loading" class="modal-loading">Laden...</div>
 
-      <div v-else class="modal-body">
+      <div v-else class="dialog-body">
         <div v-if="error" class="config-error">{{ error }}</div>
 
         <p class="config-hint">
@@ -262,7 +262,7 @@ function resetSingle(key) {
         </template>
       </div>
 
-      <div class="modal-footer">
+      <div class="dialog-footer">
         <button class="btn" :disabled="loading" @click="resetAll">Auf Global zurücksetzen</button>
         <div class="footer-spacer"></div>
         <button class="btn btn-primary" @click="close">Schließen</button>
@@ -272,63 +272,17 @@ function resetSingle(key) {
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 550;
-}
-.modal-config {
-  background: var(--color-bg);
-  border-radius: var(--radius);
-  width: 100%;
-  max-width: 520px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-}
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.5rem 0.75rem;
-  border-bottom: 1px solid var(--color-border);
-}
-.modal-header h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.2rem;
-  cursor: pointer;
-  color: var(--color-muted);
-  padding: 0.25rem;
-  line-height: 1;
-}
-.close-btn:hover {
-  color: var(--color-text);
-}
 .modal-loading {
   padding: 2rem;
   text-align: center;
   color: var(--color-muted);
-}
-.modal-body {
-  padding: 1rem 1.5rem;
-  overflow-y: auto;
-  flex: 1;
 }
 .config-error {
   color: var(--color-danger);
   font-size: 0.85rem;
   margin-bottom: 0.75rem;
   padding: 0.5rem;
-  background: rgba(220, 38, 38, 0.08);
+  background: var(--color-danger-bg);
   border-radius: var(--radius);
 }
 .config-hint {
@@ -397,13 +351,6 @@ function resetSingle(key) {
 .field-modified {
   border-left: 2px solid var(--color-primary);
   padding-left: 0.5rem;
-}
-.modal-footer {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-top: 1px solid var(--color-border);
 }
 .footer-spacer {
   flex: 1;

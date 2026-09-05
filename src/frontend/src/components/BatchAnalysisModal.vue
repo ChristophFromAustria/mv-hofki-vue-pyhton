@@ -122,8 +122,8 @@ defineExpose({ startBatch });
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="handleClose">
-    <div class="modal batch-modal">
+  <div v-if="open" class="overlay overlay-top" @click.self="handleClose">
+    <div class="dialog dialog-lg dialog-flush">
       <div class="batch-header">
         <h2>Massenanalyse</h2>
         <div class="batch-status">
@@ -177,26 +177,6 @@ defineExpose({ startBatch });
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 600;
-}
-
-.batch-modal {
-  background: var(--color-bg);
-  border-radius: var(--radius);
-  width: 100%;
-  max-width: 640px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-}
-
 .batch-header {
   display: flex;
   align-items: center;
@@ -223,13 +203,13 @@ defineExpose({ startBatch });
 }
 
 .indicator.done {
-  color: #16a34a;
-  background: rgba(22, 163, 74, 0.1);
+  color: var(--color-success);
+  background: var(--color-success-bg);
 }
 
 .indicator.err {
   color: var(--color-danger);
-  background: rgba(220, 38, 38, 0.1);
+  background: var(--color-danger-bg);
 }
 
 .progress-bar-wrap {
@@ -244,7 +224,7 @@ defineExpose({ startBatch });
 }
 
 .progress-bar-fill.has-errors {
-  background: linear-gradient(90deg, var(--color-primary), var(--color-danger));
+  background: var(--color-warning);
 }
 
 .batch-log {
@@ -286,7 +266,7 @@ defineExpose({ startBatch });
 }
 
 .log-done .log-msg {
-  color: #16a34a;
+  color: var(--color-success);
 }
 
 .log-error .log-msg {
@@ -310,7 +290,7 @@ defineExpose({ startBatch });
 }
 
 .stat-ok {
-  color: #16a34a;
+  color: var(--color-success);
 }
 
 .stat-fail {

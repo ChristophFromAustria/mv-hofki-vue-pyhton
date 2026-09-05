@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue";
+import { symbolCategoryLabel } from "../lib/symbolCategories.js";
 
 const props = defineProps({
   template: { type: Object, required: true },
@@ -7,35 +8,34 @@ const props = defineProps({
 
 const emit = defineEmits(["edit"]);
 
+const matchingHint = computed(() => {
+  const t = props.template;
+  const parts = [];
+  if (t.min_confidence != null) parts.push(`min. ${Math.round(t.min_confidence * 100)} %`);
+  if (t.confidence_weight != null) parts.push(`× ${t.confidence_weight}`);
+  if (t.merge_overlapping) parts.push("zusammenführen");
+  return parts.join(" · ");
+});
+
 const variantClass = computed(() => {
   const c = props.template.variant_count;
   if (c === 0) return "vc-none";
   if (c >= 6) return "vc-good";
   return "vc-few";
 });
-
-const categoryLabels = {
-  note: "Noten",
-  rest: "Pausen",
-  accidental: "Vorzeichen",
-  clef: "Schlüssel",
-  time_sig: "Taktarten",
-  time_signature: "Taktarten",
-  barline: "Taktstriche",
-  dynamic: "Dynamik",
-  ornament: "Verzierungen",
-  other: "Sonstige",
-};
 </script>
 
 <template>
   <div class="symbol-card" @click="emit('edit', template)">
-    <span class="category-badge">{{ categoryLabels[template.category] || template.category }}</span>
+    <span class="category-badge">{{ symbolCategoryLabel(template.category) }}</span>
     <span class="display-name">{{ template.display_name }}</span>
     <div class="card-footer">
       <span :class="['variant-count', variantClass]">
         {{ template.variant_count }}
         {{ template.variant_count === 1 ? "Variante" : "Varianten" }}
+      </span>
+      <span v-if="matchingHint" class="matching-hint" title="Eigene Erkennungs-Parameter">
+        {{ matchingHint }}
       </span>
     </div>
   </div>
@@ -58,7 +58,7 @@ const categoryLabels = {
 
 .symbol-card:hover {
   background: var(--color-bg-soft);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-float);
 }
 
 .category-badge {
@@ -78,6 +78,16 @@ const categoryLabels = {
 
 .card-footer {
   margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.matching-hint {
+  font-size: 0.7rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .variant-count {
@@ -89,17 +99,17 @@ const categoryLabels = {
 }
 
 .vc-none {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 .vc-few {
-  background: #fefce8;
-  color: #a16207;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
 .vc-good {
-  background: #f0fdf4;
-  color: #16a34a;
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 </style>

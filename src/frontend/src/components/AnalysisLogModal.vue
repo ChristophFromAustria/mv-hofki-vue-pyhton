@@ -117,8 +117,8 @@ defineExpose({ startStream });
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="handleClose">
-    <div class="modal log-modal">
+  <div v-if="open" class="overlay overlay-top" @click.self="handleClose">
+    <div class="dialog dialog-md dialog-flush">
       <div class="log-header">
         <h2>Analyse-Protokoll</h2>
         <div class="log-status">
@@ -153,26 +153,6 @@ defineExpose({ startStream });
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 600;
-}
-
-.log-modal {
-  background: var(--color-bg);
-  border-radius: var(--radius);
-  width: 100%;
-  max-width: 560px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-}
-
 .log-header {
   display: flex;
   align-items: center;
@@ -199,13 +179,13 @@ defineExpose({ startStream });
 }
 
 .status-indicator.done {
-  color: #16a34a;
-  background: rgba(22, 163, 74, 0.1);
+  color: var(--color-success);
+  background: var(--color-success-bg);
 }
 
 .status-indicator.error-status {
   color: var(--color-danger);
-  background: rgba(220, 38, 38, 0.1);
+  background: var(--color-danger-bg);
 }
 
 .log-body {
@@ -246,7 +226,7 @@ defineExpose({ startStream });
 }
 
 .log-done .log-text {
-  color: #16a34a;
+  color: var(--color-success);
   font-weight: 600;
 }
 

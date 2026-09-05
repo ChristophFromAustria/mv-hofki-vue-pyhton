@@ -205,9 +205,9 @@ function findStaffForY(y) {
 // Symbol helpers
 function symbolColor(symbol) {
   const conf = symbol.confidence ?? 0;
-  if (conf >= 0.85) return "#22c55e";
-  if (conf >= 0.4) return "#f97316";
-  return "#ef4444";
+  if (conf >= 0.85) return "var(--color-success)";
+  if (conf >= 0.4) return "var(--color-warning)";
+  return "var(--color-danger)";
 }
 
 function isSelected(symbol) {
@@ -423,7 +423,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             patternUnits="userSpaceOnUse"
             patternTransform="rotate(45)"
           >
-            <line x1="0" y1="0" x2="0" y2="6" stroke="#3b82f6" stroke-width="1" />
+            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--overlay-staff)" stroke-width="1" />
           </pattern>
         </defs>
 
@@ -447,7 +447,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y="parseLinePositions(staff)[0]"
               :width="naturalWidth"
               :height="staff.y_bottom - parseLinePositions(staff)[0]"
-              fill="#3b82f6"
+              fill="var(--overlay-staff)"
               opacity="0.04"
             />
             <!-- Individual staff lines -->
@@ -458,7 +458,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y1="lineY"
               :x2="naturalWidth"
               :y2="lineY"
-              stroke="#3b82f6"
+              stroke="var(--overlay-staff)"
               stroke-width="1.5"
               opacity="0.5"
             />
@@ -466,7 +466,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             <text
               x="4"
               :y="staff.y_top + 14"
-              fill="#3b82f6"
+              fill="var(--overlay-staff)"
               font-size="14"
               font-weight="600"
               opacity="0.7"
@@ -479,7 +479,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y1="staff.y_top"
               :x2="naturalWidth"
               :y2="staff.y_top"
-              stroke="#3b82f6"
+              stroke="var(--overlay-staff)"
               stroke-width="1"
               stroke-dasharray="6 4"
               opacity="0.3"
@@ -489,7 +489,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y1="staff.y_bottom"
               :x2="naturalWidth"
               :y2="staff.y_bottom"
-              stroke="#3b82f6"
+              stroke="var(--overlay-staff)"
               stroke-width="1"
               stroke-dasharray="6 4"
               opacity="0.3"
@@ -505,7 +505,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y1="(staffBounds(measure.staff_index)?.y_top ?? 0) - 10"
               :x2="measure.x_start"
               :y2="(staffBounds(measure.staff_index)?.y_bottom ?? 0) + 10"
-              stroke="#06b6d4"
+              stroke="var(--overlay-measure)"
               stroke-width="1.5"
               stroke-dasharray="4 3"
               opacity="0.6"
@@ -513,7 +513,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             <text
               :x="measure.x_start + 4"
               :y="(staffBounds(measure.staff_index)?.y_top ?? 0) - 14"
-              fill="#06b6d4"
+              fill="var(--overlay-measure)"
               font-size="12"
               font-weight="600"
               opacity="0.8"
@@ -527,7 +527,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y1="(staffBounds(measure.staff_index)?.y_top ?? 0) - 10"
               :x2="measure.x_end"
               :y2="(staffBounds(measure.staff_index)?.y_bottom ?? 0) + 10"
-              stroke="#06b6d4"
+              stroke="var(--overlay-measure)"
               stroke-width="1.5"
               stroke-dasharray="4 3"
               opacity="0.6"
@@ -544,7 +544,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y1="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 25"
               :x2="vb.xEnd"
               :y2="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 25"
-              stroke="#d946ef"
+              stroke="var(--overlay-volta)"
               stroke-width="2"
               opacity="0.8"
             />
@@ -554,7 +554,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y1="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 25"
               :x2="vb.xStart"
               :y2="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 10"
-              stroke="#d946ef"
+              stroke="var(--overlay-volta)"
               stroke-width="2"
               opacity="0.8"
             />
@@ -562,7 +562,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             <text
               :x="vb.xStart + 6"
               :y="(staffBounds(vb.staffIdx)?.y_top ?? 0) - 28"
-              fill="#d946ef"
+              fill="var(--overlay-volta)"
               font-size="11"
               font-weight="700"
               opacity="0.9"
@@ -581,7 +581,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             :y1="dl.y1"
             :x2="dl.x2"
             :y2="dl.y2"
-            stroke="#22d3ee"
+            stroke="var(--overlay-text)"
             stroke-width="1.5"
             opacity="0.7"
           />
@@ -596,7 +596,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             :y1="dl.y1"
             :x2="dl.x2"
             :y2="dl.y2"
-            stroke="#f59e0b"
+            stroke="var(--overlay-capture)"
             stroke-width="1.5"
             opacity="0.7"
           />
@@ -615,9 +615,9 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :y="tr.y"
               :width="tr.width"
               :height="tr.height"
-              fill="#10b981"
+              fill="var(--overlay-symbol)"
               fill-opacity="0.15"
-              stroke="#10b981"
+              stroke="var(--overlay-symbol)"
               :stroke-width="selectedTextRegionId === tr.id ? 3 : 1"
               :opacity="selectedTextRegionId === tr.id ? 1 : 0.8"
             />
@@ -628,14 +628,14 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :width="tr.width + 4"
               :height="tr.height + 4"
               fill="none"
-              stroke="#fff"
+              stroke="var(--overlay-selection)"
               stroke-width="1"
               opacity="0.8"
             />
             <text
               :x="tr.x + 2"
               :y="tr.y + tr.height - 2"
-              fill="#10b981"
+              fill="var(--overlay-symbol)"
               font-size="10"
               opacity="0.9"
             >
@@ -671,7 +671,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
               :width="symbol.width + 4"
               :height="symbol.height + 4"
               fill="none"
-              stroke="#fff"
+              stroke="var(--overlay-selection)"
               stroke-width="1"
               opacity="0.8"
             />
@@ -685,8 +685,8 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
           :y="Math.min(drawStart.y, drawEnd.y)"
           :width="Math.abs(drawEnd.x - drawStart.x)"
           :height="Math.abs(drawEnd.y - drawStart.y)"
-          fill="rgba(251, 191, 36, 0.15)"
-          stroke="#f59e0b"
+          fill="var(--overlay-capture-fill)"
+          stroke="var(--overlay-capture)"
           stroke-width="2"
           stroke-dasharray="6 3"
         />
@@ -699,8 +699,8 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             :y="selBox.y"
             :width="selBox.width"
             :height="selBox.height"
-            fill="rgba(251, 191, 36, 0.12)"
-            stroke="#f59e0b"
+            fill="var(--overlay-capture-fill)"
+            stroke="var(--overlay-capture)"
             stroke-width="2"
           />
           <!-- Edge handles (invisible wider hit areas) -->
@@ -745,28 +745,28 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
             :cx="selBox.x"
             :cy="selBox.y"
             r="4"
-            fill="#f59e0b"
+            fill="var(--overlay-capture)"
             style="cursor: nw-resize; pointer-events: all"
           />
           <circle
             :cx="selBox.x + selBox.width"
             :cy="selBox.y"
             r="4"
-            fill="#f59e0b"
+            fill="var(--overlay-capture)"
             style="cursor: ne-resize; pointer-events: all"
           />
           <circle
             :cx="selBox.x"
             :cy="selBox.y + selBox.height"
             r="4"
-            fill="#f59e0b"
+            fill="var(--overlay-capture)"
             style="cursor: sw-resize; pointer-events: all"
           />
           <circle
             :cx="selBox.x + selBox.width"
             :cy="selBox.y + selBox.height"
             r="4"
-            fill="#f59e0b"
+            fill="var(--overlay-capture)"
             style="cursor: se-resize; pointer-events: all"
           />
         </template>
@@ -797,7 +797,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
   width: 100%;
   height: 100%;
   overflow: auto;
-  background: #1a1a1a;
+  background: var(--color-canvas-bg);
 }
 
 .no-image {
@@ -805,7 +805,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #aaa;
+  color: var(--color-canvas-fg);
 }
 
 .image-container {
@@ -836,8 +836,8 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
   position: absolute;
   bottom: 0.5rem;
   right: 0.5rem;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: var(--color-canvas-chrome);
+  color: var(--color-canvas-text);
   font-size: 0.75rem;
   padding: 0.2rem 0.4rem;
   border-radius: 4px;
@@ -849,7 +849,7 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
   position: absolute;
   display: flex;
   gap: 0.4rem;
-  z-index: 10;
+  z-index: var(--z-sticky);
   pointer-events: all;
 }
 
@@ -863,20 +863,20 @@ defineExpose({ cropRegion, zoomIn, zoomOut, zoom });
 }
 
 .capture-btn.confirm {
-  background: #f59e0b;
-  color: #000;
+  background: var(--overlay-capture);
+  color: var(--color-canvas-bg);
 }
 
 .capture-btn.confirm:hover {
-  background: #d97706;
+  background: color-mix(in srgb, var(--overlay-capture) 85%, black);
 }
 
 .capture-btn.cancel {
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: var(--color-canvas-chrome);
+  color: var(--color-canvas-text);
 }
 
 .capture-btn.cancel:hover {
-  background: rgba(0, 0, 0, 0.8);
+  background: var(--color-canvas-chrome-hover);
 }
 </style>

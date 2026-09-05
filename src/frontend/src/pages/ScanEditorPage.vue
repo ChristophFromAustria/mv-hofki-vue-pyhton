@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import { symbolCategoryLabel } from "../lib/symbolCategories.js";
 import { RouterLink } from "vue-router";
 import { get, put, post } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
@@ -55,8 +56,8 @@ const showLilypond = ref(false);
 const lilypondCode = ref("");
 const lilypondPdfPath = ref(null);
 const lilypondPngPaths = ref([]);
-const lilypondLoading = ref(false);
 const lilypondWarnings = ref([]);
+const lilypondLoading = ref(false);
 const imageInfo = ref(null); // { width, height, type }
 const showAnalysisLog = ref(false);
 const viewMode = ref("original");
@@ -267,8 +268,8 @@ async function generateLilypond() {
     lilypondCode.value = result.lilypond_code;
     lilypondPdfPath.value = result.pdf_path;
     lilypondPngPaths.value = result.png_paths || [];
-    showLilypond.value = true;
     lilypondWarnings.value = result.warnings || [];
+    showLilypond.value = true;
   } catch (e) {
     statusMessage.value = `LilyPond-Fehler: ${e.message}`;
   } finally {
@@ -515,20 +516,8 @@ const filteredSymbols = computed(() => {
 
 const groupedTemplates = computed(() => {
   const groups = {};
-  const categoryLabels = {
-    note: "Noten",
-    rest: "Pausen",
-    accidental: "Vorzeichen",
-    clef: "Schlüssel",
-    time_sig: "Taktarten",
-    time_signature: "Taktarten",
-    barline: "Taktstriche",
-    dynamic: "Dynamik",
-    ornament: "Verzierungen",
-    other: "Sonstige",
-  };
   for (const tpl of libraryTemplates.value) {
-    const label = categoryLabels[tpl.category] || tpl.category;
+    const label = symbolCategoryLabel(tpl.category);
     if (!groups[label]) groups[label] = [];
     groups[label].push(tpl);
   }
@@ -740,8 +729,8 @@ onUnmounted(() => {
     </div>
 
     <!-- Correct picker modal -->
-    <div v-if="showCorrectPicker" class="modal-backdrop" @click.self="showCorrectPicker = false">
-      <div class="modal modal-large">
+    <div v-if="showCorrectPicker" class="overlay" @click.self="showCorrectPicker = false">
+      <div class="dialog dialog-lg">
         <h2>Symbol korrigieren</h2>
         <div class="template-grid">
           <button
@@ -774,7 +763,6 @@ onUnmounted(() => {
     <!-- Analysis log modal -->
     <AnalysisLogModal
       ref="analysisLogRef"
-      :warnings="lilypondWarnings"
       :open="showAnalysisLog"
       @close="onAnalysisLogClose"
       @done="onAnalysisDone"
@@ -786,13 +774,14 @@ onUnmounted(() => {
       :lilypond-code="lilypondCode"
       :pdf-path="lilypondPdfPath"
       :png-paths="lilypondPngPaths"
+      :warnings="lilypondWarnings"
       :cache-version="cacheVersion"
       @close="showLilypond = false"
     />
 
     <!-- Capture dialog -->
-    <div v-if="showCaptureDialog" class="modal-backdrop" @click.self="showCaptureDialog = false">
-      <div class="modal">
+    <div v-if="showCaptureDialog" class="overlay" @click.self="showCaptureDialog = false">
+      <div class="dialog">
         <h2>Vorlage erfassen</h2>
         <p class="capture-info">Ausschnitt: {{ captureBox?.width }}×{{ captureBox?.height }} px</p>
         <label>
@@ -816,6 +805,7 @@ onUnmounted(() => {
             <option value="note">Note</option>
             <option value="rest">Pause</option>
             <option value="accidental">Vorzeichen</option>
+            <option value="key_sig">Tonart</option>
             <option value="clef">Schlüssel</option>
             <option value="time_sig">Taktart</option>
             <option value="barline">Taktstrich</option>
@@ -855,7 +845,7 @@ onUnmounted(() => {
             placeholder="<note>...</note>"
           />
         </label>
-        <div class="modal-actions">
+        <div class="dialog-actions">
           <button class="btn" @click="showCaptureDialog = false">Abbrechen</button>
           <button
             class="btn btn-primary"
@@ -964,34 +954,6 @@ onUnmounted(() => {
   gap: 0.5rem;
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 500;
-}
-
-.modal {
-  background: var(--color-bg);
-  border-radius: var(--radius);
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 400px;
-}
-
-.modal-large {
-  max-width: 600px;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.modal h2 {
-  margin-bottom: 1rem;
-}
-
 .template-grid {
   display: flex;
   flex-wrap: wrap;
@@ -1089,12 +1051,6 @@ onUnmounted(() => {
   font-family: var(--font-mono);
 }
 
-.btn-active {
-  background: var(--color-primary);
-  color: #fff;
-  border-color: var(--color-primary);
-}
-
 .view-toggle {
   display: inline-flex;
   border: 1px solid var(--color-border);
@@ -1125,27 +1081,6 @@ onUnmounted(() => {
   margin-bottom: 1rem;
 }
 
-.modal label {
-  display: block;
-  margin-bottom: 0.75rem;
-  font-size: 0.9rem;
-  color: var(--color-muted);
-}
-
-.modal input,
-.modal select,
-.modal textarea {
-  display: block;
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: inherit;
-}
-
 .height-input-row {
   display: flex;
   gap: 0.5rem;
@@ -1161,12 +1096,5 @@ onUnmounted(() => {
 .input-readonly {
   background: var(--color-bg-soft) !important;
   color: var(--color-muted) !important;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  margin-top: 1rem;
 }
 </style>

@@ -31,7 +31,7 @@ async function remove() {
   <div v-if="musician">
     <div class="page-header">
       <h1>{{ musician.first_name }} {{ musician.last_name }}</h1>
-      <div style="display: flex; gap: 0.5rem">
+      <div class="cluster">
         <router-link :to="`/musiker/${musician.id}/bearbeiten`" class="btn">
           Bearbeiten
         </router-link>
@@ -39,7 +39,10 @@ async function remove() {
       </div>
     </div>
 
-    <div class="card" style="margin-bottom: 1.5rem">
+    <section class="page-section">
+      <div class="section-header">
+        <h2>Kontakt</h2>
+      </div>
       <dl class="detail-grid">
         <dt>Vorname</dt>
         <dd>{{ musician.first_name }}</dd>
@@ -60,11 +63,13 @@ async function remove() {
         <dt>Notizen</dt>
         <dd>{{ musician.notes || "—" }}</dd>
       </dl>
-    </div>
+    </section>
 
-    <div v-if="loans.length" class="card">
-      <h2 style="font-size: 1.1rem; margin-bottom: 1rem">Ausgeliehene Gegenstände</h2>
-      <div style="overflow-x: auto; -webkit-overflow-scrolling: touch">
+    <section v-if="loans.length" class="page-section">
+      <div class="section-header">
+        <h2>Leihhistorie</h2>
+      </div>
+      <div class="table-scroll">
         <table>
           <thead>
             <tr>
@@ -96,7 +101,7 @@ async function remove() {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
 
     <ConfirmDialog
       :open="showDelete"

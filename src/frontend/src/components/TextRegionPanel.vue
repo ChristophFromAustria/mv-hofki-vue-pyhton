@@ -12,10 +12,10 @@ const confidencePercent = computed(() => {
 
 const confidenceColor = computed(() => {
   const c = props.textRegion?.confidence;
-  if (c == null) return "#888";
-  if (c >= 80) return "#22c55e";
-  if (c >= 50) return "#f97316";
-  return "#ef4444";
+  if (c == null) return "var(--color-muted)";
+  if (c >= 80) return "var(--color-success)";
+  if (c >= 50) return "var(--color-warning)";
+  return "var(--color-danger)";
 });
 </script>
 

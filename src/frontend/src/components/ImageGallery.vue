@@ -195,8 +195,8 @@ function onFileSelected(e) {
   position: absolute;
   bottom: 8px;
   right: 8px;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
+  background: var(--color-canvas-chrome);
+  color: var(--color-canvas-text);
   font-size: 0.75rem;
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
@@ -266,8 +266,9 @@ function onFileSelected(e) {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  background: rgba(255, 255, 255, 0.8);
-  border: none;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   border-radius: 50%;
   width: 44px;
   height: 44px;

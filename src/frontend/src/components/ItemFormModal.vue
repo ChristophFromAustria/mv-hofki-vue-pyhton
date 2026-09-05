@@ -200,10 +200,7 @@ async function save() {
 
 <template>
   <div v-if="open" class="overlay" @click.self="$emit('close')">
-    <div
-      class="dialog"
-      style="max-width: 700px; width: 90vw; max-height: 90vh; display: flex; flex-direction: column"
-    >
+    <div class="dialog dialog-xl" style="display: flex; flex-direction: column">
       <div style="display: flex; justify-content: space-between; align-items: center">
         <h3>
           {{ isEdit ? cat.labelSingular + " bearbeiten" : cat.labelSingular + " anlegen" }}
@@ -431,7 +428,7 @@ async function save() {
 
 .currency-picker button.active {
   background: var(--color-primary);
-  color: white;
+  color: var(--color-on-primary);
   border-color: var(--color-primary);
 }
 </style>

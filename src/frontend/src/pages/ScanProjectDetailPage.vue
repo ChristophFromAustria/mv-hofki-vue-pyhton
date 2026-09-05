@@ -444,7 +444,7 @@ onMounted(fetchData);
 }
 
 .scan-thumb:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-float);
 }
 
 .thumb-img-wrap {
@@ -471,23 +471,23 @@ onMounted(fetchData);
 }
 
 .status-uploaded {
-  background: #9ca3af;
-  color: #fff;
+  background: var(--color-badge-gray-bg);
+  color: var(--color-badge-gray-text);
 }
 
 .status-processing {
-  background: #3b82f6;
-  color: #fff;
+  background: var(--color-info-bg);
+  color: var(--color-info);
 }
 
 .status-review {
-  background: #f97316;
-  color: #fff;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
 .status-completed {
-  background: #22c55e;
-  color: #fff;
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 .thumb-footer {

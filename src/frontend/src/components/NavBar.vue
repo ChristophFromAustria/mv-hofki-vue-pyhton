@@ -93,7 +93,7 @@ onMounted(() => {
   background: var(--color-bg);
   position: sticky;
   top: 0;
-  z-index: 200;
+  z-index: var(--z-nav);
 }
 
 .navbar-inner {
@@ -135,7 +135,7 @@ onMounted(() => {
   padding: 1rem 0;
   transform: translateX(-100%);
   transition: transform 0.25s ease;
-  z-index: 300;
+  z-index: var(--z-drawer);
   overflow-y: auto;
   display: flex;
 }
@@ -151,7 +151,9 @@ onMounted(() => {
 }
 
 .links > a {
-  transition: all var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
 }
 
 .links > a:hover,
@@ -207,7 +209,7 @@ onMounted(() => {
   position: fixed;
   inset: 0;
   background: var(--color-overlay);
-  z-index: 250;
+  z-index: var(--z-nav-backdrop);
 }
 
 .dropdown {

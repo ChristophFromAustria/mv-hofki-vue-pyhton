@@ -4,19 +4,7 @@ import { get, post, put, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import SymbolCard from "../components/SymbolCard.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
-
-const CATEGORIES = [
-  { key: "", label: "Alle" },
-  { key: "note", label: "Noten" },
-  { key: "rest", label: "Pausen" },
-  { key: "accidental", label: "Vorzeichen" },
-  { key: "clef", label: "Schlüssel" },
-  { key: "time_signature", label: "Taktarten" },
-  { key: "barline", label: "Taktstriche" },
-  { key: "dynamic", label: "Dynamik" },
-  { key: "ornament", label: "Verzierungen" },
-  { key: "other", label: "Sonstige" },
-];
+import { mergeSymbolCategories, symbolCategoryLabelSingular } from "../lib/symbolCategories.js";
 
 const PAGE_SIZE = 24;
 
@@ -26,6 +14,21 @@ const templates = ref([]);
 const total = ref(0);
 const loading = ref(false);
 const error = ref(null);
+
+// Known categories with German labels live in lib/symbolCategories.js.
+// The actual tab list is merged with the categories the backend reports,
+// so newly introduced categories show up automatically.
+const serverCategories = ref([]);
+const categoryTabs = computed(() => [
+  { key: "", label: "Alle", count: total.value },
+  ...mergeSymbolCategories(serverCategories.value),
+]);
+const categoryOptions = computed(() =>
+  mergeSymbolCategories(serverCategories.value).map((c) => ({
+    key: c.key,
+    label: symbolCategoryLabelSingular(c.key),
+  })),
+);
 
 const showCreate = ref(false);
 const createForm = ref({ name: "", display_name: "", category: "note" });
@@ -53,9 +56,6 @@ const previewVariant = ref(null);
 const previewImageUrl = ref(null);
 const previewNatW = ref(0);
 const previewNatH = ref(0);
-const cropDrawing = ref(false);
-const cropStart = ref({ x: 0, y: 0 });
-const cropEnd = ref({ x: 0, y: 0 });
 const tightening = ref(false);
 const tightenMessage = ref(null);
 
@@ -75,6 +75,9 @@ async function tightenVariants() {
   }
 }
 
+const cropDrawing = ref(false);
+const cropStart = ref({ x: 0, y: 0 });
+const cropEnd = ref({ x: 0, y: 0 });
 const cropRect = ref(null);
 const svgOverlay = ref(null);
 
@@ -82,28 +85,6 @@ const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)));
 
-async function fetchTemplates() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const offset = (currentPage.value - 1) * PAGE_SIZE;
-    let path = `/scanner/library/templates?limit=${PAGE_SIZE}&offset=${offset}`;
-    if (activeCategory.value) {
-      path += `&category=${encodeURIComponent(activeCategory.value)}`;
-    }
-    const data = await get(path);
-    templates.value = data.items;
-    total.value = data.total;
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    loading.value = false;
-  }
-}
-
-function selectCategory(key) {
-  activeCategory.value = key;
-  currentPage.value = 1;
 async function fetchGlobalThreshold() {
   try {
     const data = await get("/scanner/config");
@@ -125,6 +106,28 @@ async function fetchCategories() {
   }
 }
 
+async function fetchTemplates() {
+  loading.value = true;
+  error.value = null;
+  try {
+    const offset = (currentPage.value - 1) * PAGE_SIZE;
+    let path = `/scanner/library/templates?limit=${PAGE_SIZE}&offset=${offset}`;
+    if (activeCategory.value) {
+      path += `&category=${encodeURIComponent(activeCategory.value)}`;
+    }
+    const [data] = await Promise.all([get(path), fetchCategories()]);
+    templates.value = data.items;
+    total.value = data.total;
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    loading.value = false;
+  }
+}
+
+function selectCategory(key) {
+  activeCategory.value = key;
+  currentPage.value = 1;
 }
 
 function prevPage() {
@@ -148,28 +151,6 @@ async function createTemplate() {
   await fetchTemplates();
 }
 
-async function openEdit(tpl) {
-  editingTemplate.value = tpl;
-  editForm.value = {
-    display_name: tpl.display_name,
-    musicxml_element: tpl.musicxml_element || "",
-    lilypond_token: tpl.lilypond_token || "",
-  };
-  renderError.value = null;
-  loadingVariants.value = true;
-  try {
-    variants.value = await get(`/scanner/library/templates/${tpl.id}/variants`);
-  } finally {
-    loadingVariants.value = false;
-  }
-}
-
-function closeEdit() {
-  editingTemplate.value = null;
-  variants.value = [];
-}
-
-async function saveTemplate() {
 function parseOptionalNumber(raw) {
   const text = String(raw ?? "")
     .trim()
@@ -204,15 +185,40 @@ const minConfidencePlaceholder = computed(() =>
     : `global: ${Math.round(globalConfidenceThreshold.value * 100)} %`,
 );
 
+async function openEdit(tpl) {
+  editingTemplate.value = tpl;
+  editForm.value = {
+    display_name: tpl.display_name,
+    musicxml_element: tpl.musicxml_element || "",
+    lilypond_token: tpl.lilypond_token || "",
+    min_confidence: tpl.min_confidence == null ? "" : String(Math.round(tpl.min_confidence * 100)),
+    confidence_weight: tpl.confidence_weight == null ? "" : String(tpl.confidence_weight),
+    merge_overlapping: Boolean(tpl.merge_overlapping),
+  };
+  renderError.value = null;
+  loadingVariants.value = true;
+  try {
+    variants.value = await get(`/scanner/library/templates/${tpl.id}/variants`);
+  } finally {
+    loadingVariants.value = false;
+  }
+}
+
+function closeEdit() {
+  editingTemplate.value = null;
+  variants.value = [];
+}
+
+async function saveTemplate() {
   if (!editingTemplate.value) return;
   await put(`/scanner/library/templates/${editingTemplate.value.id}`, {
     display_name: editForm.value.display_name,
     musicxml_element: editForm.value.musicxml_element || null,
     lilypond_token: editForm.value.lilypond_token || null,
+    min_confidence: parsedMinConfidence.value,
+    confidence_weight: parsedConfidenceWeight.value,
+    merge_overlapping: editForm.value.merge_overlapping,
   });
-    min_confidence: tpl.min_confidence == null ? "" : String(Math.round(tpl.min_confidence * 100)),
-    confidence_weight: tpl.confidence_weight == null ? "" : String(tpl.confidence_weight),
-    merge_overlapping: Boolean(tpl.merge_overlapping),
   closeEdit();
   await fetchTemplates();
 }
@@ -234,9 +240,6 @@ async function deleteVariant() {
   if (!deleteVariantTarget.value || !editingTemplate.value) return;
   const vid = deleteVariantTarget.value.id;
   await del(`/scanner/library/templates/${editingTemplate.value.id}/variants/${vid}`);
-    min_confidence: parsedMinConfidence.value,
-    confidence_weight: parsedConfidenceWeight.value,
-    merge_overlapping: editForm.value.merge_overlapping,
   deleteVariantTarget.value = null;
   confirmVariantDeleteOpen.value = false;
   variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
@@ -399,7 +402,10 @@ async function applyCrop() {
 }
 
 watch([activeCategory, currentPage], fetchTemplates);
-onMounted(fetchTemplates);
+onMounted(() => {
+  fetchTemplates();
+  fetchGlobalThreshold();
+});
 </script>
 
 <template>
@@ -408,12 +414,6 @@ onMounted(fetchTemplates);
       <h1>Symbol-Bibliothek</h1>
       <div class="header-right">
         <span class="total-count">{{ total }} Vorlagen</span>
-        <button class="btn btn-primary btn-sm" @click="showCreate = true">+ Neue Vorlage</button>
-      </div>
-    </div>
-
-    <!-- Category filter tabs -->
-    <div class="category-tabs">
         <button
           class="btn btn-sm"
           :disabled="tightening"
@@ -422,15 +422,24 @@ onMounted(fetchTemplates);
         >
           {{ tightening ? "Schneide zu…" : "Varianten zuschneiden" }}
         </button>
-      <button
-        v-for="cat in CATEGORIES"
-        :key="cat.key"
-        :class="['tab-btn', { active: activeCategory === cat.key }]"
+        <button class="btn btn-primary btn-sm" @click="showCreate = true">+ Neue Vorlage</button>
+      </div>
+    </div>
+
     <p v-if="tightenMessage" class="tighten-message" role="status">{{ tightenMessage }}</p>
 
+    <!-- Category filter tabs -->
+    <div class="category-tabs">
+      <button
+        v-for="cat in categoryTabs"
+        :key="cat.key"
+        type="button"
+        :class="['tab-btn', { active: activeCategory === cat.key }]"
+        :aria-pressed="activeCategory === cat.key"
         @click="selectCategory(cat.key)"
       >
         {{ cat.label }}
+        <span v-if="cat.key !== ''" class="tab-count">{{ cat.count }}</span>
       </button>
     </div>
 
@@ -469,8 +478,8 @@ onMounted(fetchTemplates);
     </template>
 
     <!-- Create template dialog -->
-    <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false">
-      <div class="modal">
+    <div v-if="showCreate" class="overlay" @click.self="showCreate = false">
+      <div class="dialog">
         <h2>Neue Vorlage erstellen</h2>
         <label>
           Name
@@ -479,18 +488,12 @@ onMounted(fetchTemplates);
         <label>
           Kategorie
           <select v-model="createForm.category">
-            <option value="note">Note</option>
-            <option value="rest">Pause</option>
-            <option value="accidental">Vorzeichen</option>
-            <option value="clef">Schlüssel</option>
-            <option value="time_sig">Taktart</option>
-            <option value="barline">Taktstrich</option>
-            <option value="dynamic">Dynamik</option>
-            <option value="ornament">Verzierung</option>
-            <option value="other">Sonstiges</option>
+            <option v-for="opt in categoryOptions" :key="opt.key" :value="opt.key">
+              {{ opt.label }}
+            </option>
           </select>
         </label>
-        <div class="modal-actions">
+        <div class="dialog-actions">
           <button class="btn" @click="showCreate = false">Abbrechen</button>
           <button
             class="btn btn-primary"
@@ -504,8 +507,8 @@ onMounted(fetchTemplates);
     </div>
 
     <!-- Edit modal -->
-    <div v-if="editingTemplate" class="modal-backdrop" @click.self="closeEdit">
-      <div class="modal modal-large">
+    <div v-if="editingTemplate" class="overlay" @click.self="closeEdit">
+      <div class="dialog dialog-lg">
         <h2>{{ editingTemplate.display_name }} bearbeiten</h2>
         <label>
           Anzeigename
@@ -520,38 +523,6 @@ onMounted(fetchTemplates);
           <input v-model="editForm.lilypond_token" type="text" placeholder="z.B. c4" />
         </label>
 
-        <!-- Render actions -->
-        <div class="render-actions">
-          <button
-            class="btn btn-sm btn-secondary"
-            :disabled="!editForm.musicxml_element.trim() || rendering !== null"
-            @click="renderMusicxml"
-          >
-            {{ rendering === "musicxml" ? "Rendere..." : "MusicXML rendern" }}
-          </button>
-          <button
-            class="btn btn-sm btn-secondary"
-            :disabled="!editForm.lilypond_token.trim() || rendering !== null"
-            @click="renderLilypond"
-          >
-            {{ rendering === "lilypond" ? "Rendere..." : "LilyPond rendern" }}
-          </button>
-        </div>
-
-        <div v-if="renderError" class="render-error">
-          <span>{{ renderError }}</span>
-          <button class="render-error-close" @click="renderError = null">&times;</button>
-        </div>
-
-        <!-- Variants -->
-        <div class="variants-section">
-          <h3>Varianten ({{ variants.length }})</h3>
-          <LoadingSpinner v-if="loadingVariants" />
-          <div v-else-if="variants.length === 0" class="empty-variants">
-            Keine Varianten vorhanden.
-          </div>
-          <div v-else class="variants-grid">
-            <div v-for="v in variants" :key="v.id" class="variant-item">
         <!-- Matching parameters -->
         <fieldset class="matching-params">
           <legend>Erkennung</legend>
@@ -596,6 +567,38 @@ onMounted(fetchTemplates);
           </p>
         </fieldset>
 
+        <!-- Render actions -->
+        <div class="render-actions">
+          <button
+            class="btn btn-sm btn-secondary"
+            :disabled="!editForm.musicxml_element.trim() || rendering !== null"
+            @click="renderMusicxml"
+          >
+            {{ rendering === "musicxml" ? "Rendere..." : "MusicXML rendern" }}
+          </button>
+          <button
+            class="btn btn-sm btn-secondary"
+            :disabled="!editForm.lilypond_token.trim() || rendering !== null"
+            @click="renderLilypond"
+          >
+            {{ rendering === "lilypond" ? "Rendere..." : "LilyPond rendern" }}
+          </button>
+        </div>
+
+        <div v-if="renderError" class="render-error">
+          <span>{{ renderError }}</span>
+          <button class="render-error-close" @click="renderError = null">&times;</button>
+        </div>
+
+        <!-- Variants -->
+        <div class="variants-section">
+          <h3>Varianten ({{ variants.length }})</h3>
+          <LoadingSpinner v-if="loadingVariants" />
+          <div v-else-if="variants.length === 0" class="empty-variants">
+            Keine Varianten vorhanden.
+          </div>
+          <div v-else class="variants-grid">
+            <div v-for="v in variants" :key="v.id" class="variant-item">
               <img
                 :src="variantImageUrl(v)"
                 alt="Variante"
@@ -610,9 +613,9 @@ onMounted(fetchTemplates);
           </div>
         </div>
 
-        <div class="modal-actions-spread">
+        <div class="dialog-actions-spread">
           <button class="btn btn-danger" @click="confirmDeleteOpen = true">Vorlage löschen</button>
-          <div class="modal-actions">
+          <div class="dialog-actions">
             <button class="btn" @click="closeEdit">Abbrechen</button>
             <button
               class="btn btn-primary"
@@ -662,8 +665,8 @@ onMounted(fetchTemplates);
             :y="drawingRect.y"
             :width="drawingRect.width"
             :height="drawingRect.height"
-            fill="rgba(245, 158, 11, 0.2)"
-            stroke="#f59e0b"
+            fill="var(--overlay-capture-fill)"
+            stroke="var(--overlay-capture)"
             stroke-width="3"
             stroke-dasharray="8 4"
           />
@@ -734,7 +737,10 @@ onMounted(fetchTemplates);
   color: var(--color-text);
   cursor: pointer;
   font-size: 0.875rem;
-  transition: all var(--transition);
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition);
 }
 
 .tab-btn:hover {
@@ -746,8 +752,15 @@ onMounted(fetchTemplates);
 .tab-btn.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: #fff;
+  color: var(--color-on-primary);
   font-weight: 600;
+}
+
+.tab-count {
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
 }
 
 .empty-state {
@@ -809,25 +822,30 @@ onMounted(fetchTemplates);
   font-variant-numeric: tabular-nums;
 }
 
-.modal label {
-  display: block;
-  margin-bottom: 0.75rem;
-  font-size: 0.9rem;
+.field-hint {
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
   color: var(--color-muted);
 }
 
-.modal input,
-.modal select,
-.modal textarea {
-  display: block;
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: inherit;
+.field-error {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-danger);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  min-height: 44px;
+}
+
+.checkbox-label input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
 }
 
 .variants-section {
@@ -862,7 +880,7 @@ onMounted(fetchTemplates);
   width: 100%;
   height: 60px;
   object-fit: contain;
-  background: #1a1a1a;
+  background: var(--color-canvas-bg);
   image-rendering: pixelated;
   cursor: zoom-in;
 }
@@ -894,16 +912,15 @@ onMounted(fetchTemplates);
   line-height: 1.4;
 }
 
-.modal-actions-spread {
+.dialog-actions-spread {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-top: 1rem;
 }
 
-.modal-actions {
-  display: flex;
-  gap: 0.5rem;
+.dialog-actions-spread .dialog-actions {
+  margin-top: 0;
 }
 
 .render-actions {
@@ -918,10 +935,10 @@ onMounted(fetchTemplates);
   gap: 0.5rem;
   padding: 0.6rem 0.75rem;
   margin-bottom: 0.75rem;
-  background: var(--color-danger-light, #3a1c1c);
-  border: 1px solid var(--color-danger, #e74c3c);
+  background: var(--color-danger-bg);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
   border-radius: var(--radius);
-  color: var(--color-danger, #e74c3c);
+  color: var(--color-danger);
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -945,12 +962,12 @@ onMounted(fetchTemplates);
 .lightbox {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--color-lightbox-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  z-index: 600;
+  z-index: var(--z-overlay-top);
   user-select: none;
 }
 
@@ -965,7 +982,7 @@ onMounted(fetchTemplates);
   max-width: 90vw;
   max-height: 80vh;
   object-fit: contain;
-  background: #fff;
+  background: var(--color-paper);
   border-radius: var(--radius);
 }
 
@@ -984,12 +1001,12 @@ onMounted(fetchTemplates);
   gap: 1rem;
   margin-top: 0.75rem;
   padding: 0.5rem 1rem;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--color-canvas-chrome);
   border-radius: var(--radius);
 }
 
 .lightbox-hint {
-  color: #aaa;
+  color: var(--color-canvas-fg);
   font-size: 0.8rem;
 }
 
@@ -1003,14 +1020,14 @@ onMounted(fetchTemplates);
   gap: 1rem;
   margin-top: 0.5rem;
   padding: 0.4rem 0.75rem;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-canvas-chrome);
   border-radius: var(--radius);
-  color: #ccc;
+  color: var(--color-canvas-text);
   font-size: 0.8rem;
 }
 
 .lightbox-source {
-  color: #888;
+  color: var(--color-canvas-fg);
 }
 
 .crop-preview {
@@ -1019,12 +1036,12 @@ onMounted(fetchTemplates);
   gap: 0.75rem;
   margin-top: 0.5rem;
   padding: 0.5rem;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-canvas-chrome);
   border-radius: var(--radius);
 }
 
 .crop-preview-label {
-  color: #aaa;
+  color: var(--color-canvas-fg);
   font-size: 0.8rem;
   white-space: nowrap;
 }
@@ -1032,13 +1049,13 @@ onMounted(fetchTemplates);
 .crop-preview-img {
   max-height: 80px;
   max-width: 200px;
-  background: #fff;
+  background: var(--color-paper);
   border-radius: 3px;
   padding: 4px;
 }
-</style>
 .tighten-message {
   margin: 0 0 0.75rem;
   font-size: 0.85rem;
   color: var(--color-muted);
 }
+</style>

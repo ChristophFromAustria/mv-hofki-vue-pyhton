@@ -162,7 +162,7 @@ function confidenceLabel(conf) {
 
 .snippet-wrap {
   width: 100%;
-  background: #1a1a1a;
+  background: var(--color-canvas-bg);
   border-radius: var(--radius);
   margin-bottom: 1rem;
   display: flex;
@@ -180,7 +180,7 @@ function confidenceLabel(conf) {
 }
 
 .snippet-placeholder {
-  color: #aaa;
+  color: var(--color-canvas-fg);
   font-size: 0.85rem;
 }
 
@@ -211,15 +211,15 @@ function confidenceLabel(conf) {
 }
 
 .conf-high {
-  color: #22c55e;
+  color: var(--color-success);
 }
 
 .conf-medium {
-  color: #f97316;
+  color: var(--color-warning);
 }
 
 .conf-low {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .conf-none {
