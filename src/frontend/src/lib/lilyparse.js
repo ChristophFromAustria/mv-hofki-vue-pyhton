@@ -813,6 +813,21 @@ export function buildMeasures(tokens) {
     }
   }
 
+  // A repeat start written as the *end* barline of a measure (\bar ".|:" or
+  // ":|.|:") is displayed at the start of the following measure, which is
+  // also where it ends up after a line break in LilyPond.
+  for (let i = 0; i < measures.length; i += 1) {
+    const m = measures[i];
+    const next = measures[i + 1];
+    if (m.endBarline === "repeat-begin") {
+      m.endBarline = "single";
+      if (next) next.startBarline = "repeat-begin";
+    } else if (m.endBarline === "repeat-both") {
+      m.endBarline = "repeat-end";
+      if (next) next.startBarline = "repeat-begin";
+    }
+  }
+
   // Derived values
   for (const m of measures) {
     m.actualLen = measureActualLength(tokens, m);

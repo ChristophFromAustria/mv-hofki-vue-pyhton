@@ -63,6 +63,11 @@ const width = ref(900);
 const fontsReady = ref(false);
 const renderError = ref(null);
 
+// Hover hints per measure (filled during render, read on pointermove)
+let measureBoxes = [];
+let svgLogicalWidth = 0;
+const tooltip = ref(null); // { x, y, title, lines }
+
 // Layout: "auto" wraps measures by available width; "lilypond" breaks only
 // where the generated code has \break (mirrors the LilyPond line layout).
 const layoutMode = ref("auto");
@@ -100,6 +105,24 @@ const selectedInfo = computed(() => {
   else parts.push("Platzhalter");
   if (t.duration) parts.push(durationLabel(t.duration));
   return parts.join(" · ");
+});
+
+function measureHints(m) {
+  const lines = [];
+  if (m.mismatch) {
+    lines.push(`Taktfüllung ${fracToString(m.actualLen)} statt ${m.time.beats}/${m.time.beatType}`);
+  }
+  if (m.percent !== null) lines.push(`Wiederholung ${m.percent}×`);
+  if (m.copy) lines.push("Aus Vorlage übernommen");
+  if (m.volta) lines.push(`Volta ${m.volta.count}`);
+  return lines;
+}
+
+const selectedMeasureInfo = computed(() => {
+  const m = currentMeasure();
+  if (!m) return null;
+  const hints = measureHints(m);
+  return `Takt ${m.index + 1}${hints.length ? " · " + hints.join(" · ") : ""}`;
 });
 
 const measureSummary = computed(() => {
@@ -463,6 +486,8 @@ function render() {
 
   const tokens = doc.value.tokens;
   const ms = measures.value;
+  measureBoxes = [];
+  tooltip.value = null;
   const availableWidth = Math.max(320, width.value - 2 * SIDE_PAD);
   const { rows, width: contentWidth } = layoutRows(ms, tokens, availableWidth, layoutMode.value);
   const totalHeight = TOP_PAD + rows.length * ROW_HEIGHT + 20;
@@ -476,6 +501,7 @@ function render() {
   try {
     renderer = new Renderer(el, Renderer.Backends.SVG);
     renderer.resize(contentWidth + 2 * SIDE_PAD, totalHeight);
+    svgLogicalWidth = contentWidth + 2 * SIDE_PAD;
   } catch (e) {
     renderError.value = e.message;
     return;
@@ -496,6 +522,7 @@ function render() {
     row.forEach((cell, cellIdx) => {
       const m = cell.m;
       const stave = new Stave(x, y, cell.w, { spaceAboveStaffLn: 3 });
+      measureBoxes.push({ x, y, w: cell.w, h: ROW_HEIGHT, m });
       stave.setStyle({ strokeStyle: colorInk, fillStyle: colorInk });
       const isRowStart = cellIdx === 0;
       if (isRowStart || m.showClef) stave.addClef(m.clef);
@@ -532,18 +559,12 @@ function render() {
       }
       if (m.section) stave.setSection(m.section, 0, 0, 12, false);
       if (m.percent !== null) {
-        stave.addModifier(
-          new StaveText(`${m.percent}×`, Modifier.Position.ABOVE, { shiftY: -4, justification: 2 }),
-        );
-      }
-      if (m.mismatch) {
-        stave.addModifier(
-          new StaveText(
-            `${fracToString(m.actualLen)} statt ${m.time.beats}/${m.time.beatType}`,
-            Modifier.Position.BELOW,
-            { shiftY: 10, justification: 2 },
-          ),
-        );
+        const label = new StaveText(`${m.percent}×`, Modifier.Position.ABOVE, {
+          shiftY: 14,
+          justification: 3,
+        });
+        label.setFont("Academico", 11, "normal", "normal");
+        stave.addModifier(label);
       }
       stave.setContext(ctx).draw();
 
@@ -688,6 +709,41 @@ function extractDynamics(suffix) {
   const out = [];
   for (const m of suffix.matchAll(DYNAMIC_RE)) out.push(m[1]);
   return out;
+}
+
+// ── Hover hints ──────────────────────────────────────────────────────────
+
+function measureAtPointer(ev) {
+  const svg = host.value?.querySelector("svg");
+  if (!svg || !svgLogicalWidth) return null;
+  const rect = svg.getBoundingClientRect();
+  if (!rect.width) return null;
+  const scale = svgLogicalWidth / rect.width;
+  const px = (ev.clientX - rect.left) * scale;
+  const py = (ev.clientY - rect.top) * scale;
+  return (
+    measureBoxes.find((b) => px >= b.x && px < b.x + b.w && py >= b.y && py < b.y + b.h) || null
+  );
+}
+
+function onPointerMove(ev) {
+  if (ev.pointerType === "touch") return;
+  const box = measureAtPointer(ev);
+  const lines = box ? measureHints(box.m) : [];
+  if (!box || !lines.length) {
+    tooltip.value = null;
+    return;
+  }
+  tooltip.value = {
+    x: ev.clientX + 12,
+    y: ev.clientY + 16,
+    title: `Takt ${box.m.index + 1}`,
+    lines,
+  };
+}
+
+function onPointerLeave() {
+  tooltip.value = null;
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -887,9 +943,12 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="status">
-      <span v-if="selectedInfo" class="status-sel">{{ selectedInfo }}</span>
-      <span v-else-if="currentMeasure()" class="status-sel"
-        >Takt {{ currentMeasure().index + 1 }} (leer)</span
+      <span v-if="selectedInfo" class="status-sel">
+        {{ selectedInfo }}
+        <span v-if="selectedMeasureInfo" class="status-measure">· {{ selectedMeasureInfo }}</span>
+      </span>
+      <span v-else-if="selectedMeasureInfo" class="status-sel"
+        >{{ selectedMeasureInfo }} (leer)</span
       >
       <span v-else class="status-hint"
         >Note anklicken, dann Pfeiltasten, Ziffern 1 2 4 8 6, Punkt, n, r, t, Entf</span
@@ -905,7 +964,22 @@ onBeforeUnmount(() => {
     <p v-if="parseError" class="editor-error">{{ parseError }}</p>
     <p v-else-if="renderError" class="editor-error">Darstellungsfehler: {{ renderError }}</p>
     <div v-if="!fontsReady && !parseError" class="editor-loading">Notenschrift wird geladen…</div>
-    <div ref="host" class="score-host" :hidden="!!parseError"></div>
+    <div
+      ref="host"
+      class="score-host"
+      :hidden="!!parseError"
+      @pointermove="onPointerMove"
+      @pointerleave="onPointerLeave"
+    ></div>
+    <div
+      v-if="tooltip"
+      class="measure-tooltip"
+      role="tooltip"
+      :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }"
+    >
+      <strong>{{ tooltip.title }}</strong>
+      <div v-for="(line, i) in tooltip.lines" :key="i">{{ line }}</div>
+    </div>
   </div>
 </template>
 
@@ -988,6 +1062,31 @@ onBeforeUnmount(() => {
 
 .status-bad {
   color: var(--color-danger);
+}
+
+.status-measure {
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.measure-tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 260px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  box-shadow: var(--shadow-float);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.measure-tooltip strong {
+  display: block;
+  margin-bottom: 0.15rem;
 }
 
 .status-measures {

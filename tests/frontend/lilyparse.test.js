@@ -113,7 +113,9 @@ describe("document", () => {
     expect(ms[0].err).toBe(true);
     expect(ms[0].mismatch).toBe(true);
     expect(ms[1].mismatch).toBe(false);
-    expect(ms[3].endBarline).toBe("repeat-begin");
+    // \bar ".|:" at the end of measure 4 is shown as repeat start of measure 5
+    expect(ms[3].endBarline).toBe("single");
+    expect(ms[4].startBarline).toBe("repeat-begin");
     expect(ms[4].percent).toBe(2);
     expect(ms[6].breakBefore).toBe(true);
     expect(ms[7].section).toBe("Trio");
