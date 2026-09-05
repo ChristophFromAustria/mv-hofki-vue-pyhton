@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, nextTick } from "vue";
 import { get, post, put, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import SymbolCard from "../components/SymbolCard.vue";
@@ -245,10 +245,10 @@ async function deleteVariant() {
   variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
 }
 
-const _cacheBust = Date.now();
+const cacheBust = ref(Date.now());
 function variantImageUrl(variant) {
   const relative = variant.image_path.replace(/^data\/symbol_library\//, "");
-  return `${BASE}/symbol-library/${relative}?v=${_cacheBust}`;
+  return `${BASE}/symbol-library/${relative}?v=${cacheBust.value}`;
 }
 
 async function renderMusicxml() {
@@ -285,53 +285,226 @@ async function renderLilypond() {
   }
 }
 
+// ── Variant preview / editor ─────────────────────────────────────────────
+// The lightbox shows the variant with padding, its exact hitbox (red) and a
+// dash-dotted crosshair on the anchor point: for notes the note-head centre
+// that determines the pitch, otherwise the image centre. Modes: crop (new
+// variant), pen (paint black/white pixels, saved in place), anchor (click to
+// set a manual correction that is stored per variant).
+const canvasEl = ref(null);
+const previewMode = ref("crop"); // "crop" | "pen" | "anchor"
+const penColor = ref("black");
+const brushSize = ref(3);
+const zoom = ref(1);
+const baseScale = ref(1);
+const previewDirty = ref(false);
+const previewBusy = ref(false);
+const previewError = ref(null);
+const anchorDx = ref(0);
+const anchorDy = ref(0);
+const penDrawing = ref(false);
+let lastPenPoint = null;
+
+const PREVIEW_PAD_RATIO = 0.25;
+const previewPad = computed(() =>
+  Math.max(20, Math.round(Math.max(previewNatW.value, previewNatH.value) * PREVIEW_PAD_RATIO)),
+);
+const stageW = computed(() => previewNatW.value + 2 * previewPad.value);
+const stageH = computed(() => previewNatH.value + 2 * previewPad.value);
+const stageScale = computed(() => baseScale.value * zoom.value);
+const stageStyle = computed(() => ({
+  width: `${stageW.value * stageScale.value}px`,
+  height: `${stageH.value * stageScale.value}px`,
+}));
+const canvasStyle = computed(() => ({
+  left: `${previewPad.value * stageScale.value}px`,
+  top: `${previewPad.value * stageScale.value}px`,
+  width: `${previewNatW.value * stageScale.value}px`,
+  height: `${previewNatH.value * stageScale.value}px`,
+}));
+// Stroke widths in image pixels so overlay lines stay ~1.5 CSS px at any zoom
+const hairline = computed(() => 1.5 / Math.max(stageScale.value, 0.01));
+const dashPattern = computed(() => {
+  const u = 1 / Math.max(stageScale.value, 0.01);
+  return `${8 * u} ${4 * u} ${1.5 * u} ${4 * u}`;
+});
+
+const anchorStem = computed(() =>
+  editingTemplate.value?.category === "note" ? editingTemplate.value?.stem_direction : null,
+);
+const defaultAnchor = computed(() => {
+  const w = previewNatW.value;
+  const h = previewNatH.value;
+  const ls = previewVariant.value?.source_line_spacing || 0;
+  if (anchorStem.value === "up" && ls > 0) return { x: w / 2, y: h - 0.5 * ls };
+  if (anchorStem.value === "down" && ls > 0) return { x: w / 2, y: 0.5 * ls };
+  return { x: w / 2, y: h / 2 };
+});
+const anchorPoint = computed(() => ({
+  x: defaultAnchor.value.x + (Number(anchorDx.value) || 0),
+  y: defaultAnchor.value.y + (Number(anchorDy.value) || 0),
+}));
+const anchorLabel = computed(() => {
+  if (anchorStem.value === "up") return "Notenkopf, Stiel oben (½ Linie über dem unteren Rand)";
+  if (anchorStem.value === "down") return "Notenkopf, Stiel unten (½ Linie unter dem oberen Rand)";
+  if (editingTemplate.value?.category === "note") return "Notenkopf (Bildmitte)";
+  return "Bildmitte";
+});
+const anchorChanged = computed(
+  () =>
+    (Number(anchorDx.value) || 0) !== (previewVariant.value?.anchor_dx || 0) ||
+    (Number(anchorDy.value) || 0) !== (previewVariant.value?.anchor_dy || 0),
+);
+const modeHint = computed(() => {
+  if (previewMode.value === "pen")
+    return penColor.value === "black"
+      ? "Schwarz zeichnen, um fehlende Tinte zu ergänzen"
+      : "Weiß zeichnen, um Störpixel zu entfernen";
+  if (previewMode.value === "anchor") return "Ins Bild klicken, um den Mittelpunkt zu setzen";
+  return "Bereich auswählen, um daraus eine neue Variante zu erzeugen";
+});
+
+function fitBaseScale() {
+  if (!stageW.value || !stageH.value) return;
+  const maxW = window.innerWidth * 0.9;
+  const maxH = window.innerHeight * 0.58;
+  baseScale.value = Math.min(maxW / stageW.value, maxH / stageH.value, 6);
+}
+
+function loadPreviewImage() {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = async () => {
+    previewNatW.value = img.naturalWidth;
+    previewNatH.value = img.naturalHeight;
+    await nextTick();
+    const c = canvasEl.value;
+    if (!c) return;
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    previewDirty.value = false;
+    fitBaseScale();
+  };
+  img.onerror = () => {
+    previewError.value = "Bild konnte nicht geladen werden";
+  };
+  img.src = previewImageUrl.value;
+}
+
+function onPreviewKey(e) {
+  if (e.key === "Escape" && !previewDirty.value) closePreview();
+}
+
 function openPreview(v) {
   previewVariant.value = v;
   previewImageUrl.value = variantImageUrl(v);
   cropRect.value = null;
   cropDrawing.value = false;
-  // Load natural dimensions
-  const img = new Image();
-  img.onload = () => {
-    previewNatW.value = img.naturalWidth;
-    previewNatH.value = img.naturalHeight;
-  };
-  img.src = previewImageUrl.value;
+  previewMode.value = "crop";
+  zoom.value = 1;
+  previewError.value = null;
+  anchorDx.value = v.anchor_dx || 0;
+  anchorDy.value = v.anchor_dy || 0;
+  window.addEventListener("keydown", onPreviewKey);
+  loadPreviewImage();
 }
 
 function closePreview() {
+  window.removeEventListener("keydown", onPreviewKey);
   previewVariant.value = null;
   previewImageUrl.value = null;
   cropRect.value = null;
+  cropPreviewDataUrl.value = null;
+  previewDirty.value = false;
 }
 
-function toSvgCoords(e) {
+function zoomIn() {
+  zoom.value = Math.min(zoom.value * 1.5, 12);
+}
+function zoomOut() {
+  zoom.value = Math.max(zoom.value / 1.5, 0.25);
+}
+
+/** Pointer position in image pixels (may lie in the padding, i.e. outside 0..W/H). */
+function toImgCoords(e) {
   const svg = svgOverlay.value;
   if (!svg) return { x: 0, y: 0 };
   const rect = svg.getBoundingClientRect();
-  const x = Math.round(((e.clientX - rect.left) / rect.width) * previewNatW.value);
-  const y = Math.round(((e.clientY - rect.top) / rect.height) * previewNatH.value);
-  return { x: Math.max(0, x), y: Math.max(0, y) };
+  const x = ((e.clientX - rect.left) / rect.width) * stageW.value - previewPad.value;
+  const y = ((e.clientY - rect.top) / rect.height) * stageH.value - previewPad.value;
+  return { x, y };
 }
 
-function onCropMouseDown(e) {
-  // Only start crop on the SVG overlay
+function clampToImage(pt) {
+  return {
+    x: Math.round(Math.min(Math.max(pt.x, 0), previewNatW.value)),
+    y: Math.round(Math.min(Math.max(pt.y, 0), previewNatH.value)),
+  };
+}
+
+function paintTo(pt) {
+  const c = canvasEl.value;
+  if (!c) return;
+  const ctx = c.getContext("2d");
+  ctx.strokeStyle = penColor.value === "black" ? "#000000" : "#ffffff";
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.lineWidth = brushSize.value;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (lastPenPoint) {
+    ctx.beginPath();
+    ctx.moveTo(lastPenPoint.x, lastPenPoint.y);
+    ctx.lineTo(pt.x, pt.y);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, brushSize.value / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  lastPenPoint = pt;
+  previewDirty.value = true;
+}
+
+function onStagePointerDown(e) {
   if (!svgOverlay.value || !svgOverlay.value.contains(e.target)) return;
   e.preventDefault();
-  cropDrawing.value = true;
-  const pt = toSvgCoords(e);
-  cropStart.value = pt;
-  cropEnd.value = pt;
-  cropRect.value = null;
+  const pt = toImgCoords(e);
+  if (previewMode.value === "pen") {
+    penDrawing.value = true;
+    lastPenPoint = null;
+    paintTo(pt);
+  } else if (previewMode.value === "anchor") {
+    anchorDx.value = Math.round((pt.x - defaultAnchor.value.x) * 2) / 2;
+    anchorDy.value = Math.round((pt.y - defaultAnchor.value.y) * 2) / 2;
+  } else {
+    cropDrawing.value = true;
+    const c = clampToImage(pt);
+    cropStart.value = c;
+    cropEnd.value = c;
+    cropRect.value = null;
+  }
 }
 
-function onCropMouseMove(e) {
-  if (!cropDrawing.value) return;
-  e.preventDefault();
-  cropEnd.value = toSvgCoords(e);
+function onStagePointerMove(e) {
+  if (previewMode.value === "pen") {
+    if (!penDrawing.value) return;
+    e.preventDefault();
+    paintTo(toImgCoords(e));
+  } else if (previewMode.value === "crop") {
+    if (!cropDrawing.value) return;
+    e.preventDefault();
+    cropEnd.value = clampToImage(toImgCoords(e));
+  }
 }
 
-function onCropMouseUp() {
+function onStagePointerUp() {
+  if (penDrawing.value) {
+    penDrawing.value = false;
+    lastPenPoint = null;
+    return;
+  }
   if (!cropDrawing.value) return;
   cropDrawing.value = false;
   const x = Math.min(cropStart.value.x, cropEnd.value.x);
@@ -343,7 +516,7 @@ function onCropMouseUp() {
   }
 }
 
-// Computed SVG drawing rect (for both live drawing and finalized crop)
+// Live drawing rect or finalised crop rect (image coordinates)
 const drawingRect = computed(() => {
   if (cropRect.value) return cropRect.value;
   if (!cropDrawing.value) return null;
@@ -357,48 +530,113 @@ const drawingRect = computed(() => {
 
 const cropPreviewDataUrl = ref(null);
 
-// Generate a preview of the cropped area using canvas
+// Preview of the cropped area, taken from the (possibly edited) canvas
 function updateCropPreview() {
-  if (!cropRect.value || !previewImageUrl.value) {
+  const c = cropRect.value;
+  const src = canvasEl.value;
+  if (!c || !src) {
     cropPreviewDataUrl.value = null;
     return;
   }
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.onload = () => {
-    const c = cropRect.value;
-    const canvas = document.createElement("canvas");
-    canvas.width = c.width;
-    canvas.height = c.height;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, c.x, c.y, c.width, c.height, 0, 0, c.width, c.height);
-    cropPreviewDataUrl.value = canvas.toDataURL("image/png");
-  };
-  img.src = previewImageUrl.value;
+  const canvas = document.createElement("canvas");
+  canvas.width = c.width;
+  canvas.height = c.height;
+  canvas.getContext("2d").drawImage(src, c.x, c.y, c.width, c.height, 0, 0, c.width, c.height);
+  cropPreviewDataUrl.value = canvas.toDataURL("image/png");
 }
 
 watch(cropRect, updateCropPreview);
 
+const API_BASE = `${BASE}/api/v1/scanner/library`;
+
+async function postImage(url, blob, extra = {}) {
+  const formData = new FormData();
+  formData.append("file", blob, "variant.png");
+  for (const [k, v] of Object.entries(extra)) formData.append(k, String(v));
+  const resp = await fetch(url, { method: "POST", body: formData });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+}
+
+async function reloadVariants() {
+  if (!editingTemplate.value) return;
+  variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
+}
+
 async function applyCrop() {
   if (!cropPreviewDataUrl.value || !editingTemplate.value || !previewVariant.value) return;
-  // Convert data URL to blob
-  const resp = await fetch(cropPreviewDataUrl.value);
-  const blob = await resp.blob();
-  const formData = new FormData();
-  formData.append("file", blob, "cropped.png");
-  formData.append("source_line_spacing", String(previewVariant.value.source_line_spacing || 0));
-
-  const BASE_URL = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
-  const url = `${BASE_URL}/api/v1/scanner/library/templates/${editingTemplate.value.id}/variants/upload`;
-  const uploadResp = await fetch(url, { method: "POST", body: formData });
-  if (!uploadResp.ok) {
-    const text = await uploadResp.text();
-    alert(`Zuschneiden fehlgeschlagen: ${text}`);
-    return;
+  previewBusy.value = true;
+  previewError.value = null;
+  try {
+    const blob = await (await fetch(cropPreviewDataUrl.value)).blob();
+    await postImage(`${API_BASE}/templates/${editingTemplate.value.id}/variants/upload`, blob, {
+      source_line_spacing: previewVariant.value.source_line_spacing || 0,
+    });
+    await reloadVariants();
+    await fetchTemplates();
+    closePreview();
+  } catch (e) {
+    previewError.value = `Zuschneiden fehlgeschlagen: ${e.message}`;
+  } finally {
+    previewBusy.value = false;
   }
-  variants.value = await get(`/scanner/library/templates/${editingTemplate.value.id}/variants`);
-  await fetchTemplates();
-  closePreview();
+}
+
+function canvasToBlob() {
+  return new Promise((resolve, reject) => {
+    canvasEl.value.toBlob((b) => (b ? resolve(b) : reject(new Error("Kein Bild"))), "image/png");
+  });
+}
+
+async function saveImage() {
+  if (!previewDirty.value || !editingTemplate.value || !previewVariant.value) return;
+  previewBusy.value = true;
+  previewError.value = null;
+  try {
+    const blob = await canvasToBlob();
+    const updated = await postImage(
+      `${API_BASE}/templates/${editingTemplate.value.id}/variants/${previewVariant.value.id}/image`,
+      blob,
+    );
+    cacheBust.value = Date.now();
+    previewVariant.value = { ...previewVariant.value, ...updated };
+    previewImageUrl.value = variantImageUrl(previewVariant.value);
+    previewDirty.value = false;
+    await reloadVariants();
+  } catch (e) {
+    previewError.value = `Speichern fehlgeschlagen: ${e.message}`;
+  } finally {
+    previewBusy.value = false;
+  }
+}
+
+function discardEdits() {
+  loadPreviewImage();
+}
+
+function resetAnchor() {
+  anchorDx.value = 0;
+  anchorDy.value = 0;
+}
+
+async function saveAnchor() {
+  if (!editingTemplate.value || !previewVariant.value) return;
+  previewBusy.value = true;
+  previewError.value = null;
+  try {
+    const dx = Number(anchorDx.value) || 0;
+    const dy = Number(anchorDy.value) || 0;
+    const updated = await put(
+      `/scanner/library/templates/${editingTemplate.value.id}/variants/${previewVariant.value.id}/anchor`,
+      { anchor_dx: dx || null, anchor_dy: dy || null },
+    );
+    previewVariant.value = { ...previewVariant.value, ...updated };
+    await reloadVariants();
+  } catch (e) {
+    previewError.value = `Mittelpunkt konnte nicht gespeichert werden: ${e.message}`;
+  } finally {
+    previewBusy.value = false;
+  }
 }
 
 watch([activeCategory, currentPage], fetchTemplates);
@@ -647,32 +885,161 @@ onMounted(() => {
       @cancel="confirmVariantDeleteOpen = false"
     />
 
-    <!-- Image preview / crop lightbox -->
-    <div v-if="previewImageUrl" class="lightbox">
-      <div class="lightbox-canvas">
-        <img :src="previewImageUrl" alt="Vorschau" class="lightbox-img" draggable="false" />
-        <svg
-          ref="svgOverlay"
-          class="lightbox-svg"
-          :viewBox="`0 0 ${previewNatW} ${previewNatH}`"
-          @mousedown="onCropMouseDown"
-          @mousemove="onCropMouseMove"
-          @mouseup="onCropMouseUp"
-        >
-          <rect
-            v-if="drawingRect"
-            :x="drawingRect.x"
-            :y="drawingRect.y"
-            :width="drawingRect.width"
-            :height="drawingRect.height"
-            fill="var(--overlay-capture-fill)"
-            stroke="var(--overlay-capture)"
-            stroke-width="3"
-            stroke-dasharray="8 4"
-          />
-        </svg>
+    <!-- Variant preview / editor lightbox -->
+    <div
+      v-if="previewImageUrl"
+      class="lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Variante ansehen und bearbeiten"
+    >
+      <div class="lightbox-toolbar">
+        <div class="tool-group" role="group" aria-label="Werkzeug">
+          <button
+            type="button"
+            class="btn btn-sm"
+            :aria-pressed="previewMode === 'crop'"
+            @click="previewMode = 'crop'"
+          >
+            Zuschneiden
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm"
+            :aria-pressed="previewMode === 'pen' && penColor === 'black'"
+            @click="
+              previewMode = 'pen';
+              penColor = 'black';
+            "
+          >
+            Stift schwarz
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm"
+            :aria-pressed="previewMode === 'pen' && penColor === 'white'"
+            @click="
+              previewMode = 'pen';
+              penColor = 'white';
+            "
+          >
+            Stift weiß
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm"
+            :aria-pressed="previewMode === 'anchor'"
+            @click="previewMode = 'anchor'"
+          >
+            Mittelpunkt setzen
+          </button>
+        </div>
+        <label v-if="previewMode === 'pen'" class="tool-field">
+          Pinsel
+          <input v-model.number="brushSize" type="range" min="1" max="15" step="1" />
+          <span class="tool-value">{{ brushSize }} px</span>
+        </label>
+        <div class="tool-group" role="group" aria-label="Zoom">
+          <button type="button" class="btn btn-sm" aria-label="Verkleinern" @click="zoomOut">
+            −
+          </button>
+          <span class="tool-value">{{ Math.round(zoom * 100) }} %</span>
+          <button type="button" class="btn btn-sm" aria-label="Vergrößern" @click="zoomIn">
+            +
+          </button>
+          <button type="button" class="btn btn-sm" @click="zoom = 1">Einpassen</button>
+        </div>
       </div>
-      <!-- Variant info -->
+
+      <div class="lightbox-stage-wrap">
+        <div class="lightbox-stage" :style="stageStyle">
+          <canvas ref="canvasEl" class="lightbox-canvas-el" :style="canvasStyle"></canvas>
+          <svg
+            ref="svgOverlay"
+            class="lightbox-svg"
+            :class="`mode-${previewMode}`"
+            :viewBox="`${-previewPad} ${-previewPad} ${stageW} ${stageH}`"
+            @pointerdown="onStagePointerDown"
+            @pointermove="onStagePointerMove"
+            @pointerup="onStagePointerUp"
+            @pointerleave="onStagePointerUp"
+          >
+            <!-- exact hitbox of the variant -->
+            <rect
+              class="hitbox"
+              x="0"
+              y="0"
+              :width="previewNatW"
+              :height="previewNatH"
+              :stroke-width="hairline"
+            />
+            <!-- dash-dotted crosshair on the anchor point -->
+            <line
+              class="crosshair"
+              :x1="-previewPad"
+              :x2="previewNatW + previewPad"
+              :y1="anchorPoint.y"
+              :y2="anchorPoint.y"
+              :stroke-width="hairline"
+              :stroke-dasharray="dashPattern"
+            />
+            <line
+              class="crosshair"
+              :x1="anchorPoint.x"
+              :x2="anchorPoint.x"
+              :y1="-previewPad"
+              :y2="previewNatH + previewPad"
+              :stroke-width="hairline"
+              :stroke-dasharray="dashPattern"
+            />
+            <circle class="anchor-dot" :cx="anchorPoint.x" :cy="anchorPoint.y" :r="hairline * 2" />
+            <rect
+              v-if="drawingRect"
+              :x="drawingRect.x"
+              :y="drawingRect.y"
+              :width="drawingRect.width"
+              :height="drawingRect.height"
+              fill="var(--overlay-capture-fill)"
+              stroke="var(--overlay-capture)"
+              :stroke-width="hairline * 2"
+              :stroke-dasharray="dashPattern"
+            />
+          </svg>
+        </div>
+      </div>
+
+      <!-- Anchor point -->
+      <div class="lightbox-panel">
+        <span class="panel-label">Mittelpunkt: {{ anchorLabel }}</span>
+        <label class="tool-field">
+          dx
+          <input v-model.number="anchorDx" class="num-input" type="number" step="0.5" /> px
+        </label>
+        <label class="tool-field">
+          dy
+          <input v-model.number="anchorDy" class="num-input" type="number" step="0.5" /> px
+        </label>
+        <span class="panel-muted">
+          = {{ anchorPoint.x.toFixed(1) }} / {{ anchorPoint.y.toFixed(1) }} px
+        </span>
+        <button
+          type="button"
+          class="btn btn-sm"
+          :disabled="!anchorDx && !anchorDy"
+          @click="resetAnchor"
+        >
+          Zurücksetzen
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm btn-primary"
+          :disabled="!anchorChanged || previewBusy"
+          @click="saveAnchor"
+        >
+          Mittelpunkt speichern
+        </button>
+      </div>
+
       <div v-if="previewVariant" class="lightbox-info">
         <span>{{ previewNatW }}×{{ previewNatH }} px</span>
         <span v-if="previewVariant.source_line_spacing">
@@ -683,18 +1050,39 @@ onMounted(() => {
         </span>
         <span class="lightbox-source">{{ previewVariant.source }}</span>
       </div>
-      <!-- Crop preview -->
+
       <div v-if="cropPreviewDataUrl" class="crop-preview">
         <span class="crop-preview-label">Vorschau:</span>
         <img :src="cropPreviewDataUrl" alt="Zugeschnitten" class="crop-preview-img" />
       </div>
+
+      <p v-if="previewError" class="lightbox-error" role="alert">{{ previewError }}</p>
+
       <div class="lightbox-toolbar">
-        <span class="lightbox-hint">Bereich auswählen zum Zuschneiden</span>
+        <span class="lightbox-hint">{{ modeHint }}</span>
         <div class="lightbox-actions">
-          <button v-if="cropPreviewDataUrl" class="btn btn-sm btn-primary" @click.stop="applyCrop">
+          <button
+            v-if="cropPreviewDataUrl"
+            type="button"
+            class="btn btn-sm btn-primary"
+            :disabled="previewBusy"
+            @click.stop="applyCrop"
+          >
             Als neue Variante speichern
           </button>
-          <button class="btn btn-sm" @click.stop="closePreview">Schliessen</button>
+          <button v-if="previewDirty" type="button" class="btn btn-sm" @click="discardEdits">
+            Verwerfen
+          </button>
+          <button
+            v-if="previewDirty"
+            type="button"
+            class="btn btn-sm btn-primary"
+            :disabled="previewBusy"
+            @click="saveImage"
+          >
+            Bild speichern
+          </button>
+          <button type="button" class="btn btn-sm" @click.stop="closePreview">Schließen</button>
         </div>
       </div>
     </div>
@@ -967,42 +1355,118 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
   z-index: var(--z-overlay-top);
   user-select: none;
 }
 
-.lightbox-canvas {
-  position: relative;
-  max-width: 90vw;
-  max-height: 80vh;
+.lightbox-stage-wrap {
+  overflow: auto;
+  max-width: 92vw;
+  max-height: 60vh;
+  border-radius: var(--radius);
+  background: var(--color-canvas-chrome);
 }
 
-.lightbox-img {
-  display: block;
-  max-width: 90vw;
-  max-height: 80vh;
-  object-fit: contain;
+.lightbox-stage {
+  position: relative;
   background: var(--color-paper);
-  border-radius: var(--radius);
+  touch-action: none;
+}
+
+.lightbox-canvas-el {
+  position: absolute;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .lightbox-svg {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
   cursor: crosshair;
+  touch-action: none;
+}
+
+.lightbox-svg.mode-anchor {
+  cursor: cell;
+}
+
+.lightbox-svg .hitbox {
+  fill: none;
+  stroke: var(--color-danger);
+}
+
+.lightbox-svg .crosshair {
+  stroke: var(--color-primary);
+}
+
+.lightbox-svg .anchor-dot {
+  fill: var(--color-primary);
 }
 
 .lightbox-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
-  margin-top: 0.75rem;
   padding: 0.5rem 1rem;
   background: var(--color-canvas-chrome);
   border-radius: var(--radius);
+}
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tool-group .btn[aria-pressed="true"] {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.tool-field {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--color-canvas-text);
+  font-size: 0.8rem;
+}
+
+.tool-value {
+  color: var(--color-canvas-text);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5rem;
+  text-align: center;
+}
+
+.num-input {
+  width: 4.5rem;
+}
+
+.lightbox-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-canvas-chrome);
+  border-radius: var(--radius);
+  color: var(--color-canvas-text);
+  font-size: 0.8rem;
+}
+
+.panel-label {
+  font-weight: 600;
+}
+
+.panel-muted {
+  color: var(--color-canvas-fg);
+  font-variant-numeric: tabular-nums;
 }
 
 .lightbox-hint {
@@ -1018,7 +1482,6 @@ onMounted(() => {
 .lightbox-info {
   display: flex;
   gap: 1rem;
-  margin-top: 0.5rem;
   padding: 0.4rem 0.75rem;
   background: var(--color-canvas-chrome);
   border-radius: var(--radius);
@@ -1030,11 +1493,19 @@ onMounted(() => {
   color: var(--color-canvas-fg);
 }
 
+.lightbox-error {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
 .crop-preview {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-top: 0.5rem;
   padding: 0.5rem;
   background: var(--color-canvas-chrome);
   border-radius: var(--radius);

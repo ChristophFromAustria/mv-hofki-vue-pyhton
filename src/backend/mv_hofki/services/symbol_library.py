@@ -314,3 +314,69 @@ async def tighten_all_variants(
         result.cropped += 1
     await session.commit()
     return result
+
+
+# ── Per-variant editing (anchor offset, pixel corrections) ───────────────
+
+
+async def update_variant_anchor(
+    session: AsyncSession,
+    template_id: int,
+    variant_id: int,
+    anchor_dx: float | None,
+    anchor_dy: float | None,
+) -> SymbolVariant:
+    """Store the manual anchor correction for one variant."""
+    await get_template_by_id(session, template_id)
+    variant = await session.get(SymbolVariant, variant_id)
+    if not variant or variant.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Variante nicht gefunden")
+    variant.anchor_dx = anchor_dx
+    variant.anchor_dy = anchor_dy
+    await session.commit()
+    await session.refresh(variant)
+    return variant
+
+
+async def replace_variant_image(
+    session: AsyncSession,
+    template_id: int,
+    variant_id: int,
+    content: bytes,
+) -> SymbolVariant:
+    """Overwrite a variant's image with an edited version.
+
+    The first time a variant is edited, the original is kept under
+    ``data/symbol_library/_backup/``. ``height_in_lines`` is recomputed if
+    the dimensions changed.
+    """
+    await get_template_by_id(session, template_id)
+    variant = await session.get(SymbolVariant, variant_id)
+    if not variant or variant.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Variante nicht gefunden")
+
+    arr = np.frombuffer(content, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+    if img is None or img.size == 0:
+        raise HTTPException(status_code=400, detail="Bild konnte nicht gelesen werden")
+
+    path = settings.PROJECT_ROOT / variant.image_path
+    backup = (
+        settings.PROJECT_ROOT
+        / "data"
+        / "symbol_library"
+        / "_backup"
+        / str(variant.template_id)
+        / path.name
+    )
+    if path.exists() and not backup.exists():
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, backup)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(path), img)
+
+    if variant.source_line_spacing and variant.source_line_spacing > 0:
+        variant.height_in_lines = round(img.shape[0] / variant.source_line_spacing, 1)
+    await session.commit()
+    await session.refresh(variant)
+    return variant

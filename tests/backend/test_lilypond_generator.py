@@ -491,3 +491,14 @@ def test_courtesy_key_signature_applies_to_next_system():
     first_line, second_line = body.split("\\break")
     assert "\\key es" not in first_line and "\\key es" in second_line
     assert first_line.count("d1") == 2  # system 1 still in C major
+
+
+def test_variant_anchor_offset_shifts_pitch():
+    measures = _measures([(0, 1)])
+    # Without correction: stem up, box bottom 0.5 lines above bottom line → B2
+    plain = _note(0, 10, "Halbe Note Stiel oben", 4.5, 0.5)
+    # Same box, but the variant's head is one line lower than the default
+    shifted = _note(0, 50, "Halbe Note Stiel oben", 4.5, 0.5)
+    shifted["head_offset_lines"] = 1.0
+    code = generate_lilypond(measures, "T", symbols=[plain, shifted])
+    assert "b,2 g,2" in code

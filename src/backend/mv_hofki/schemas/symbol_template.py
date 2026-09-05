@@ -43,6 +43,7 @@ class SymbolTemplateRead(BaseModel):
     min_confidence: float | None = None
     confidence_weight: float | None = None
     merge_overlapping: bool = False
+    stem_direction: str | None = None
     created_at: datetime
     variant_count: int = 0
 

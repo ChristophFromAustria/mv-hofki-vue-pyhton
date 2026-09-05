@@ -39,3 +39,12 @@ class SymbolTemplate(Base):
     @property
     def variant_count(self) -> int:
         return len(self.variants)
+
+    @property
+    def stem_direction(self) -> str | None:
+        """ "up" / "down" / None for notes (drives the default anchor point)."""
+        if self.category != "note":
+            return None
+        from mv_hofki.services.lilypond_score import stem_direction
+
+        return stem_direction(self.name, self.display_name)

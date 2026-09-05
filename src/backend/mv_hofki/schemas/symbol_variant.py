@@ -15,6 +15,15 @@ class SymbolVariantRead(BaseModel):
     usage_count: int
     height_in_lines: float | None
     source_line_spacing: float
+    anchor_dx: float | None = None
+    anchor_dy: float | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class VariantAnchorUpdate(BaseModel):
+    """Manual anchor correction in image pixels; None resets to default."""
+
+    anchor_dx: float | None = None
+    anchor_dy: float | None = None

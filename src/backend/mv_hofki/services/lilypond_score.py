@@ -183,6 +183,7 @@ class _Sym:
     category: str
     confidence: float
     line_spacing: float
+    head_offset_lines: float = 0.0  # manual anchor correction (+ = down)
 
     @property
     def text(self) -> str:
@@ -396,12 +397,19 @@ def pitch_name(step: int, clef: str, flats: int, alter: int | None = None) -> st
     return name + marks
 
 
-def head_step(sym_top: float, sym_bot: float, stem: str | None) -> float:
+def head_step(
+    sym_top: float,
+    sym_bot: float,
+    stem: str | None,
+    offset_lines: float = 0.0,
+) -> float:
     """Note-head centre in staff steps (half line-spacings above bottom line).
 
     Variants are cropped tightly to their ink (see
     ``symbol_library.tighten_all_variants``), so the head sits half a line
-    spacing inside the stem-free end of the detection box.
+    spacing inside the stem-free end of the detection box. ``offset_lines``
+    is the manual per-variant anchor correction (positive = further down
+    in the image, i.e. a lower pitch).
     """
     if stem == "up":
         center = sym_bot + _HEAD_OFFSET
@@ -409,7 +417,7 @@ def head_step(sym_top: float, sym_bot: float, stem: str | None) -> float:
         center = sym_top - _HEAD_OFFSET
     else:
         center = (sym_top + sym_bot) / 2.0
-    return center * 2.0
+    return (center - offset_lines) * 2.0
 
 
 # ── Model construction ───────────────────────────────────────────────────
@@ -446,6 +454,7 @@ def _norm_symbol(raw: dict) -> _Sym | None:
         category=cat,
         confidence=float(raw.get("confidence") or 0.0),
         line_spacing=ls,
+        head_offset_lines=float(raw.get("head_offset_lines") or 0.0),
     )
 
 
@@ -694,7 +703,10 @@ def build_score(
                     if s.sy_top is None or s.sy_bot is None:
                         continue
                     step = head_step(
-                        s.sy_top, s.sy_bot, stem_direction(s.name, s.display)
+                        s.sy_top,
+                        s.sy_bot,
+                        stem_direction(s.name, s.display),
+                        s.head_offset_lines,
                     )
                     ev.head_positions.append(step)
                 if not ev.head_positions:

@@ -33,6 +33,10 @@ class SymbolVariant(Base):
     usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     height_in_lines: Mapped[float | None] = mapped_column(Float)
     source_line_spacing: Mapped[float] = mapped_column(Float, nullable=False)
+    # Manual correction of the anchor point (note-head centre) in image
+    # pixels, relative to the default position. +x right, +y down.
+    anchor_dx: Mapped[float | None] = mapped_column(Float)
+    anchor_dy: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     template: Mapped[SymbolTemplate] = relationship(back_populates="variants")

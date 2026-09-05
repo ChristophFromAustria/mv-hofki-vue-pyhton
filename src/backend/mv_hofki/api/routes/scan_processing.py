@@ -639,10 +639,14 @@ async def generate_lilypond_endpoint(
         .order_by(DetectedSymbol.sequence_order)
     )
     symbols: list[dict[str, Any]] = []
+    symbol_variant_ids: list[int | None] = []
     for sym in sym_result.scalars().unique().all():
         template = sym.corrected_symbol or sym.matched_symbol
         if template is None:
             continue
+        symbol_variant_ids.append(
+            sym.matched_variant_id if sym.corrected_symbol is None else None
+        )
         symbols.append(
             {
                 "staff_index": staff_index_by_id.get(sym.staff_id, 0),
@@ -659,6 +663,26 @@ async def generate_lilypond_endpoint(
                 "template_category": template.category,
             }
         )
+
+    # Manual anchor corrections of the matched variants (pixels → lines)
+    wanted = {vid for vid in symbol_variant_ids if vid is not None}
+    if wanted:
+        from mv_hofki.models.symbol_variant import SymbolVariant
+
+        var_result = await db.execute(
+            select(
+                SymbolVariant.id,
+                SymbolVariant.anchor_dy,
+                SymbolVariant.source_line_spacing,
+            ).where(SymbolVariant.id.in_(wanted))
+        )
+        offsets: dict[int, float] = {}
+        for vid, dy, source_ls in var_result.all():
+            if dy and source_ls and source_ls > 0:
+                offsets[vid] = float(dy) / float(source_ls)
+        for entry, vid in zip(symbols, symbol_variant_ids, strict=True):
+            if vid is not None and vid in offsets:
+                entry["head_offset_lines"] = offsets[vid]
 
     text_result = await db.execute(
         select(DetectedTextRegion).where(DetectedTextRegion.scan_id == scan_id)

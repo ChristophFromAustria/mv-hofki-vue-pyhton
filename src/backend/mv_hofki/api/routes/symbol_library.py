@@ -14,7 +14,7 @@ from mv_hofki.schemas.symbol_template import (
     SymbolTemplateUpdate,
     VariantCropRequest,
 )
-from mv_hofki.schemas.symbol_variant import SymbolVariantRead
+from mv_hofki.schemas.symbol_variant import SymbolVariantRead, VariantAnchorUpdate
 from mv_hofki.services import symbol_library as lib_service
 
 router = APIRouter(prefix="/api/v1/scanner/library", tags=["scanner-library"])
@@ -97,6 +97,41 @@ async def tighten_variants(db: AsyncSession = Depends(get_db)):
         "unchanged": result.unchanged,
         "skipped": result.skipped,
     }
+
+
+@router.put(
+    "/templates/{template_id}/variants/{variant_id}/anchor",
+    response_model=SymbolVariantRead,
+)
+async def update_variant_anchor(
+    template_id: int,
+    variant_id: int,
+    data: VariantAnchorUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the manual anchor (note-head) correction of a variant."""
+    return await lib_service.update_variant_anchor(
+        db, template_id, variant_id, data.anchor_dx, data.anchor_dy
+    )
+
+
+@router.post(
+    "/templates/{template_id}/variants/{variant_id}/image",
+    response_model=SymbolVariantRead,
+)
+async def replace_variant_image(
+    template_id: int,
+    variant_id: int,
+    file: UploadFile,
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace a variant's image with an edited version (pen corrections)."""
+    from fastapi import HTTPException
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Leere Datei")
+    return await lib_service.replace_variant_image(db, template_id, variant_id, content)
 
 
 @router.post("/templates/{template_id}/variants/{variant_id}/crop")
