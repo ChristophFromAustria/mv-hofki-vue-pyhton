@@ -48,7 +48,7 @@ import {
   DYNAMICS,
   BARLINE_TYPES,
   MAJOR_KEYS,
-  setKeySignature,
+  setKeyForRange,
   setPercentCount,
   normalizeDocument,
   keyFlats,
@@ -79,6 +79,7 @@ const parseError = ref(null);
 const selected = ref(null); // token index of a note/rest
 const selectedMeasure = ref(null); // whole measure (index) selected via its number
 const selectedCell = ref(null); // printed number of the clicked cell (percent repeats)
+const selectedMeasureEnd = ref(null); // other end of a measure range (Shift+click / Shift+arrows)
 const selectedBarline = ref(null); // index of the measure whose end barline is selected
 // Context menu: { x, y } while open
 const menu = ref(null);
@@ -200,6 +201,7 @@ function measureHints(m) {
 const selectedMeasureInfo = computed(() => {
   const m = currentMeasure();
   if (!m) return null;
+  if (isRange.value) return `${rangeLabel()} ausgewählt · Shift+Klick oder Shift+Pfeil erweitert`;
   if (selectedIsRepeatCell.value) {
     return `Takt ${selectedCell.value} · Wiederholung von Takt ${m.number}`;
   }
@@ -217,6 +219,7 @@ function clearSelection() {
   selected.value = null;
   selectedMeasure.value = null;
   selectedCell.value = null;
+  selectedMeasureEnd.value = null;
   selectedBarline.value = null;
 }
 
@@ -229,6 +232,39 @@ function selectMeasure(index, cellNumber = null) {
   clearSelection();
   selectedMeasure.value = index;
   selectedCell.value = cellNumber;
+}
+
+/** Extend the measure selection to `index` (range from the anchor measure). */
+function extendMeasureSelection(index) {
+  if (selectedMeasure.value === null) {
+    selectMeasure(index);
+    return;
+  }
+  selected.value = null;
+  selectedBarline.value = null;
+  selectedCell.value = null;
+  selectedMeasureEnd.value = index === selectedMeasure.value ? null : index;
+}
+
+/** [lo, hi] measure indices of the current measure selection, or null. */
+const selectedRange = computed(() => {
+  if (selectedMeasure.value === null) return null;
+  const a = selectedMeasure.value;
+  const b = selectedMeasureEnd.value ?? a;
+  return [Math.min(a, b), Math.max(a, b)];
+});
+
+const isRange = computed(
+  () => !!selectedRange.value && selectedRange.value[0] !== selectedRange.value[1],
+);
+
+function rangeLabel() {
+  const r = selectedRange.value;
+  if (!r) return "";
+  const first = measures.value[r[0]];
+  const last = measures.value[r[1]];
+  if (!first || !last) return "";
+  return `Takte ${first.number}–${last.number + last.span - 1}`;
 }
 
 /** True when a repeated (percent) cell rather than the written measure is selected. */
@@ -307,6 +343,9 @@ function commit(nextDoc, nextSelected = selected.value) {
   if (selectedBarline.value !== null && !measures.value[selectedBarline.value]) {
     selectedBarline.value = null;
   }
+  if (selectedMeasureEnd.value !== null && !measures.value[selectedMeasureEnd.value]) {
+    selectedMeasureEnd.value = null;
+  }
   menu.value = null;
   emit("update:code", serializeDocument(normalized));
   scheduleRender();
@@ -383,6 +422,17 @@ function deleteSelection() {
       selectMeasure(Math.min(m.index, measures.value.length - 1));
       scheduleRender();
     }
+    return;
+  }
+  if (isRange.value && selected.value === null) {
+    const [lo, hi] = selectedRange.value;
+    let next = doc.value;
+    // delete from the back so earlier measure indices stay valid
+    for (let i = hi; i >= lo; i -= 1) next = deleteMeasure(next, measures.value[i]);
+    clearSelection();
+    commit(next, null);
+    if (measures.value.length) selectMeasure(Math.min(lo, measures.value.length - 1));
+    scheduleRender();
     return;
   }
   if (selectedMeasure.value !== null && selected.value === null) {
@@ -484,12 +534,22 @@ function repeatCountChange(delta) {
 function keySet(keyName) {
   const m = currentMeasure();
   if (!m) return;
-  const idx = m.index;
+  const range = selectedRange.value || [m.index, m.index];
   const keep = selected.value;
-  const next = setKeySignature(doc.value, m, keyName);
+  const end = selectedMeasureEnd.value;
+  const next = setKeyForRange(doc.value, measures.value, range[0], range[1], keyName);
   if (next === doc.value) return;
   commit(next, keep);
-  if (keep === null) selectMeasure(idx);
+  if (keep === null) {
+    selectMeasure(range[0]);
+    selectedMeasureEnd.value = end;
+  }
+  scheduleRender();
+}
+
+function extendToEnd() {
+  if (selectedMeasure.value === null || !measures.value.length) return;
+  extendMeasureSelection(measures.value.length - 1);
   scheduleRender();
 }
 
@@ -613,6 +673,24 @@ const menuItems = computed(() => {
     return items;
   }
   const m = currentMeasure();
+  if (m && isRange.value) {
+    items.push({ type: "header", label: rangeLabel() });
+    items.push({
+      type: "header",
+      label: `Tonart für ${rangeLabel()}`,
+    });
+    for (const [key, label] of MAJOR_KEYS) {
+      items.push({
+        type: "radio",
+        label,
+        checked: m.keyName === key && m.mode === "major",
+        action: () => keySet(key),
+      });
+    }
+    items.push({ type: "sep" });
+    items.push({ type: "item", label: "Takte löschen", danger: true, action: deleteSelection });
+    return items;
+  }
   if (m) {
     items.push({ type: "header", label: measureLabel(m) });
     items.push({
@@ -641,29 +719,20 @@ const menuItems = computed(() => {
         action: () => repeatCountChange(-1),
       });
     }
-    items.push({ type: "header", label: "Tonart ab hier" });
+    items.push({
+      type: "header",
+      label: isRange.value ? `Tonart für ${rangeLabel()}` : `Tonart für ${measureLabel(m)}`,
+    });
     for (const [key, label] of MAJOR_KEYS) {
       items.push({
         type: "radio",
         label,
-        checked: m.showKey && m.keyName === key && m.mode === "major",
+        checked: m.keyName === key && m.mode === "major",
         action: () => keySet(key),
       });
     }
-    if (m.showKey && m.index > 0) {
-      items.push({ type: "item", label: "Tonartwechsel entfernen", action: () => keySet(null) });
-    }
-    if (m.endToken !== null && m.endToken !== undefined) {
-      const current = barlineTypeOf(doc.value.tokens, m);
-      items.push({ type: "header", label: "Taktstrich am Ende" });
-      for (const [type, def] of Object.entries(BARLINE_TYPES)) {
-        items.push({
-          type: "radio",
-          label: def.label,
-          checked: current === type,
-          action: () => barlineSetType(type),
-        });
-      }
+    if (!isRange.value) {
+      items.push({ type: "item", label: "Auswahl bis zum Ende erweitern", action: extendToEnd });
     }
     items.push({ type: "sep" });
     items.push({ type: "item", label: "Takt löschen", danger: true, action: measureDelete });
@@ -718,6 +787,11 @@ function onContextMenu(ev) {
   openMenu(ev.clientX, ev.clientY);
 }
 
+function cellSelectedForNumber(index) {
+  const r = selectedRange.value;
+  return !!r && index >= r[0] && index <= r[1];
+}
+
 /** Resolve an SVG element to a selectable thing: note, barline, measure number, empty measure. */
 function hitTarget(el) {
   if (!el || !el.closest) return null;
@@ -733,9 +807,10 @@ function hitTarget(el) {
   return currentNoteMap.has(id) ? { kind: "note", tokenIndex: currentNoteMap.get(id) } : null;
 }
 
-function applyHit(hit) {
+function applyHit(hit, extend = false) {
   if (hit.kind === "note") selectNote(hit.tokenIndex);
   else if (hit.kind === "barline") selectBarline(hit.index);
+  else if (extend) extendMeasureSelection(hit.index);
   else selectMeasure(hit.index, hit.cell ?? null);
   container.value?.focus();
 }
@@ -837,11 +912,24 @@ function onKeydown(e) {
       break;
     case "ArrowLeft":
       e.preventDefault();
-      moveSelection(-1);
+      if (e.shiftKey && selectedMeasure.value !== null && selected.value === null) {
+        extendMeasureSelection(
+          Math.max(0, (selectedMeasureEnd.value ?? selectedMeasure.value) - 1),
+        );
+        scheduleRender();
+      } else moveSelection(-1);
       break;
     case "ArrowRight":
       e.preventDefault();
-      moveSelection(1);
+      if (e.shiftKey && selectedMeasure.value !== null && selected.value === null) {
+        extendMeasureSelection(
+          Math.min(
+            measures.value.length - 1,
+            (selectedMeasureEnd.value ?? selectedMeasure.value) + 1,
+          ),
+        );
+        scheduleRender();
+      } else moveSelection(1);
       break;
     case "1":
     case "2":
@@ -1131,7 +1219,7 @@ function render() {
       ctx.rect(x, y + 2, 28, 26, { fill: "none", stroke: "none", "pointer-events": "all" });
       ctx.save();
       ctx.setFont("Academico", 9, "normal", "normal");
-      ctx.setFillStyle(selectedMeasure.value === m.index ? colorSel : colorNumber);
+      ctx.setFillStyle(cellSelectedForNumber(m.index) ? colorSel : colorNumber);
       ctx.fillText(String(cell.number), x + 3, stave.getYForTopText(0) + 2);
       ctx.restore();
       ctx.closeGroup();
@@ -1142,9 +1230,12 @@ function render() {
       }
 
       // Whole-measure selection outline (for percent repeats only the clicked cell)
+      const r = selectedRange.value;
+      const inRange = !!r && r[0] !== r[1] && m.index >= r[0] && m.index <= r[1];
       const cellSelected =
-        selectedMeasure.value === m.index &&
-        (selectedCell.value === null ? isMusic : selectedCell.value === cell.number);
+        inRange ||
+        (selectedMeasure.value === m.index &&
+          (selectedCell.value === null ? isMusic : selectedCell.value === cell.number));
       if (cellSelected) {
         ctx.rect(x + 1, y + 10, item.w - 2, 84, {
           fill: colorSel,
@@ -1334,7 +1425,7 @@ function render() {
       if (ev.button !== 0) return;
       const hit = hitTarget(ev.target);
       if (!hit) return;
-      applyHit(hit);
+      applyHit(hit, ev.shiftKey);
       scheduleRender();
     });
     for (const id of noteMap.keys()) {
@@ -1704,8 +1795,10 @@ onBeforeUnmount(() => {
         <span v-if="selectedMeasureInfo" class="status-measure">· {{ selectedMeasureInfo }}</span>
       </span>
       <span v-else-if="selectedMeasureInfo" class="status-sel"
-        >{{ selectedMeasureInfo }} ·
-        {{ currentMeasure()?.events.length ? "ganzer Takt ausgewählt" : "leer" }}</span
+        >{{ selectedMeasureInfo
+        }}<template v-if="!isRange">
+          · {{ currentMeasure()?.events.length ? "ganzer Takt ausgewählt" : "leer" }}</template
+        ></span
       >
       <span v-else class="status-hint"
         >Note, Taktstrich oder Taktnummer anklicken · Rechtsklick für Aktionen · Pfeiltasten, 1 2 4

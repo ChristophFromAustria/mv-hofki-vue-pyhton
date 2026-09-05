@@ -23,6 +23,7 @@ import {
   setHairpin,
   eventDecorations,
   setKeySignature,
+  setKeyForRange,
   setPercentCount,
   toggleRest,
   normalizeDocument,
@@ -288,6 +289,26 @@ describe("editing", () => {
     // percent measure: key goes before the repeat
     d = setKeySignature(doc, ms[4], "g");
     expect(serializeDocument(d)).toContain("\\key g \\major \\repeat percent 2 { c4 r4 f4 r4 } |");
+  });
+
+  it("sets a key for a range and restores the old key afterwards", () => {
+    // measures 1–3 → g major; measure 4 keeps b-flat major (restored), the Trio's
+    // own key change at measure 8 stays untouched
+    const d = setKeyForRange(doc, ms, 1, 3, "g");
+    const code = serializeDocument(d);
+    expect(code).toContain("\\key g \\major \\set Timing.measureLength = #(ly:make-moment 1/1) f2-> a2-> |");
+    expect(code).toContain("\\key bes \\major \\repeat percent 2 { c4 r4 f4 r4 } |");
+    expect(code).toContain('8 \\key es \\major es4');
+    const after = buildMeasures(d.tokens);
+    expect(after.slice(1, 4).map((m) => m.keyName)).toEqual(["g", "g", "g"]);
+    expect(after[4].keyName).toBe("bes");
+    // a range that swallows an existing change removes it
+    const d2 = setKeyForRange(doc, ms, 6, 9, "f");
+    expect(serializeDocument(d2)).not.toContain("8 \\key es \\major"); // Trio change swallowed
+    const ms2 = buildMeasures(d2.tokens);
+    expect(ms2.slice(6, 10).map((m) => m.keyName)).toEqual(["f", "f", "f", "f"]);
+    expect(ms2[10].showKey).toBe(true); // restored after the range
+    expect(ms2[10].keyName).toBe("es");
   });
 
   it("wraps, changes and unwraps percent repeats", () => {

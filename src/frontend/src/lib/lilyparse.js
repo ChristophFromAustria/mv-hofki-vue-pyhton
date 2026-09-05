@@ -1335,6 +1335,27 @@ export function setKeySignature(doc, measure, keyName, mode = "major") {
 }
 
 /**
+ * Set the key for measures fromIdx..toIdx (inclusive): the key is written at
+ * the first measure, key changes inside the range are removed, and the
+ * measure after the range gets its previous key back when it differs.
+ */
+export function setKeyForRange(doc, measures, fromIdx, toIdx, keyName, mode = "major") {
+  const lo = Math.min(fromIdx, toIdx);
+  const hi = Math.max(fromIdx, toIdx);
+  if (!measures[lo] || !measures[hi]) return doc;
+  let out = doc;
+  // Work back to front so earlier token indices stay valid.
+  const after = measures[hi + 1];
+  if (after && !after.showKey && (after.keyName !== keyName || after.mode !== mode)) {
+    out = setKeySignature(out, after, after.keyName, after.mode);
+  }
+  for (let i = hi; i > lo; i -= 1) {
+    if (measures[i].showKey) out = setKeySignature(out, measures[i], null);
+  }
+  return setKeySignature(out, measures[lo], keyName, mode);
+}
+
+/**
  * Set how often a measure is played: 1 removes a percent-repeat wrapper,
  * 2+ wraps the measure in \repeat percent N { … } or changes N.
  */
