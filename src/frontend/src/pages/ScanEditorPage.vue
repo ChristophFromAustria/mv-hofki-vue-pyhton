@@ -277,6 +277,14 @@ async function generateLilypond() {
   }
 }
 
+function onLilypondRendered(result) {
+  // Edited code rendered by the backend: it becomes the new base version.
+  lilypondCode.value = result.lilypond_code;
+  lilypondPdfPath.value = result.pdf_path;
+  lilypondPngPaths.value = result.png_paths || [];
+  lilypondWarnings.value = result.warnings || [];
+}
+
 function onAnalysisLogClose() {
   showAnalysisLog.value = false;
   if (!processing.value) return;
@@ -776,7 +784,9 @@ onUnmounted(() => {
       :png-paths="lilypondPngPaths"
       :warnings="lilypondWarnings"
       :cache-version="cacheVersion"
+      :scan-id="scanId"
       @close="showLilypond = false"
+      @rendered="onLilypondRendered"
     />
 
     <!-- Capture dialog -->

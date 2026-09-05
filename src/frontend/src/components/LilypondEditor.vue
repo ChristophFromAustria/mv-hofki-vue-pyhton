@@ -63,6 +63,25 @@ const width = ref(900);
 const fontsReady = ref(false);
 const renderError = ref(null);
 
+// Layout: "auto" wraps measures by available width; "lilypond" breaks only
+// where the generated code has \break (mirrors the LilyPond line layout).
+const layoutMode = ref("auto");
+try {
+  const stored = localStorage.getItem("lilypondEditorLayout");
+  if (stored === "lilypond" || stored === "auto") layoutMode.value = stored;
+} catch {
+  // storage unavailable
+}
+function setLayoutMode(mode) {
+  layoutMode.value = mode;
+  try {
+    localStorage.setItem("lilypondEditorLayout", mode);
+  } catch {
+    // ignore
+  }
+  scheduleRender();
+}
+
 const isDirty = computed(() => props.originalCode !== "" && props.code !== props.originalCode);
 
 const selectedToken = computed(() => {
@@ -384,36 +403,50 @@ function measureWidth(m, tokens, isRowStart, prev) {
   return Math.max(w, 70);
 }
 
-function layoutRows(ms, tokens, availableWidth) {
+const MIN_LILYPOND_SCALE = 0.55;
+
+/**
+ * Pack measures into rows. Returns { rows, width } where width is the
+ * content width (may exceed availableWidth in "lilypond" mode, the host
+ * then scrolls horizontally).
+ */
+function layoutRows(ms, tokens, availableWidth, mode) {
   const rows = [];
   let row = [];
   let rowWidth = 0;
   for (let i = 0; i < ms.length; i += 1) {
     const m = ms[i];
-    const startsRow = row.length === 0;
-    const w = measureWidth(m, tokens, startsRow, i > 0 ? ms[i - 1] : null);
-    if (row.length && (m.breakBefore || rowWidth + w > availableWidth)) {
+    const prev = i > 0 ? ms[i - 1] : null;
+    const w = measureWidth(m, tokens, row.length === 0, prev);
+    const overflow = mode === "auto" && rowWidth + w > availableWidth;
+    if (row.length && (m.breakBefore || overflow)) {
       rows.push(row);
       row = [];
       rowWidth = 0;
     }
-    row.push({
-      m,
-      w: row.length === 0 ? measureWidth(m, tokens, true, i > 0 ? ms[i - 1] : null) : w,
-    });
-    rowWidth += row[row.length - 1].w;
+    const cellW = row.length === 0 ? measureWidth(m, tokens, true, prev) : w;
+    row.push({ m, w: cellW });
+    rowWidth += cellW;
   }
   if (row.length) rows.push(row);
-  // Justify all rows except the last one
+
+  let contentWidth = availableWidth;
   rows.forEach((r, idx) => {
-    const natural = r.reduce((s, x) => s + x.w, 0);
-    const scale =
-      idx === rows.length - 1 ? Math.min(1, availableWidth / natural) : availableWidth / natural;
+    const natural = r.reduce((sum, x) => sum + x.w, 0);
+    let scale;
+    if (mode === "lilypond") {
+      // Fill the row like LilyPond does, but never squeeze below a legible size.
+      scale = Math.max(MIN_LILYPOND_SCALE, availableWidth / natural);
+      if (natural * scale > contentWidth) contentWidth = Math.ceil(natural * scale);
+    } else {
+      scale =
+        idx === rows.length - 1 ? Math.min(1, availableWidth / natural) : availableWidth / natural;
+    }
     r.forEach((x) => {
       x.w = Math.floor(x.w * scale);
     });
   });
-  return rows;
+  return { rows, width: contentWidth };
 }
 
 function cssVar(name, fallback) {
@@ -431,7 +464,7 @@ function render() {
   const tokens = doc.value.tokens;
   const ms = measures.value;
   const availableWidth = Math.max(320, width.value - 2 * SIDE_PAD);
-  const rows = layoutRows(ms, tokens, availableWidth);
+  const { rows, width: contentWidth } = layoutRows(ms, tokens, availableWidth, layoutMode.value);
   const totalHeight = TOP_PAD + rows.length * ROW_HEIGHT + 20;
 
   const colorInk = cssVar("--color-text", "#1c2733");
@@ -442,7 +475,7 @@ function render() {
   let renderer;
   try {
     renderer = new Renderer(el, Renderer.Backends.SVG);
-    renderer.resize(availableWidth + 2 * SIDE_PAD, totalHeight);
+    renderer.resize(contentWidth + 2 * SIDE_PAD, totalHeight);
   } catch (e) {
     renderError.value = e.message;
     return;
@@ -619,8 +652,13 @@ function render() {
   // Attach click handlers
   const svg = el.querySelector("svg");
   if (svg) {
-    svg.style.maxWidth = "100%";
-    svg.style.height = "auto";
+    if (contentWidth > availableWidth) {
+      svg.style.maxWidth = "none";
+      svg.style.height = "auto";
+    } else {
+      svg.style.maxWidth = "100%";
+      svg.style.height = "auto";
+    }
     svg.addEventListener("pointerdown", (ev) => {
       const target = ev.target.closest("g.vf-stavenote, [id^='empty-']");
       if (!target) return;
@@ -795,6 +833,28 @@ onBeforeUnmount(() => {
           Löschen
         </button>
       </div>
+      <div class="tool-group layout-toggle" role="group" aria-label="Zeilenanordnung">
+        <button
+          type="button"
+          class="tool"
+          :class="{ active: layoutMode === 'auto' }"
+          :aria-pressed="layoutMode === 'auto'"
+          title="Takte nach verfügbarer Breite umbrechen"
+          @click="setLayoutMode('auto')"
+        >
+          Automatisch
+        </button>
+        <button
+          type="button"
+          class="tool"
+          :class="{ active: layoutMode === 'lilypond' }"
+          :aria-pressed="layoutMode === 'lilypond'"
+          title="Zeilen wie im LilyPond-Satz (Umbrüche aus dem Code)"
+          @click="setLayoutMode('lilypond')"
+        >
+          Wie LilyPond
+        </button>
+      </div>
       <div class="tool-group">
         <button
           type="button"
@@ -872,6 +932,10 @@ onBeforeUnmount(() => {
   gap: 0.25rem;
 }
 
+.layout-toggle {
+  margin-left: auto;
+}
+
 .tool {
   min-width: 44px;
   min-height: 40px;
@@ -890,7 +954,8 @@ onBeforeUnmount(() => {
   color: var(--color-primary);
 }
 
-.tool.active {
+.tool.active,
+.tool.active:hover:not(:disabled) {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-on-primary);
@@ -942,7 +1007,8 @@ onBeforeUnmount(() => {
 
 .score-host {
   overflow-x: auto;
-  max-height: 60vh;
+  /* The modal sets --score-max-height in fullscreen so the score fills the screen */
+  max-height: var(--score-max-height, 60vh);
   overflow-y: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);

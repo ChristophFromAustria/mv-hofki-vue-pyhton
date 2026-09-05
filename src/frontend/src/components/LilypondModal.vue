@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, defineAsyncComponent } from "vue";
+import { post } from "../lib/api.js";
 
 // VexFlow is large; load the editor (and VexFlow) only when the tab is opened.
 const LilypondEditor = defineAsyncComponent(() => import("./LilypondEditor.vue"));
@@ -11,9 +12,48 @@ const props = defineProps({
   pngPaths: { type: Array, default: () => [] },
   cacheVersion: { type: String, default: null },
   warnings: { type: Array, default: () => [] },
+  scanId: { type: [Number, String], default: null },
 });
 
-const emit = defineEmits(["close"]);
+const emit = defineEmits(["close", "rendered"]);
+
+// Fullscreen toggle (remembered per browser)
+const fullscreen = ref(false);
+try {
+  fullscreen.value = localStorage.getItem("lilypondModalFullscreen") === "1";
+} catch {
+  // storage unavailable, keep default
+}
+function toggleFullscreen() {
+  fullscreen.value = !fullscreen.value;
+  try {
+    localStorage.setItem("lilypondModalFullscreen", fullscreen.value ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
+
+// Re-render edited code on the backend
+const rendering = ref(false);
+const renderError = ref(null);
+const renderStamp = ref(0);
+async function renderEdited() {
+  if (rendering.value || props.scanId === null) return;
+  rendering.value = true;
+  renderError.value = null;
+  try {
+    const result = await post(`/scanner/scans/${props.scanId}/render-lilypond`, {
+      lilypond_code: editedCode.value,
+    });
+    renderStamp.value = Date.now();
+    emit("rendered", result);
+    activeTab.value = "preview";
+  } catch (e) {
+    renderError.value = e.message;
+  } finally {
+    rendering.value = false;
+  }
+}
 
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 const activeTab = ref("preview");
@@ -56,7 +96,10 @@ function assetUrl(path, cacheBust = null) {
 
 const previewUrl = computed(() => {
   if (!props.pngPaths.length) return null;
-  return assetUrl(props.pngPaths[0], props.cacheVersion);
+  const stamp = renderStamp.value
+    ? `${props.cacheVersion || ""}-${renderStamp.value}`
+    : props.cacheVersion;
+  return assetUrl(props.pngPaths[0], stamp);
 });
 
 function onPngLoad(e) {
@@ -78,8 +121,13 @@ const cropRect = computed(() => {
 </script>
 
 <template>
-  <div v-if="open" class="overlay" @click.self="emit('close')">
-    <div class="dialog dialog-xl dialog-flush">
+  <div
+    v-if="open"
+    class="overlay"
+    :class="{ 'overlay-fullscreen': fullscreen }"
+    @click.self="emit('close')"
+  >
+    <div class="dialog dialog-xl dialog-flush" :class="{ 'dialog-fullscreen': fullscreen }">
       <div class="dialog-header">
         <h2>LilyPond</h2>
         <div class="tab-bar">
@@ -107,7 +155,19 @@ const cropRect = computed(() => {
             <span v-if="isEdited" class="tab-dot" title="Geändert"></span>
           </button>
         </div>
-        <button class="dialog-close" title="Schließen" @click="emit('close')">✕</button>
+        <div class="header-actions">
+          <button
+            type="button"
+            class="dialog-close"
+            :title="fullscreen ? 'Vollbild beenden' : 'Vollbild'"
+            :aria-label="fullscreen ? 'Vollbild beenden' : 'Vollbild'"
+            :aria-pressed="fullscreen"
+            @click="toggleFullscreen"
+          >
+            {{ fullscreen ? "⤡" : "⤢" }}
+          </button>
+          <button class="dialog-close" title="Schließen" @click="emit('close')">✕</button>
+        </div>
       </div>
 
       <div class="dialog-body">
@@ -155,7 +215,11 @@ const cropRect = computed(() => {
           <LilypondEditor v-if="open" v-model:code="editedCode" :original-code="lilypondCode" />
           <p class="editor-note">
             Die Darstellung im Browser ist eine Näherung an den LilyPond-Satz. Änderungen werden in
-            den Code übernommen, aber noch nicht gespeichert.
+            den Code übernommen. „Vorschau rendern" schickt den Code ans Backend und erneuert PDF
+            und Vorschau, die Analyse selbst bleibt unverändert.
+          </p>
+          <p v-if="renderError" class="render-error-msg">
+            Rendern fehlgeschlagen: {{ renderError }}
           </p>
         </div>
 
@@ -173,6 +237,18 @@ const cropRect = computed(() => {
       </div>
 
       <div class="dialog-footer">
+        <button
+          v-if="scanId !== null"
+          type="button"
+          class="btn"
+          :class="{ 'btn-primary': isEdited }"
+          :disabled="rendering || !isEdited"
+          :title="isEdited ? 'Bearbeiteten Code mit LilyPond rendern' : 'Keine Änderungen'"
+          @click="renderEdited"
+        >
+          {{ rendering ? "Rendert…" : "Vorschau rendern" }}
+        </button>
+        <span class="footer-spacer"></span>
         <a v-if="pdfPath" :href="assetUrl(pdfPath)" target="_blank" class="btn btn-primary">
           PDF öffnen
         </a>
@@ -202,6 +278,35 @@ const cropRect = computed(() => {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-on-primary);
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.overlay-fullscreen {
+  padding: 0;
+}
+
+.dialog-fullscreen {
+  --score-max-height: calc(100dvh - 21rem);
+  max-width: none;
+  width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+}
+
+.footer-spacer {
+  flex: 1;
+}
+
+.render-error-msg {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-danger);
 }
 
 .tab-badge {
