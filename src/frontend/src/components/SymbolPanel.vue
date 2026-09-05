@@ -38,6 +38,35 @@ const variantEditorRoute = computed(() => {
   };
 });
 
+/**
+ * Height of the anchor point above the bottom staff line, in line spacings.
+ * Same rule as the backend (note_geometry.head_center_lines): notes take
+ * the head half a line inside the stem-free end of the box, everything
+ * else the box centre; the variant's manual anchor correction is applied.
+ */
+const anchorLines = computed(() => {
+  const s = props.symbol;
+  if (!s || s.staff_y_top == null || s.staff_y_bottom == null) return null;
+  const template = s.corrected_symbol ?? s.matched_symbol;
+  const stem = template?.category === "note" ? template?.stem_direction : null;
+  let center;
+  if (stem === "up") center = s.staff_y_bottom + 0.5;
+  else if (stem === "down") center = s.staff_y_top - 0.5;
+  else center = (s.staff_y_top + s.staff_y_bottom) / 2;
+  const v = matchedVariant.value;
+  if (v?.anchor_dy && v.source_line_spacing > 0) center -= v.anchor_dy / v.source_line_spacing;
+  return center;
+});
+
+/** Human-readable staff position for a height in line spacings (0 = bottom line). */
+const anchorPositionLabel = computed(() => {
+  if (anchorLines.value == null) return null;
+  const step = Math.round(anchorLines.value * 2);
+  if (step < 0 || step > 8) return "außerhalb des Systems";
+  if (step % 2 === 0) return `${step / 2 + 1}. Linie`;
+  return `${(step + 1) / 2}. Zwischenraum`;
+});
+
 const matchedName = computed(() => {
   if (!props.symbol) return null;
   const corrected = props.symbol.corrected_symbol;
@@ -121,6 +150,13 @@ function confidenceLabel(conf) {
           <span class="info-label">Y (Staff)</span>
           <span class="info-value">
             {{ symbol.staff_y_top.toFixed(1) }} – {{ symbol.staff_y_bottom.toFixed(1) }} Linien
+          </span>
+        </div>
+        <div v-if="anchorLines != null" class="info-row">
+          <span class="info-label">Mittelpunkt (Y)</span>
+          <span class="info-value">
+            {{ anchorLines.toFixed(2) }} Linien
+            <span class="info-muted">· {{ anchorPositionLabel }}</span>
           </span>
         </div>
         <div v-if="symbol.corrected_symbol" class="info-row">
@@ -263,6 +299,10 @@ function confidenceLabel(conf) {
   display: flex;
   justify-content: space-between;
   font-size: 0.875rem;
+}
+
+.info-muted {
+  color: var(--color-muted);
 }
 
 .info-label {
