@@ -231,6 +231,10 @@ def _emit_container(
             end_barline = None if end_barline == "Wiederholung Ende" else end_barline
         if is_last and drop_repeat_start_last and end_barline == "Wiederholung Anfang":
             end_barline = None
+        if is_last and drop_repeat_start_last and end_barline == "Wiederholung Ende":
+            # An explicit \bar ":|." would suppress the automatic start
+            # repeat of the following \repeat volta; write both sides.
+            end_barline = "Wiederholung Beidseitig"
 
         break_before = (
             state.last_staff is not None and m.staff_index != state.last_staff
@@ -448,11 +452,8 @@ def generate_lilypond_with_warnings(
   short-indent = 0\\mm
   bookTitleMarkup = \\markup {{
     \\fill-line {{
-      ""
-      \\center-column {{
-        \\fontsize #5 \\bold \\fromproperty #'header:title
-        \\fromproperty #'header:subtitle
-      }}
+      \\fromproperty #'header:subtitle
+      \\fontsize #5 \\bold \\fromproperty #'header:title
       \\right-column {{
         \\fromproperty #'header:composer
         \\fromproperty #'header:arranger
@@ -483,6 +484,7 @@ unmarkCopy = {{ {reverts} }}
       \\Score
       \\override SpacingSpanner.common-shortest-duration = #(ly:make-moment 1/4)
       \\override SpacingSpanner.spacing-increment = #1.0
+      \\override DynamicText.self-alignment-X = #3
       \\omit BarNumber
     }}
   }}

@@ -502,3 +502,27 @@ def test_variant_anchor_offset_shifts_pitch():
     shifted["head_offset_lines"] = 1.0
     code = generate_lilypond(measures, "T", symbols=[plain, shifted])
     assert "b,2 g,2" in code
+
+
+def test_end_repeat_before_repeat_body_becomes_double_sided():
+    """\\bar ":|." right before \\repeat volta would hide the start repeat."""
+    measures = _measures([(0, 6)])
+    measures[1].update(end_barline="Wiederholung Ende")
+    measures[4].update(
+        end_barline="Wiederholung Ende", volta_number=1, volta_group_id=1
+    )
+    measures[5].update(volta_number=2, volta_group_id=1)
+    code = generate_lilypond(measures, "Test")
+    before_repeat = code.split("\\repeat volta 2 {")[0]
+    assert before_repeat.rstrip().endswith('\\bar ":|.|:"')
+    assert code.count('\\bar ":|.|:"') == 1
+
+
+def test_header_puts_part_left_of_title_and_aligns_dynamics():
+    code = generate_lilypond(_measures([(0, 1)]), "Test", instrument="Tuba 1")
+    title_block = code.split("bookTitleMarkup")[1].split("\\header")[0]
+    sub = title_block.index("header:subtitle")
+    title = title_block.index("header:title")
+    assert sub < title  # part first (left), title centred
+    assert "\\center-column" not in title_block
+    assert "\\override DynamicText.self-alignment-X = #3" in code
