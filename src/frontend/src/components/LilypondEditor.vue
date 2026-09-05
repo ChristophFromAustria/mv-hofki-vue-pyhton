@@ -867,6 +867,11 @@ const canRemoveBarline = computed(() => {
 
 // ── Context menu ─────────────────────────────────────────────────────────
 
+/** Submenu entry: { type: "submenu", label, children } */
+function sub(label, children) {
+  return { type: "submenu", label, children };
+}
+
 const menuItems = computed(() => {
   const items = [];
   const sl = selectedSlurIndices.value;
@@ -894,34 +899,44 @@ const menuItems = computed(() => {
   }
   if (isNoteRange.value) {
     items.push({ type: "header", label: `${noteRangeIndices.value.length} Noten` });
-    items.push({
-      type: "item",
-      label: "Crescendo über die Auswahl",
-      action: () => hairpinOverRange("cresc"),
-    });
-    items.push({
-      type: "item",
-      label: "Decrescendo über die Auswahl",
-      action: () => hairpinOverRange("decresc"),
-    });
-    items.push({
-      type: "item",
-      label: tieRangeAllowed.value
-        ? "Mit Haltebögen verbinden"
-        : "Haltebögen nur bei gleicher Tonhöhe",
-      disabled: !tieRangeAllowed.value,
-      action: tieRange,
-    });
-    items.push({ type: "item", label: "Bindebogen über die Auswahl", action: slurOverRange });
-    items.push({ type: "header", label: "N-tole" });
-    for (const preset of TUPLET_PRESETS) {
-      items.push({
-        type: "item",
-        label: preset.label,
-        disabled: !tupletRangeOk.value,
-        action: () => tupletWrap(preset.num, preset.den),
-      });
-    }
+    items.push(
+      sub("Gabel", [
+        {
+          type: "item",
+          label: "Crescendo über die Auswahl",
+          action: () => hairpinOverRange("cresc"),
+        },
+        {
+          type: "item",
+          label: "Decrescendo über die Auswahl",
+          action: () => hairpinOverRange("decresc"),
+        },
+      ]),
+    );
+    items.push(
+      sub("Bögen", [
+        {
+          type: "item",
+          label: tieRangeAllowed.value
+            ? "Mit Haltebögen verbinden"
+            : "Haltebögen nur bei gleicher Tonhöhe",
+          disabled: !tieRangeAllowed.value,
+          action: tieRange,
+        },
+        { type: "item", label: "Bindebogen über die Auswahl", action: slurOverRange },
+      ]),
+    );
+    items.push(
+      sub(
+        "N-tole",
+        TUPLET_PRESETS.map((preset) => ({
+          type: "item",
+          label: preset.label,
+          disabled: !tupletRangeOk.value,
+          action: () => tupletWrap(preset.num, preset.den),
+        })),
+      ),
+    );
     if (tupletOfSelection() !== null) {
       items.push({ type: "item", label: "N-tole auflösen", action: tupletUnwrap });
     }
@@ -933,39 +948,89 @@ const menuItems = computed(() => {
   if (t) {
     const deco = selectedDecorations.value;
     if (t.kind === "note") {
-      items.push({ type: "header", label: "Artikulation" });
-      for (const [name, def] of Object.entries(ARTICULATIONS)) {
-        items.push({
-          type: "check",
-          label: def.label,
-          checked: deco.articulations.has(name),
-          action: () => articulationToggle(name),
-        });
-      }
+      items.push(
+        sub(
+          "Artikulation",
+          Object.entries(ARTICULATIONS).map(([name, def]) => ({
+            type: "check",
+            label: def.label,
+            checked: deco.articulations.has(name),
+            action: () => articulationToggle(name),
+          })),
+        ),
+      );
     }
     if (t.kind !== "mmrest") {
-      items.push({ type: "header", label: "Dynamik" });
-      for (const dyn of DYNAMICS) {
-        items.push({
-          type: "radio",
-          label: dyn,
-          checked: deco.dynamic === dyn,
-          action: () => dynamicSet(deco.dynamic === dyn ? null : dyn),
-        });
-      }
-      items.push({ type: "header", label: "Gabel" });
-      for (const [kind, label] of [
-        ["cresc", "Crescendo beginnen"],
-        ["decresc", "Decrescendo beginnen"],
-        ["end", "Gabel beenden"],
-      ]) {
-        items.push({
-          type: "radio",
-          label,
-          checked: deco.hairpin === kind,
-          action: () => hairpinSet(deco.hairpin === kind ? null : kind),
-        });
-      }
+      items.push(
+        sub("Dynamik", [
+          ...DYNAMICS.map((dyn) => ({
+            type: "radio",
+            label: dyn,
+            checked: deco.dynamic === dyn,
+            action: () => dynamicSet(deco.dynamic === dyn ? null : dyn),
+          })),
+          { type: "sep" },
+          {
+            type: "item",
+            label: "Keine Dynamik",
+            disabled: !deco.dynamic,
+            action: () => dynamicSet(null),
+          },
+        ]),
+      );
+      items.push(
+        sub("Gabel", [
+          ...[
+            ["cresc", "Crescendo beginnen"],
+            ["decresc", "Decrescendo beginnen"],
+            ["end", "Gabel beenden"],
+          ].map(([kind, label]) => ({
+            type: "radio",
+            label,
+            checked: deco.hairpin === kind,
+            action: () => hairpinSet(deco.hairpin === kind ? null : kind),
+          })),
+        ]),
+      );
+    }
+    if (t.kind === "note") {
+      const tieOk = tieAllowed(doc.value.tokens, selected.value);
+      items.push(
+        sub("Bögen", [
+          {
+            type: "check",
+            label:
+              tieOk || deco.tie
+                ? "Haltebogen zur nächsten Note"
+                : "Haltebogen nur bei gleicher Tonhöhe",
+            checked: deco.tie,
+            disabled: !tieOk && !deco.tie,
+            action: tieToggle,
+          },
+          {
+            type: "check",
+            label: "Bindebogen zur nächsten Note",
+            checked: deco.slurStart,
+            action: slurToggle,
+          },
+        ]),
+      );
+    }
+    if (tupletOfSelection() !== null) {
+      items.push({ type: "item", label: "N-tole auflösen", action: tupletUnwrap });
+    }
+    if (t.kind === "mmrest") {
+      items.push(
+        sub(`Mehrtaktpause · ${mmrestCount(t)} Takte`, [
+          { type: "item", label: "Ein Takt mehr", action: () => mmrestChange(1) },
+          {
+            type: "item",
+            label: "Ein Takt weniger",
+            disabled: mmrestCount(t) <= 1,
+            action: () => mmrestChange(-1),
+          },
+        ]),
+      );
     }
     items.push({ type: "sep" });
     const nm = measureOfToken(selected.value);
@@ -977,38 +1042,6 @@ const menuItems = computed(() => {
           selectMeasure(nm.index);
           scheduleRender();
         },
-      });
-    }
-    if (t.kind === "note") {
-      const tieOk = tieAllowed(doc.value.tokens, selected.value);
-      items.push({
-        type: "check",
-        label:
-          tieOk || deco.tie
-            ? "Haltebogen zur nächsten Note"
-            : "Haltebogen nur bei gleicher Tonhöhe",
-        checked: deco.tie,
-        disabled: !tieOk && !deco.tie,
-        action: tieToggle,
-      });
-      if (tupletOfSelection() !== null) {
-        items.push({ type: "item", label: "N-tole auflösen", action: tupletUnwrap });
-      }
-      items.push({
-        type: "check",
-        label: "Bindebogen zur nächsten Note",
-        checked: deco.slurStart,
-        action: slurToggle,
-      });
-    }
-    if (t.kind === "mmrest") {
-      items.push({ type: "header", label: `Mehrtaktpause · ${mmrestCount(t)} Takte` });
-      items.push({ type: "item", label: "Ein Takt mehr", action: () => mmrestChange(1) });
-      items.push({
-        type: "item",
-        label: "Ein Takt weniger",
-        disabled: mmrestCount(t) <= 1,
-        action: () => mmrestChange(-1),
       });
     }
     if (t.kind !== "spacer" && t.kind !== "mmrest") {
@@ -1023,17 +1056,17 @@ const menuItems = computed(() => {
     items.push({ type: "item", label: "Löschen", danger: true, action: remove });
     return items;
   }
+  const barlineTypeItems = (current, onPick) =>
+    Object.entries(BARLINE_TYPES).map(([type, def]) => ({
+      type: "radio",
+      label: def.label,
+      checked: current === type,
+      action: () => onPick(type),
+    }));
   const bm = selectedBarlineMeasure.value;
   if (bm) {
     items.push({ type: "header", label: "Taktstrich" });
-    for (const [type, def] of Object.entries(BARLINE_TYPES)) {
-      items.push({
-        type: "radio",
-        label: def.label,
-        checked: selectedBarlineType.value === type,
-        action: () => barlineSetType(type),
-      });
-    }
+    items.push(sub("Typ", barlineTypeItems(selectedBarlineType.value, barlineSetType)));
     items.push({ type: "sep" });
     items.push({
       type: "item",
@@ -1044,79 +1077,142 @@ const menuItems = computed(() => {
     return items;
   }
   const m = currentMeasure();
-  if (m && isRange.value) {
-    items.push({ type: "header", label: rangeLabel() });
-    items.push({
-      type: "header",
-      label: `Tonart für ${rangeLabel()}`,
-    });
-    for (const [key, label] of MAJOR_KEYS) {
-      items.push({
+  if (!m) return items;
+  const keyItems = (label) =>
+    sub(label, [
+      ...MAJOR_KEYS.map(([key, keyLabel]) => ({
         type: "radio",
-        label,
+        label: keyLabel,
         checked: m.keyName === key && m.mode === "major",
         action: () => keySet(key),
-      });
-    }
+      })),
+      ...(m.showKey && m.index > 0 && !isRange.value
+        ? [
+            { type: "sep" },
+            { type: "item", label: "Tonartwechsel entfernen", action: () => keySet(null) },
+          ]
+        : []),
+    ]);
+  if (isRange.value) {
+    items.push({ type: "header", label: rangeLabel() });
+    items.push(keyItems(`Tonart für ${rangeLabel()}`));
     items.push({ type: "sep" });
     items.push({ type: "item", label: "Takte löschen", danger: true, action: deleteSelection });
     return items;
   }
-  if (m) {
-    items.push({ type: "header", label: measureLabel(m) });
-    items.push({
-      type: "item",
-      label: "Leeren Takt davor einfügen",
-      action: () => measureInsert("before"),
-    });
-    items.push({
-      type: "item",
-      label: "Leeren Takt danach einfügen",
-      action: () => measureInsert("after"),
-    });
-    items.push({ type: "header", label: "Mehrtaktpause danach einfügen" });
-    for (const n of [2, 4, 8]) {
-      items.push({ type: "item", label: `${n} Takte Pause`, action: () => compactRestInsert(n) });
-    }
-    items.push({ type: "header", label: "Taktwiederholung" });
-    items.push({
+  items.push({ type: "header", label: measureLabel(m) });
+  items.push(
+    sub("Takt einfügen", [
+      { type: "item", label: "Leeren Takt davor", action: () => measureInsert("before") },
+      { type: "item", label: "Leeren Takt danach", action: () => measureInsert("after") },
+    ]),
+  );
+  items.push(
+    sub(
+      "Mehrtaktpause danach",
+      [2, 4, 8].map((n) => ({
+        type: "item",
+        label: `${n} Takte Pause`,
+        action: () => compactRestInsert(n),
+      })),
+    ),
+  );
+  const repeatChildren = [
+    {
       type: "item",
       label:
         m.percent === null ? "Takt wiederholen (2×)" : `Eine Wiederholung mehr (${m.percent + 1}×)`,
       disabled: !m.events.length,
       action: () => repeatCountChange(1),
+    },
+  ];
+  if (m.percent !== null) {
+    repeatChildren.push({
+      type: "item",
+      label:
+        m.percent > 2 ? `Eine Wiederholung weniger (${m.percent - 1}×)` : "Wiederholung auflösen",
+      action: () => repeatCountChange(-1),
     });
-    if (m.percent !== null) {
-      items.push({
-        type: "item",
-        label:
-          m.percent > 2 ? `Eine Wiederholung weniger (${m.percent - 1}×)` : "Wiederholung auflösen",
-        action: () => repeatCountChange(-1),
-      });
-    }
-    items.push({
-      type: "header",
-      label: isRange.value ? `Tonart für ${rangeLabel()}` : `Tonart für ${measureLabel(m)}`,
-    });
-    for (const [key, label] of MAJOR_KEYS) {
-      items.push({
-        type: "radio",
-        label,
-        checked: m.keyName === key && m.mode === "major",
-        action: () => keySet(key),
-      });
-    }
-    if (!isRange.value) {
-      items.push({ type: "item", label: "Auswahl bis zum Ende erweitern", action: extendToEnd });
-    }
-    items.push({ type: "sep" });
-    items.push({ type: "item", label: "Takt löschen", danger: true, action: measureDelete });
   }
+  items.push(sub("Taktwiederholung", repeatChildren));
+  items.push(keyItems(`Tonart für ${measureLabel(m)}`));
+  items.push({ type: "item", label: "Auswahl bis zum Ende erweitern", action: extendToEnd });
+  if (m.endToken !== null && m.endToken !== undefined) {
+    items.push(
+      sub(
+        "Taktstrich am Ende",
+        barlineTypeItems(barlineTypeOf(doc.value.tokens, m), barlineSetType),
+      ),
+    );
+  }
+  items.push({ type: "sep" });
+  items.push({ type: "item", label: "Takt löschen", danger: true, action: measureDelete });
   return items;
 });
 
+// Open submenu: index into menuItems and its screen position
+const openSub = ref(null); // { index, x, y }
+const menuRoot = ref(null);
+
+function openSubmenu(index, el) {
+  const item = menuItems.value[index];
+  if (!item || item.type !== "submenu") return;
+  const r = el.getBoundingClientRect();
+  const width = 240;
+  const height = Math.min(window.innerHeight - 16, 40 * item.children.length + 16);
+  let x = r.right + 2;
+  if (x + width > window.innerWidth - 8) x = Math.max(8, r.left - width - 2);
+  const y = Math.max(8, Math.min(r.top - 6, window.innerHeight - height - 8));
+  openSub.value = { index, x, y };
+}
+
+function closeSubmenu() {
+  openSub.value = null;
+}
+
+function onSubmenuHover(index, el) {
+  if (openSub.value && openSub.value.index === index) return;
+  openSubmenu(index, el);
+}
+
+function onMenuKeydown(e) {
+  const panel = e.target.closest(".context-menu");
+  if (!panel) return;
+  const buttons = [...panel.querySelectorAll(".menu-item:not(:disabled)")];
+  const pos = buttons.indexOf(document.activeElement);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (!buttons.length) return;
+    const next =
+      e.key === "ArrowDown"
+        ? (pos + 1) % buttons.length
+        : (pos - 1 + buttons.length) % buttons.length;
+    buttons[next].focus();
+  } else if (e.key === "ArrowRight") {
+    const idx = Number(document.activeElement?.dataset?.submenu);
+    if (!Number.isNaN(idx)) {
+      e.preventDefault();
+      openSubmenu(idx, document.activeElement);
+      nextTick(() => document.querySelector(".submenu .menu-item:not(:disabled)")?.focus());
+    }
+  } else if (e.key === "ArrowLeft") {
+    if (panel.classList.contains("submenu")) {
+      e.preventDefault();
+      const idx = openSub.value?.index;
+      closeSubmenu();
+      nextTick(() => menuRoot.value?.querySelector(`[data-submenu="${idx}"]`)?.focus());
+    }
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    nextTick(() => container.value?.focus());
+  }
+}
+
 function openMenu(x, y) {
   if (!hasSelection.value) return;
+  closeSubmenu();
   const width = 240;
   const height = Math.min(window.innerHeight - 16, 40 * Math.min(menuItems.value.length, 12) + 16);
   menu.value = {
@@ -1124,10 +1220,12 @@ function openMenu(x, y) {
     y: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
   };
   document.addEventListener("pointerdown", onDocumentPointerDown, true);
+  nextTick(() => menuRoot.value?.querySelector(".menu-item:not(:disabled)")?.focus());
 }
 
 function closeMenu() {
   menu.value = null;
+  openSub.value = null;
   document.removeEventListener("pointerdown", onDocumentPointerDown, true);
 }
 
@@ -1137,7 +1235,7 @@ function onDocumentPointerDown(ev) {
 }
 
 function runMenuItem(item) {
-  if (item.disabled) return;
+  if (item.disabled || item.type === "submenu") return;
   closeMenu();
   item.action();
   // keep keyboard navigation alive: focus returns to the editor
@@ -2443,13 +2541,33 @@ onBeforeUnmount(() => {
     ></div>
     <div
       v-if="menu"
+      ref="menuRoot"
       class="context-menu"
       role="menu"
       :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
+      @keydown="onMenuKeydown"
     >
       <template v-for="(item, i) in menuItems" :key="i">
         <div v-if="item.type === 'header'" class="menu-header">{{ item.label }}</div>
         <div v-else-if="item.type === 'sep'" class="menu-sep" role="separator"></div>
+        <button
+          v-else-if="item.type === 'submenu'"
+          type="button"
+          class="menu-item has-submenu"
+          :class="{ open: openSub && openSub.index === i }"
+          role="menuitem"
+          aria-haspopup="menu"
+          :aria-expanded="!!openSub && openSub.index === i"
+          :data-submenu="i"
+          @mouseenter="onSubmenuHover(i, $event.currentTarget)"
+          @click="
+            openSub && openSub.index === i ? closeSubmenu() : openSubmenu(i, $event.currentTarget)
+          "
+        >
+          <span class="menu-mark"></span>
+          {{ item.label }}
+          <span class="menu-chevron" aria-hidden="true">▸</span>
+        </button>
         <button
           v-else
           type="button"
@@ -2464,10 +2582,43 @@ onBeforeUnmount(() => {
           "
           :aria-checked="item.type === 'item' ? undefined : !!item.checked"
           :disabled="item.disabled"
+          @mouseenter="closeSubmenu"
           @click="runMenuItem(item)"
         >
           <span class="menu-mark">{{ item.checked ? "✓" : "" }}</span>
           {{ item.label }}
+        </button>
+      </template>
+    </div>
+    <div
+      v-if="menu && openSub && menuItems[openSub.index]"
+      class="context-menu submenu"
+      role="menu"
+      :aria-label="menuItems[openSub.index].label"
+      :style="{ left: `${openSub.x}px`, top: `${openSub.y}px` }"
+      @keydown="onMenuKeydown"
+    >
+      <div class="menu-header">{{ menuItems[openSub.index].label }}</div>
+      <template v-for="(child, k) in menuItems[openSub.index].children" :key="k">
+        <div v-if="child.type === 'sep'" class="menu-sep" role="separator"></div>
+        <button
+          v-else
+          type="button"
+          class="menu-item"
+          :class="{ danger: child.danger, checked: child.checked }"
+          :role="
+            child.type === 'item'
+              ? 'menuitem'
+              : child.type === 'check'
+                ? 'menuitemcheckbox'
+                : 'menuitemradio'
+          "
+          :aria-checked="child.type === 'item' ? undefined : !!child.checked"
+          :disabled="child.disabled"
+          @click="runMenuItem(child)"
+        >
+          <span class="menu-mark">{{ child.checked ? "✓" : "" }}</span>
+          {{ child.label }}
         </button>
       </template>
     </div>
@@ -2652,6 +2803,25 @@ onBeforeUnmount(() => {
   display: inline-block;
   width: 1em;
   font-size: 0.8rem;
+}
+
+.menu-item.has-submenu {
+  padding-right: 1.6rem;
+  position: relative;
+}
+
+.menu-item.has-submenu.open {
+  background: var(--color-bg-soft);
+}
+
+.menu-chevron {
+  position: absolute;
+  right: 0.6rem;
+  color: var(--color-muted);
+}
+
+.context-menu.submenu {
+  z-index: 1002;
 }
 
 .measure-tooltip strong {
