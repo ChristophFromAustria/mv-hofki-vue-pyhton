@@ -4,7 +4,7 @@ import numpy as np
 
 from mv_hofki.services.scanner.stages.base import PipelineContext, StaffData, SymbolData
 from mv_hofki.services.scanner.stages.post_matching.repeat_overlap import (
-    RepeatOverlapFilter,
+    PriorityOverlapFilter,
     x_overlap_fraction,
 )
 
@@ -40,12 +40,23 @@ def _ctx(symbols, config=None):
         2: "rest",
         3: "note",
         4: "barline",
+        5: "other",
+        6: "key_sig",
+        7: "other",
     }
     ctx.metadata["template_display_names"] = {
         1: "Wiederholung Ende",
         2: "Viertelpause",
         3: "Viertel Stiel oben",
         4: "Einfacher Taktstrich",
+        5: "Takt wiederholen",
+        6: "Es-Dur",
+        7: "Segno",
+    }
+    ctx.metadata["template_names"] = {
+        5: "takt_wiederholen",
+        6: "key_es_major",
+        7: "segno",
     }
     return ctx
 
@@ -65,7 +76,7 @@ def test_rests_and_notes_inside_repeat_are_filtered():
     far_rest = _sym(2, 300, 12)
     ctx = _ctx([repeat, dot_as_rest, half_in_note, mostly_in_note, far_rest])
 
-    RepeatOverlapFilter().apply(ctx)
+    PriorityOverlapFilter().apply(ctx)
 
     assert not repeat.filtered
     assert dot_as_rest.filtered and dot_as_rest.filter_reason == "repeat_overlap"
@@ -81,7 +92,7 @@ def test_single_barlines_do_not_trigger_and_other_staff_is_ignored():
     rest_here = _sym(2, 305, 12, staff=0)
     ctx = _ctx([single, rest, repeat_other_staff, rest_here])
 
-    RepeatOverlapFilter().apply(ctx)
+    PriorityOverlapFilter().apply(ctx)
 
     assert not rest.filtered
     assert not rest_here.filtered
@@ -91,7 +102,7 @@ def test_threshold_is_configurable():
     repeat = _sym(1, 100, 30)
     note = _sym(3, 120, 20)  # 50 % overlap
     ctx = _ctx([repeat, note], config={"repeat_overlap_min_fraction": 0.3})
-    RepeatOverlapFilter().apply(ctx)
+    PriorityOverlapFilter().apply(ctx)
     assert note.filtered
 
 
@@ -104,6 +115,26 @@ def test_phantom_repeat_next_to_real_one_does_not_filter():
     rest = _sym(2, 1262, 35)  # real rest, overlapped only by the phantom
     ctx = _ctx([phantom, real, rest])
 
-    RepeatOverlapFilter().apply(ctx)
+    PriorityOverlapFilter().apply(ctx)
 
     assert not rest.filtered
+
+
+def test_measure_repeat_and_key_signature_are_priority_sources():
+    measure_repeat = _sym(5, 100, 60)
+    slash_as_note = _sym(3, 120, 20)  # fully inside → dropped
+    key_sig = _sym(6, 300, 45)
+    flat_as_rest = _sym(2, 310, 12)  # fully inside → dropped
+    segno = _sym(7, 500, 30)
+    note_at_segno = _sym(3, 505, 20)  # "other" but not a priority sign → kept
+    ctx = _ctx(
+        [measure_repeat, slash_as_note, key_sig, flat_as_rest, segno, note_at_segno]
+    )
+
+    PriorityOverlapFilter().apply(ctx)
+
+    assert slash_as_note.filtered
+    assert slash_as_note.filter_reason == "measure_repeat_overlap"
+    assert flat_as_rest.filtered and flat_as_rest.filter_reason == "key_sig_overlap"
+    assert not note_at_segno.filtered
+    assert not measure_repeat.filtered and not key_sig.filtered

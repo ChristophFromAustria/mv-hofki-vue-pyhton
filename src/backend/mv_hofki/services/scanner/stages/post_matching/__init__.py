@@ -9,7 +9,7 @@ from mv_hofki.services.scanner.stages.base import PipelineContext, ProcessingSta
 from mv_hofki.services.scanner.stages.post_matching.barline_filter import BarlineFilter
 from mv_hofki.services.scanner.stages.post_matching.dynamic_filter import DynamicFilter
 from mv_hofki.services.scanner.stages.post_matching.repeat_overlap import (
-    RepeatOverlapFilter,
+    PriorityOverlapFilter,
 )
 from mv_hofki.services.scanner.stages.post_matching.rest_filter import RestFilter
 from mv_hofki.services.scanner.stages.post_matching.staff_start import (
@@ -37,7 +37,7 @@ class PostMatchingStage(ProcessingStage):
 
     def __init__(self) -> None:
         self._operations: list[PostMatchingOperation] = [
-            RepeatOverlapFilter(),
+            PriorityOverlapFilter(),
             StemDirectionFilter(),
             BarlineFilter(),
             StaffStartFilter(),
