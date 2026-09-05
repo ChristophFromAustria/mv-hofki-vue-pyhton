@@ -26,6 +26,10 @@ from mv_hofki.services.scanner.library.key_signatures import (
     GERMAN_MINOR_FLATS,
     LILYPOND_MAJOR_FLATS,
 )
+from mv_hofki.services.scanner.library.note_geometry import (
+    head_center_lines,
+    stem_direction,
+)
 from mv_hofki.services.scanner.stages.post_matching.staff_start import (
     StaffStartItem,
     resolve_staff_start,
@@ -54,9 +58,6 @@ _KEY_BY_FLATS = {
     7: "ces",
 }
 _KEY_BY_SHARPS = {1: "g", 2: "d", 3: "a", 4: "e", 5: "b", 6: "fis", 7: "cis"}
-
-# Offset (in line spacings) from the box edge to the note-head centre.
-_HEAD_OFFSET = 0.5
 
 _DYNAMIC_ALIASES = {
     "fortepiano": "fp",
@@ -215,23 +216,6 @@ def duration_from_names(name: str, display: str) -> tuple[str, Fraction] | None:
     if dotted:
         length = length * Fraction(3, 2)
     return token, length
-
-
-def stem_direction(name: str, display: str) -> str | None:
-    """Return "up", "down" or None (no stem, e.g. whole note).
-
-    The display name is authoritative — internal template names have been
-    observed to contradict it (e.g. ``halbe_note_steil_unten`` labelled
-    "Halbe Note Stiel oben").
-    """
-    for text in (display.lower(), name.lower()):
-        if re.search(r"unten|down", text):
-            return "down"
-        if re.search(r"oben|\bup\b", text):
-            return "up"
-    if re.search(r"ganze|whole", f"{name} {display}".lower()):
-        return None
-    return "up"
 
 
 def multi_measure_rest_count(name: str, display: str) -> int | None:
@@ -405,19 +389,10 @@ def head_step(
 ) -> float:
     """Note-head centre in staff steps (half line-spacings above bottom line).
 
-    Variants are cropped tightly to their ink (see
-    ``symbol_library.tighten_all_variants``), so the head sits half a line
-    spacing inside the stem-free end of the detection box. ``offset_lines``
-    is the manual per-variant anchor correction (positive = further down
-    in the image, i.e. a lower pitch).
+    See :func:`note_geometry.head_center_lines`; ``offset_lines`` is the
+    manual per-variant anchor correction (positive = lower pitch).
     """
-    if stem == "up":
-        center = sym_bot + _HEAD_OFFSET
-    elif stem == "down":
-        center = sym_top - _HEAD_OFFSET
-    else:
-        center = (sym_top + sym_bot) / 2.0
-    return (center - offset_lines) * 2.0
+    return head_center_lines(sym_top, sym_bot, stem, offset_lines) * 2.0
 
 
 # ── Model construction ───────────────────────────────────────────────────

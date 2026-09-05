@@ -15,6 +15,9 @@ from mv_hofki.services.scanner.stages.post_matching.rest_filter import RestFilte
 from mv_hofki.services.scanner.stages.post_matching.staff_start import (
     StaffStartFilter,
 )
+from mv_hofki.services.scanner.stages.post_matching.stem_direction_filter import (
+    StemDirectionFilter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ class PostMatchingStage(ProcessingStage):
     def __init__(self) -> None:
         self._operations: list[PostMatchingOperation] = [
             RepeatOverlapFilter(),
+            StemDirectionFilter(),
             BarlineFilter(),
             StaffStartFilter(),
             RestFilter(),

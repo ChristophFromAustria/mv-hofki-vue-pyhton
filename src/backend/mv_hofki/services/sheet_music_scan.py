@@ -293,6 +293,13 @@ async def run_pipeline(
 
     ctx = PipelineContext(image=img, config=config, log_callback=log_callback)
     ctx.metadata["template_categories"] = template_categories
+    ctx.metadata["template_names"] = {t.id: t.name for t in all_templates}
+    # Manual anchor corrections per variant, in line spacings (+ = down)
+    ctx.metadata["variant_anchor_offsets"] = {
+        v.id: float(v.anchor_dy) / float(v.source_line_spacing)
+        for v in variants
+        if v.anchor_dy and v.source_line_spacing and v.source_line_spacing > 0
+    }
     pipeline = Pipeline(stages=stages)
     # Run CPU-heavy pipeline in a thread to avoid blocking the async event loop
     ctx = await asyncio.to_thread(pipeline.run, ctx)

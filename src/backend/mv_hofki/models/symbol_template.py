@@ -45,6 +45,6 @@ class SymbolTemplate(Base):
         """ "up" / "down" / None for notes (drives the default anchor point)."""
         if self.category != "note":
             return None
-        from mv_hofki.services.lilypond_score import stem_direction
+        from mv_hofki.services.scanner.library.note_geometry import stem_direction
 
         return stem_direction(self.name, self.display_name)
