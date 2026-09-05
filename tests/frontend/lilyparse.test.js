@@ -121,6 +121,7 @@ describe("document", () => {
     expect(ms[4].percent).toBe(2);
     expect(ms[6].breakBefore).toBe(true);
     expect(ms[7].section).toBe("Trio");
+    expect(ms[7].breakBefore).toBe(true); // \pseudoIndent starts a new system
     expect(ms[7].keyName).toBe("es");
     expect(ms[8].startBarline).toBe("repeat-begin");
     expect(ms[10].volta).toEqual({ count: 1, position: "begin-end" });

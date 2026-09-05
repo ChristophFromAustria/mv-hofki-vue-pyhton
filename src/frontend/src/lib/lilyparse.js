@@ -484,7 +484,8 @@ export function tokenize(src) {
         if (nums) k += nums[0].length;
         const raw = src.slice(i, k);
         const label = /"((?:[^"\\]|\\.)*)"/.exec(raw);
-        push("section", raw, ws, { label: label ? label[1] : "" });
+        // \pseudoIndent starts a new system by itself (it contains \break)
+        push("section", raw, ws, { label: label ? label[1] : "", lineBreak: true });
         i = k;
         continue;
       } else if (cmd === "\\mark") {
@@ -493,7 +494,7 @@ export function tokenize(src) {
           const k = readBalanced(src, j + mk[0].length - 1);
           const raw = src.slice(i, k);
           const label = /"((?:[^"\\]|\\.)*)"/.exec(raw);
-          push("section", raw, ws, { label: label ? label[1] : "" });
+          push("section", raw, ws, { label: label ? label[1] : "", lineBreak: false });
           i = k;
           continue;
         }
@@ -719,6 +720,10 @@ export function buildMeasures(tokens) {
         break;
       case "section":
         cur.section = t.label;
+        if (t.lineBreak) {
+          if (cur.events.length === 0) cur.breakBefore = true;
+          else pendingBreak = true;
+        }
         break;
       case "repeat":
         if (t.repeatKind === "percent") percentPending = t.count;
