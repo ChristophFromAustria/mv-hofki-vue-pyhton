@@ -820,6 +820,7 @@ async def get_detected_symbols(scan_id: int, db: AsyncSession = Depends(get_db))
         .options(
             joinedload(DetectedSymbol.matched_symbol),
             joinedload(DetectedSymbol.corrected_symbol),
+            joinedload(DetectedSymbol.matched_variant),
         )
         .order_by(DetectedSymbol.sequence_order)
     )

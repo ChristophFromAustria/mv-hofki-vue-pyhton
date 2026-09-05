@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue";
+import { RouterLink } from "vue-router";
 
 const props = defineProps({
   symbol: { type: Object, default: null },
@@ -13,6 +14,28 @@ const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 const snippetUrl = computed(() => {
   if (!props.symbol?.snippet_path) return null;
   return `${BASE}/${props.symbol.snippet_path}`;
+});
+
+// The library variant that produced this match (only for uncorrected hits)
+const matchedVariant = computed(() => {
+  if (!props.symbol || props.symbol.corrected_symbol) return null;
+  return props.symbol.matched_variant ?? null;
+});
+
+const matchedVariantUrl = computed(() => {
+  const v = matchedVariant.value;
+  if (!v?.image_path) return null;
+  const relative = v.image_path.replace(/^data\/symbol_library\//, "");
+  return `${BASE}/symbol-library/${relative}`;
+});
+
+const variantEditorRoute = computed(() => {
+  const v = matchedVariant.value;
+  if (!v) return null;
+  return {
+    name: "symbol-library",
+    query: { template: String(v.template_id), variant: String(v.id) },
+  };
 });
 
 const matchedName = computed(() => {
@@ -49,11 +72,30 @@ function confidenceLabel(conf) {
     <div v-else class="panel-content">
       <h3 class="panel-title">Symbol</h3>
 
-      <!-- Snippet preview -->
-      <div class="snippet-wrap">
-        <img v-if="snippetUrl" :src="snippetUrl" alt="Symbol-Ausschnitt" class="snippet-img" />
-        <div v-else class="snippet-placeholder">Kein Ausschnitt</div>
+      <!-- Snippet preview and the variant that matched it -->
+      <div class="snippet-row">
+        <figure class="snippet-wrap">
+          <img v-if="snippetUrl" :src="snippetUrl" alt="Symbol-Ausschnitt" class="snippet-img" />
+          <div v-else class="snippet-placeholder">Kein Ausschnitt</div>
+          <figcaption class="snippet-caption">Scan</figcaption>
+        </figure>
+        <figure v-if="matchedVariantUrl" class="snippet-wrap">
+          <img :src="matchedVariantUrl" alt="Getroffene Variante" class="snippet-img" />
+          <figcaption class="snippet-caption">
+            Variante #{{ matchedVariant.id }}
+            <span v-if="matchedVariant.anchor_dx || matchedVariant.anchor_dy" class="snippet-note">
+              · Anker korrigiert
+            </span>
+          </figcaption>
+        </figure>
       </div>
+      <RouterLink
+        v-if="variantEditorRoute"
+        :to="variantEditorRoute"
+        class="btn btn-sm variant-link"
+      >
+        Variante bearbeiten
+      </RouterLink>
 
       <!-- Match info -->
       <div class="match-info">
@@ -160,16 +202,42 @@ function confidenceLabel(conf) {
   font-size: 1rem;
 }
 
+.snippet-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
 .snippet-wrap {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
   background: var(--color-canvas-bg);
   border-radius: var(--radius);
-  margin-bottom: 1rem;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.25rem;
   min-height: 80px;
   padding: 0.5rem;
+}
+
+.snippet-caption {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.snippet-note {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.variant-link {
+  display: inline-block;
+  margin-bottom: 1rem;
 }
 
 .snippet-img {

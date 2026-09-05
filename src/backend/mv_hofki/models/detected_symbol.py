@@ -12,6 +12,7 @@ from mv_hofki.db.base import Base
 if TYPE_CHECKING:
     from mv_hofki.models.detected_staff import DetectedStaff
     from mv_hofki.models.symbol_template import SymbolTemplate
+    from mv_hofki.models.symbol_variant import SymbolVariant
 
 
 class DetectedSymbol(Base):
@@ -52,4 +53,7 @@ class DetectedSymbol(Base):
     )
     corrected_symbol: Mapped[SymbolTemplate | None] = relationship(
         foreign_keys=[user_corrected_symbol_id], lazy="joined"
+    )
+    matched_variant: Mapped[SymbolVariant | None] = relationship(
+        foreign_keys=[matched_variant_id], lazy="joined"
     )

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from mv_hofki.schemas.symbol_template import SymbolTemplateRead
+from mv_hofki.schemas.symbol_variant import SymbolVariantRead
 
 
 class AlternativeMatch(BaseModel):
@@ -33,6 +34,7 @@ class DetectedSymbolRead(BaseModel):
     user_corrected_symbol_id: int | None
     matched_symbol: SymbolTemplateRead | None = None
     corrected_symbol: SymbolTemplateRead | None = None
+    matched_variant: SymbolVariantRead | None = None
     alternatives: list[AlternativeMatch] = []
     filtered: bool = False
     filter_reason: str | None = None

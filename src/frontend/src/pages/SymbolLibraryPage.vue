@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from "vue";
+import { useRoute } from "vue-router";
 import { get, post, put, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import SymbolCard from "../components/SymbolCard.vue";
@@ -640,9 +641,27 @@ async function saveAnchor() {
 }
 
 watch([activeCategory, currentPage], fetchTemplates);
+const route = useRoute();
+
+/** Deep link from the scan editor: /notenscanner/bibliothek?template=ID&variant=ID */
+async function openFromQuery() {
+  const templateId = Number(route.query.template);
+  if (!templateId) return;
+  try {
+    const tpl = await get(`/scanner/library/templates/${templateId}`);
+    await openEdit(tpl);
+    const variantId = Number(route.query.variant);
+    const variant = variants.value.find((v) => v.id === variantId);
+    if (variant) openPreview(variant);
+  } catch (e) {
+    error.value = `Vorlage konnte nicht geöffnet werden: ${e.message}`;
+  }
+}
+
 onMounted(() => {
   fetchTemplates();
   fetchGlobalThreshold();
+  openFromQuery();
 });
 </script>
 
