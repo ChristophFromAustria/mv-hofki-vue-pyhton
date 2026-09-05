@@ -1238,6 +1238,175 @@ export function insertEmptyMeasure(doc, measure, where) {
   return { ...doc, tokens };
 }
 
+// ── Key signatures and percent repeats ───────────────────────────────────
+
+/** Major keys offered in the editor, in LilyPond spelling with German labels. */
+export const MAJOR_KEYS = [
+  ["c", "C-Dur"],
+  ["f", "F-Dur"],
+  ["bes", "B-Dur"],
+  ["es", "Es-Dur"],
+  ["as", "As-Dur"],
+  ["des", "Des-Dur"],
+  ["ges", "Ges-Dur"],
+  ["g", "G-Dur"],
+  ["d", "D-Dur"],
+  ["a", "A-Dur"],
+  ["e", "E-Dur"],
+  ["b", "H-Dur"],
+];
+
+function percentRepeatIndex(tokens, measure) {
+  for (let i = measure.tokenStart; i < measure.tokenEnd; i += 1) {
+    const t = tokens[i];
+    if (t.type === "repeat" && t.repeatKind === "percent") return i;
+  }
+  return -1;
+}
+
+/** Index of the "}" closing the brace opened right after `repIdx`. */
+function percentCloseIndex(tokens, repIdx) {
+  let depth = 0;
+  for (let i = repIdx + 1; i < tokens.length; i += 1) {
+    if (tokens[i].type === "open") depth += 1;
+    else if (tokens[i].type === "close") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Set (or remove with keyName = null) the key signature at the start of a
+ * measure. An existing \key in the measure is replaced.
+ */
+export function setKeySignature(doc, measure, keyName, mode = "major") {
+  if (!measure) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  let existing = -1;
+  for (let i = measure.tokenStart; i < measure.tokenEnd; i += 1) {
+    if (tokens[i].type === "key") existing = i;
+  }
+  if (!keyName) {
+    if (existing === -1) return doc;
+    const ws = tokens[existing].ws;
+    tokens.splice(existing, 1);
+    if (tokens[existing] && /\n/.test(ws)) tokens[existing].ws = ws;
+    return { ...doc, tokens };
+  }
+  const tok = {
+    type: "key",
+    uid: nextUid(),
+    raw: `\\key ${keyName} \\${mode}`,
+    ws: " ",
+    keyName,
+    mode,
+  };
+  if (existing >= 0) {
+    tokens[existing] = { ...tok, ws: tokens[existing].ws };
+    return { ...doc, tokens };
+  }
+  // Place the key before the measure's bookkeeping (\\set measureLength, \\markErr),
+  // the percent-repeat wrapper or the first event, whichever comes first.
+  let at = -1;
+  for (let i = measure.tokenStart; i < measure.tokenEnd; i += 1) {
+    const t = tokens[i];
+    const bookkeeping =
+      (t.type === "set" && t.measureLength) ||
+      (t.type === "command" && t.command === "\\markErr") ||
+      (t.type === "repeat" && t.repeatKind === "percent") ||
+      (t.type === "event" && t.kind !== "skip");
+    if (bookkeeping) {
+      at = i;
+      break;
+    }
+  }
+  if (at === -1) {
+    at =
+      measure.endToken !== null && measure.endToken !== undefined
+        ? measure.endToken
+        : measure.tokenEnd;
+  }
+  tok.ws = tokens[at] ? tokens[at].ws : " ";
+  if (tokens[at]) tokens[at] = { ...tokens[at], ws: " " };
+  tokens.splice(at, 0, tok);
+  return { ...doc, tokens };
+}
+
+/**
+ * Set how often a measure is played: 1 removes a percent-repeat wrapper,
+ * 2+ wraps the measure in \repeat percent N { … } or changes N.
+ */
+export function setPercentCount(doc, measure, count) {
+  if (!measure) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  const rep = percentRepeatIndex(tokens, measure);
+  if (count <= 1) {
+    if (rep === -1) return doc;
+    const close = percentCloseIndex(tokens, rep);
+    const open = tokens.findIndex((t, i) => i > rep && t.type === "open");
+    const remove = [rep, open, close].filter((i) => i >= 0).sort((a, b) => b - a);
+    for (const i of remove) {
+      const ws = tokens[i].ws;
+      tokens.splice(i, 1);
+      if (tokens[i] && /\n/.test(ws) && !/\n/.test(tokens[i].ws)) tokens[i].ws = ws;
+    }
+    return { ...doc, tokens };
+  }
+  if (rep >= 0) {
+    tokens[rep] = { ...tokens[rep], raw: `\\repeat percent ${count}`, count };
+    return { ...doc, tokens };
+  }
+  if (!measure.events.length) return doc;
+  const first = measure.events[0];
+  const last = measure.events[measure.events.length - 1];
+  tokens.splice(last + 1, 0, { type: "close", raw: "}", ws: " ", uid: nextUid() });
+  tokens.splice(
+    first,
+    0,
+    {
+      type: "repeat",
+      raw: `\\repeat percent ${count}`,
+      ws: tokens[first].ws,
+      uid: nextUid(),
+      repeatKind: "percent",
+      count,
+    },
+    { type: "open", raw: "{", ws: " ", uid: nextUid() },
+  );
+  tokens[first + 2] = { ...tokens[first + 2], ws: " " };
+  return { ...doc, tokens };
+}
+
+/**
+ * Drop percent repeats whose body has no events left (LilyPond aborts on
+ * them). Only bookkeeping tokens may remain inside such a body.
+ */
+function dropEmptyPercentRepeats(tokens) {
+  for (let rep = tokens.length - 1; rep >= 0; rep -= 1) {
+    const t = tokens[rep];
+    if (t.type !== "repeat" || t.repeatKind !== "percent") continue;
+    const open = tokens.findIndex((x, i) => i > rep && x.type === "open");
+    const close = percentCloseIndex(tokens, rep);
+    if (open === -1 || close === -1) continue;
+    const inner = tokens.slice(open + 1, close);
+    if (inner.some((x) => x.type === "event")) continue;
+    const disposable = (x) =>
+      (x.type === "command" && (x.command === "\\markErr" || x.command === "\\unmarkErr")) ||
+      (x.type === "set" && x.measureLength);
+    const remove = [
+      close,
+      ...inner.map((_, k) => open + 1 + k).filter((i) => disposable(tokens[i])),
+      open,
+      rep,
+    ];
+    remove.sort((a, b) => b - a);
+    for (const i of remove) tokens.splice(i, 1);
+  }
+  return tokens;
+}
+
 // ── Normalization (measureLength / markErr bookkeeping) ──────────────────
 
 const MOMENT = (f) => `\\set Timing.measureLength = #(ly:make-moment ${f.n}/${f.d})`;
@@ -1250,7 +1419,7 @@ const MOMENT = (f) => `\\set Timing.measureLength = #(ly:make-moment ${f.n}/${f.
  * Percent repeats and multi-measure rests are left untouched.
  */
 export function normalizeDocument(doc) {
-  const tokens = cloneTokens(doc.tokens);
+  const tokens = dropEmptyPercentRepeats(cloneTokens(doc.tokens));
   const measures = buildMeasures(tokens);
   let effective = null;
   let timeLen = null;

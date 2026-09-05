@@ -47,6 +47,9 @@ import {
   ARTICULATIONS,
   DYNAMICS,
   BARLINE_TYPES,
+  MAJOR_KEYS,
+  setKeySignature,
+  setPercentCount,
   normalizeDocument,
   keyFlats,
   keyAlteration,
@@ -75,6 +78,7 @@ const parseError = ref(null);
 // Selection: exactly one of these is set
 const selected = ref(null); // token index of a note/rest
 const selectedMeasure = ref(null); // whole measure (index) selected via its number
+const selectedCell = ref(null); // printed number of the clicked cell (percent repeats)
 const selectedBarline = ref(null); // index of the measure whose end barline is selected
 // Context menu: { x, y } while open
 const menu = ref(null);
@@ -196,6 +200,9 @@ function measureHints(m) {
 const selectedMeasureInfo = computed(() => {
   const m = currentMeasure();
   if (!m) return null;
+  if (selectedIsRepeatCell.value) {
+    return `Takt ${selectedCell.value} · Wiederholung von Takt ${m.number}`;
+  }
   const hints = measureHints(m);
   return `${measureLabel(m)}${hints.length ? " · " + hints.join(" · ") : ""}`;
 });
@@ -209,6 +216,7 @@ const measureSummary = computed(() => {
 function clearSelection() {
   selected.value = null;
   selectedMeasure.value = null;
+  selectedCell.value = null;
   selectedBarline.value = null;
 }
 
@@ -217,10 +225,17 @@ function selectNote(tokenIndex) {
   selected.value = tokenIndex;
 }
 
-function selectMeasure(index) {
+function selectMeasure(index, cellNumber = null) {
   clearSelection();
   selectedMeasure.value = index;
+  selectedCell.value = cellNumber;
 }
+
+/** True when a repeated (percent) cell rather than the written measure is selected. */
+const selectedIsRepeatCell = computed(() => {
+  const m = selectedMeasure.value !== null ? measures.value[selectedMeasure.value] : null;
+  return !!m && m.percent !== null && selectedCell.value !== null && selectedCell.value > m.number;
+});
 
 function selectBarline(index) {
   clearSelection();
@@ -373,6 +388,13 @@ function deleteSelection() {
   if (selectedMeasure.value !== null && selected.value === null) {
     const m = measures.value[selectedMeasure.value];
     if (!m) return;
+    if (selectedIsRepeatCell.value) {
+      const idx = m.index;
+      commit(setPercentCount(doc.value, m, m.percent - 1), null);
+      selectMeasure(idx);
+      scheduleRender();
+      return;
+    }
     const next = deleteMeasure(doc.value, m);
     selectedMeasure.value = null;
     commit(next, null);
@@ -444,6 +466,30 @@ function measureInsert(where) {
   commit(next, null);
   const idx = where === "after" ? m.index + 1 : m.index;
   if (measures.value[idx]) selectMeasure(idx);
+  scheduleRender();
+}
+
+function repeatCountChange(delta) {
+  const m = currentMeasure();
+  if (!m) return;
+  const idx = m.index;
+  const count = (m.percent ?? 1) + delta;
+  const next = setPercentCount(doc.value, m, Math.max(1, count));
+  if (next === doc.value) return;
+  commit(next, null);
+  selectMeasure(idx);
+  scheduleRender();
+}
+
+function keySet(keyName) {
+  const m = currentMeasure();
+  if (!m) return;
+  const idx = m.index;
+  const keep = selected.value;
+  const next = setKeySignature(doc.value, m, keyName);
+  if (next === doc.value) return;
+  commit(next, keep);
+  if (keep === null) selectMeasure(idx);
   scheduleRender();
 }
 
@@ -523,6 +569,17 @@ const menuItems = computed(() => {
       }
     }
     items.push({ type: "sep" });
+    const nm = measureOfToken(selected.value);
+    if (nm) {
+      items.push({
+        type: "item",
+        label: `${measureLabel(nm)} auswählen`,
+        action: () => {
+          selectMeasure(nm.index);
+          scheduleRender();
+        },
+      });
+    }
     if (t.kind !== "spacer" && t.kind !== "mmrest") {
       items.push({ type: "item", label: "Note ↔ Pause", action: restToggle });
     }
@@ -568,6 +625,34 @@ const menuItems = computed(() => {
       label: "Leeren Takt danach einfügen",
       action: () => measureInsert("after"),
     });
+    items.push({ type: "header", label: "Taktwiederholung" });
+    items.push({
+      type: "item",
+      label:
+        m.percent === null ? "Takt wiederholen (2×)" : `Eine Wiederholung mehr (${m.percent + 1}×)`,
+      disabled: !m.events.length,
+      action: () => repeatCountChange(1),
+    });
+    if (m.percent !== null) {
+      items.push({
+        type: "item",
+        label:
+          m.percent > 2 ? `Eine Wiederholung weniger (${m.percent - 1}×)` : "Wiederholung auflösen",
+        action: () => repeatCountChange(-1),
+      });
+    }
+    items.push({ type: "header", label: "Tonart ab hier" });
+    for (const [key, label] of MAJOR_KEYS) {
+      items.push({
+        type: "radio",
+        label,
+        checked: m.showKey && m.keyName === key && m.mode === "major",
+        action: () => keySet(key),
+      });
+    }
+    if (m.showKey && m.index > 0) {
+      items.push({ type: "item", label: "Tonartwechsel entfernen", action: () => keySet(null) });
+    }
     if (m.endToken !== null && m.endToken !== undefined) {
       const current = barlineTypeOf(doc.value.tokens, m);
       items.push({ type: "header", label: "Taktstrich am Ende" });
@@ -611,6 +696,8 @@ function runMenuItem(item) {
   if (item.disabled) return;
   closeMenu();
   item.action();
+  // keep keyboard navigation alive: focus returns to the editor
+  nextTick(() => container.value?.focus());
 }
 
 function openMenuFromButton() {
@@ -637,7 +724,8 @@ function hitTarget(el) {
   const target = el.closest("g.vf-stavenote, [id^='vf-empty-'], [id^='vf-bar-'], [id^='vf-mnum-']");
   if (!target) return null;
   if (target.id.startsWith("vf-empty-") || target.id.startsWith("vf-mnum-")) {
-    return { kind: "measure", index: Number(target.dataset.measure) };
+    const cell = target.dataset.cell !== undefined ? Number(target.dataset.cell) : null;
+    return { kind: "measure", index: Number(target.dataset.measure), cell };
   }
   if (target.id.startsWith("vf-bar-"))
     return { kind: "barline", index: Number(target.dataset.measure) };
@@ -648,7 +736,7 @@ function hitTarget(el) {
 function applyHit(hit) {
   if (hit.kind === "note") selectNote(hit.tokenIndex);
   else if (hit.kind === "barline") selectBarline(hit.index);
-  else selectMeasure(hit.index);
+  else selectMeasure(hit.index, hit.cell ?? null);
   container.value?.focus();
 }
 
@@ -698,7 +786,13 @@ function moveSelection(delta) {
   const order = measures.value.flatMap((m) => m.events);
   if (!order.length) return;
   if (selected.value === null) {
-    selectNote(delta > 0 ? order[0] : order[order.length - 1]);
+    // Start inside the selected measure when there is one, else at the score's edge
+    const m = currentMeasure();
+    if (m && m.events.length) {
+      selectNote(delta > 0 ? m.events[0] : m.events[m.events.length - 1]);
+    } else {
+      selectNote(delta > 0 ? order[0] : order[order.length - 1]);
+    }
   } else {
     const pos = order.indexOf(selected.value);
     const next = Math.min(order.length - 1, Math.max(0, pos + delta));
@@ -729,6 +823,7 @@ function onKeydown(e) {
   }
   if (menu.value && e.key === "Escape") {
     closeMenu();
+    nextTick(() => container.value?.focus());
     return;
   }
   switch (e.key) {
@@ -1043,10 +1138,14 @@ function render() {
       if (numGroup) {
         numGroup.style.cursor = "pointer";
         numGroup.dataset.measure = String(m.index);
+        numGroup.dataset.cell = String(cell.number);
       }
 
-      // Whole-measure selection outline
-      if (selectedMeasure.value === m.index) {
+      // Whole-measure selection outline (for percent repeats only the clicked cell)
+      const cellSelected =
+        selectedMeasure.value === m.index &&
+        (selectedCell.value === null ? isMusic : selectedCell.value === cell.number);
+      if (cellSelected) {
         ctx.rect(x + 1, y + 10, item.w - 2, 84, {
           fill: colorSel,
           "fill-opacity": 0.06,

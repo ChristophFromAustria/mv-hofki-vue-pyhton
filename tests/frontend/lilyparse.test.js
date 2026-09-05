@@ -22,6 +22,8 @@ import {
   setDynamic,
   setHairpin,
   eventDecorations,
+  setKeySignature,
+  setPercentCount,
   toggleRest,
   normalizeDocument,
   parsePitch,
@@ -270,6 +272,47 @@ describe("editing", () => {
     expect(serializeDocument(d)).toContain(
       "\\time 2/2\n    r1 |\n    \\set Timing.measureLength = #(ly:make-moment 3/4) \\markErr bes,2->\\f d4-> \\unmarkErr |",
     );
+  });
+
+  it("sets and removes key signatures", () => {
+    let d = setKeySignature(doc, ms[1], "es");
+    expect(serializeDocument(d)).toContain(
+      "\n    \\key es \\major \\set Timing.measureLength = #(ly:make-moment 1/1) f2-> a2-> |",
+    );
+    expect(buildMeasures(d.tokens)[1].keyName).toBe("es");
+    // existing key is replaced, and can be removed
+    d = setKeySignature(doc, ms[7], "f");
+    expect(serializeDocument(d)).toContain('8 \\key f \\major es4\\f');
+    d = setKeySignature(doc, ms[7], null);
+    expect(serializeDocument(d)).not.toContain("\\key es \\major");
+    // percent measure: key goes before the repeat
+    d = setKeySignature(doc, ms[4], "g");
+    expect(serializeDocument(d)).toContain("\\key g \\major \\repeat percent 2 { c4 r4 f4 r4 } |");
+  });
+
+  it("wraps, changes and unwraps percent repeats", () => {
+    let d = setPercentCount(doc, ms[1], 2);
+    expect(serializeDocument(d)).toContain("\\repeat percent 2 { f2-> a2-> } |");
+    expect(buildMeasures(d.tokens)[1].percent).toBe(2);
+    d = setPercentCount(d, buildMeasures(d.tokens)[1], 3);
+    expect(serializeDocument(d)).toContain("\\repeat percent 3 { f2-> a2-> } |");
+    d = setPercentCount(d, buildMeasures(d.tokens)[1], 1);
+    expect(serializeDocument(d)).toContain("#(ly:make-moment 1/1) f2-> a2-> |");
+    expect(serializeDocument(d)).not.toContain("percent 3");
+    expect(buildMeasures(d.tokens)[1].percent).toBeNull();
+  });
+
+  it("drops percent repeats that lost all their events", () => {
+    const idx = ms[4].events; // c4 r4 f4 r4 inside \repeat percent 2 { }
+    let d = doc;
+    for (const i of [...idx].reverse()) d = deleteEvent(d, i);
+    const code = serializeDocument(normalizeDocument(d));
+    expect(code).not.toContain("\\repeat percent");
+    // the measure stays as an empty measure, the invalid wrapper is gone
+    const after = buildMeasures(normalizeDocument(d).tokens);
+    expect(after).toHaveLength(ms.length);
+    expect(after[4].events).toHaveLength(0);
+    expect(after[4].percent).toBeNull();
   });
 
   it("toggles note and rest", () => {
