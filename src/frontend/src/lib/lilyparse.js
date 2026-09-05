@@ -728,7 +728,7 @@ export function buildMeasures(tokens) {
       case "repeat":
         if (t.repeatKind === "percent") percentPending = t.count;
         else if (t.repeatKind === "volta") {
-          pendingRepeatBegin = true;
+          // The measure that is open right now is the first of the repeat.
           cur.startBarline = "repeat-begin";
           stack.push({ kind: "repeat-volta-pending", count: t.count });
         }
@@ -1018,6 +1018,223 @@ export function removeBarline(doc, measure) {
   tokens.splice(measure.endToken, 1);
   const next = tokens[measure.endToken];
   if (next) next.ws = " ";
+  return { ...doc, tokens };
+}
+
+// ── Decorations (articulations, dynamics, hairpins) ──────────────────────
+
+export const ARTICULATIONS = {
+  accent: { token: "->", label: "Akzent" },
+  staccato: { token: "-.", label: "Staccato" },
+  tenuto: { token: "--", label: "Tenuto" },
+  marcato: { token: "-^", label: "Marcato" },
+  fermata: { token: "\\fermata", label: "Fermate" },
+};
+
+export const DYNAMICS = ["pp", "p", "mp", "mf", "f", "ff", "sfz", "fp"];
+
+const HAIRPIN_TOKENS = { cresc: "\\<", decresc: "\\>", end: "\\!" };
+
+/** Split an event suffix into its pieces (articulations, dynamics, markup …). */
+export function splitSuffix(suffix) {
+  const pieces = [];
+  let i = 0;
+  const src = suffix || "";
+  while (i < src.length) {
+    const rest = src.slice(i);
+    const m = SUFFIX_PIECE_RE.exec(rest);
+    if (m) {
+      pieces.push(m[0]);
+      i += m[0].length;
+      continue;
+    }
+    const mk = /^[_^-]?\\markup\s*\{/.exec(rest);
+    if (mk) {
+      const end = readBalanced(src, i + mk[0].length - 1);
+      pieces.push(src.slice(i, end));
+      i = end;
+      continue;
+    }
+    // unknown character: keep it attached to the previous piece
+    if (pieces.length) pieces[pieces.length - 1] += src[i];
+    else pieces.push(src[i]);
+    i += 1;
+  }
+  return pieces;
+}
+
+/** Describe the decorations of an event for menus. */
+export function eventDecorations(tok) {
+  const pieces = splitSuffix(tok.suffix);
+  const articulations = new Set();
+  for (const [name, def] of Object.entries(ARTICULATIONS)) {
+    if (pieces.includes(def.token)) articulations.add(name);
+  }
+  const dynamic = pieces.map((p) => p.slice(1)).find((p) => DYNAMICS.includes(p)) || null;
+  let hairpin = null;
+  if (pieces.includes("\\<")) hairpin = "cresc";
+  else if (pieces.includes("\\>")) hairpin = "decresc";
+  else if (pieces.includes("\\!")) hairpin = "end";
+  return { articulations, dynamic, hairpin };
+}
+
+function withSuffix(doc, tokenIndex, fn) {
+  const tokens = cloneTokens(doc.tokens);
+  const t = tokens[tokenIndex];
+  if (!t || t.type !== "event") return doc;
+  t.suffix = fn(splitSuffix(t.suffix), t).join("");
+  return { ...doc, tokens };
+}
+
+export function toggleArticulation(doc, tokenIndex, name) {
+  const def = ARTICULATIONS[name];
+  if (!def) return doc;
+  return withSuffix(doc, tokenIndex, (pieces, t) => {
+    if (t.kind !== "note") return pieces;
+    return pieces.includes(def.token)
+      ? pieces.filter((p) => p !== def.token)
+      : [...pieces, def.token];
+  });
+}
+
+/** Set the dynamic mark (\\p, \\f …) of an event; null removes it. */
+export function setDynamic(doc, tokenIndex, name) {
+  return withSuffix(doc, tokenIndex, (pieces) => {
+    const kept = pieces.filter((p) => !DYNAMICS.includes(p.slice(1)) || !p.startsWith("\\"));
+    return name ? [...kept, `\\${name}`] : kept;
+  });
+}
+
+/** Set the hairpin mark of an event: "cresc", "decresc", "end" or null. */
+export function setHairpin(doc, tokenIndex, kind) {
+  return withSuffix(doc, tokenIndex, (pieces) => {
+    const kept = pieces.filter((p) => !Object.values(HAIRPIN_TOKENS).includes(p));
+    return kind && HAIRPIN_TOKENS[kind] ? [...kept, HAIRPIN_TOKENS[kind]] : kept;
+  });
+}
+
+// ── Barline and measure operations ───────────────────────────────────────
+
+export const BARLINE_TYPES = {
+  single: { lily: null, label: "Einfach" },
+  double: { lily: "||", label: "Doppelt" },
+  end: { lily: "|.", label: "Schluss" },
+  "repeat-begin": { lily: ".|:", label: "Wiederholung Anfang" },
+  "repeat-end": { lily: ":|.", label: "Wiederholung Ende" },
+  "repeat-both": { lily: ":|.|:", label: "Wiederholung beidseitig" },
+};
+
+/** The barline type actually written at the end of a measure. */
+export function barlineTypeOf(tokens, measure) {
+  if (!measure || measure.endToken === null || measure.endToken === undefined) return null;
+  const t = tokens[measure.endToken];
+  if (!t) return null;
+  if (t.type === "bar") return "single";
+  if (t.type === "barline") return BAR_TYPE_MAP[t.barType] || "single";
+  return null;
+}
+
+export function setBarlineType(doc, measure, type) {
+  const def = BARLINE_TYPES[type];
+  if (!def || !measure || measure.endToken === null || measure.endToken === undefined) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  const old = tokens[measure.endToken];
+  if (!old || (old.type !== "bar" && old.type !== "barline")) return doc;
+  tokens[measure.endToken] = def.lily
+    ? { type: "barline", raw: `\\bar "${def.lily}"`, ws: old.ws, uid: nextUid(), barType: def.lily }
+    : { type: "bar", raw: "|", ws: old.ws, uid: nextUid() };
+  return { ...doc, tokens };
+}
+
+/** Remove the barline ending `measure` outright (merging with the next measure). */
+export function deleteBarline(doc, measure) {
+  if (!measure || measure.endToken === null || measure.endToken === undefined) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  const t = tokens[measure.endToken];
+  if (!t || (t.type !== "bar" && t.type !== "barline")) return doc;
+  tokens.splice(measure.endToken, 1);
+  const next = tokens[measure.endToken];
+  if (next) next.ws = " ";
+  return { ...doc, tokens };
+}
+
+/**
+ * Delete a whole measure: its events, its end barline and, for percent
+ * repeats, the \\repeat wrapper. Structural tokens (clef, key, repeats
+ * braces, breaks) are kept and carry over to the next measure.
+ */
+export function deleteMeasure(doc, measure) {
+  if (!measure) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  const remove = new Set(measure.events);
+  if (measure.endToken !== null && measure.endToken !== undefined) remove.add(measure.endToken);
+  if (measure.percent !== null) {
+    const rep = tokens.findIndex(
+      (t, i) =>
+        i >= measure.tokenStart &&
+        i < measure.tokenEnd &&
+        t.type === "repeat" &&
+        t.repeatKind === "percent",
+    );
+    if (rep >= 0) {
+      let depth = 0;
+      for (let i = rep + 1; i < measure.tokenEnd; i += 1) {
+        remove.add(i);
+        if (tokens[i].type === "open") depth += 1;
+        if (tokens[i].type === "close") {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      remove.add(rep);
+    }
+  }
+  const kept = tokens.filter((_, i) => !remove.has(i));
+  return { ...doc, tokens: kept };
+}
+
+/** Insert an empty measure (full-measure rests + barline) before or after `measure`. */
+export function insertEmptyMeasure(doc, measure, where) {
+  if (!measure) return doc;
+  const tokens = cloneTokens(doc.tokens);
+  const rests = durationTokensFor(measure.timeLen).map((d, i) => ({
+    type: "event",
+    uid: nextUid(),
+    ws: i === 0 ? "\n    " : " ",
+    raw: "",
+    kind: "rest",
+    pitches: [],
+    duration: { ...d },
+    suffix: "",
+  }));
+  const bar = { type: "bar", raw: "|", ws: " ", uid: nextUid() };
+  let at;
+  let inserted;
+  if (where === "after") {
+    if (measure.endToken !== null && measure.endToken !== undefined) {
+      at = measure.endToken + 1;
+      inserted = [...rests, bar];
+    } else {
+      at = measure.tokenEnd;
+      inserted = [{ ...bar, ws: " " }, ...rests];
+    }
+  } else {
+    const percentIdx = tokens.findIndex(
+      (t, i) =>
+        i >= measure.tokenStart &&
+        i < measure.tokenEnd &&
+        t.type === "repeat" &&
+        t.repeatKind === "percent",
+    );
+    if (percentIdx >= 0) at = percentIdx;
+    else if (measure.events.length) at = measure.events[0];
+    else if (measure.endToken !== null && measure.endToken !== undefined) at = measure.endToken;
+    else at = measure.tokenEnd;
+    inserted = [...rests, bar];
+    // the displaced token continues on a new line
+    if (tokens[at]) tokens[at].ws = "\n    ";
+  }
+  tokens.splice(at, 0, ...inserted);
   return { ...doc, tokens };
 }
 

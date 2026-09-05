@@ -35,7 +35,18 @@ import {
   deleteEvent,
   insertEvent,
   insertBarline,
-  removeBarline,
+  deleteBarline,
+  setBarlineType,
+  barlineTypeOf,
+  deleteMeasure,
+  insertEmptyMeasure,
+  toggleArticulation,
+  setDynamic,
+  setHairpin,
+  eventDecorations,
+  ARTICULATIONS,
+  DYNAMICS,
+  BARLINE_TYPES,
   normalizeDocument,
   keyFlats,
   keyAlteration,
@@ -57,8 +68,13 @@ const container = ref(null);
 const doc = ref(null);
 const measures = ref([]);
 const parseError = ref(null);
-const selected = ref(null); // token index
-const selectedMeasure = ref(null); // measure index (for empty-measure inserts)
+// Selection: exactly one of these is set
+const selected = ref(null); // token index of a note/rest
+const selectedMeasure = ref(null); // whole measure (index) selected via its number
+const selectedBarline = ref(null); // index of the measure whose end barline is selected
+// Context menu: { x, y } while open
+const menu = ref(null);
+const menuButton = ref(null);
 const history = ref([]);
 const future = ref([]);
 const width = ref(900);
@@ -98,6 +114,10 @@ const selectedToken = computed(() => {
 });
 
 const selectedInfo = computed(() => {
+  if (selectedBarlineMeasure.value) {
+    const type = BARLINE_TYPES[selectedBarlineType.value]?.label || "Taktstrich";
+    return `Taktstrich nach ${measureLabel(selectedBarlineMeasure.value)} · ${type}`;
+  }
   const t = selectedToken.value;
   if (!t) return null;
   const parts = [];
@@ -137,6 +157,41 @@ const measureSummary = computed(() => {
   return { total, bad };
 });
 
+function clearSelection() {
+  selected.value = null;
+  selectedMeasure.value = null;
+  selectedBarline.value = null;
+}
+
+function selectNote(tokenIndex) {
+  clearSelection();
+  selected.value = tokenIndex;
+}
+
+function selectMeasure(index) {
+  clearSelection();
+  selectedMeasure.value = index;
+}
+
+function selectBarline(index) {
+  clearSelection();
+  selectedBarline.value = index;
+}
+
+const selectedBarlineMeasure = computed(() =>
+  selectedBarline.value === null ? null : measures.value[selectedBarline.value] || null,
+);
+
+const selectedBarlineType = computed(() =>
+  doc.value && selectedBarlineMeasure.value
+    ? barlineTypeOf(doc.value.tokens, selectedBarlineMeasure.value)
+    : null,
+);
+
+const hasSelection = computed(
+  () => selected.value !== null || selectedMeasure.value !== null || selectedBarline.value !== null,
+);
+
 // ── Parsing ──────────────────────────────────────────────────────────────
 
 function loadCode(code) {
@@ -158,7 +213,7 @@ watch(
     // Only reload when the code differs from what we produced ourselves.
     if (doc.value && serializeDocument(doc.value) === code) return;
     loadCode(code);
-    selected.value = null;
+    clearSelection();
     scheduleRender();
   },
 );
@@ -181,6 +236,14 @@ function commit(nextDoc, nextSelected = selected.value) {
   } else {
     selected.value = null;
   }
+  // measure/barline selections refer to measure indices that may have shifted
+  if (selectedMeasure.value !== null && !measures.value[selectedMeasure.value]) {
+    selectedMeasure.value = null;
+  }
+  if (selectedBarline.value !== null && !measures.value[selectedBarline.value]) {
+    selectedBarline.value = null;
+  }
+  menu.value = null;
   emit("update:code", serializeDocument(normalized));
   scheduleRender();
 }
@@ -190,7 +253,7 @@ function undo() {
   future.value.push(serializeDocument(doc.value));
   const code = history.value.pop();
   loadCode(code);
-  selected.value = null;
+  clearSelection();
   emit("update:code", code);
   scheduleRender();
 }
@@ -200,7 +263,7 @@ function redo() {
   history.value.push(serializeDocument(doc.value));
   const code = future.value.pop();
   loadCode(code);
-  selected.value = null;
+  clearSelection();
   emit("update:code", code);
   scheduleRender();
 }
@@ -210,7 +273,7 @@ function resetToOriginal() {
   history.value = [];
   future.value = [];
   loadCode(props.originalCode);
-  selected.value = null;
+  clearSelection();
   emit("update:code", props.originalCode);
   scheduleRender();
 }
@@ -246,6 +309,31 @@ function restToggle() {
   commit(toggleRest(doc.value, selected.value, defaultPitchForSelection()));
 }
 
+function deleteSelection() {
+  if (selectedBarlineMeasure.value) {
+    const m = selectedBarlineMeasure.value;
+    const next = deleteBarline(doc.value, m);
+    if (next !== doc.value) {
+      selectedBarline.value = null;
+      commit(next, null);
+      selectMeasure(Math.min(m.index, measures.value.length - 1));
+      scheduleRender();
+    }
+    return;
+  }
+  if (selectedMeasure.value !== null && selected.value === null) {
+    const m = measures.value[selectedMeasure.value];
+    if (!m) return;
+    const next = deleteMeasure(doc.value, m);
+    selectedMeasure.value = null;
+    commit(next, null);
+    if (measures.value.length) selectMeasure(Math.min(m.index, measures.value.length - 1));
+    scheduleRender();
+    return;
+  }
+  remove();
+}
+
 function remove() {
   if (!selectedToken.value) return;
   const m = measureOfToken(selected.value);
@@ -269,12 +357,65 @@ function barlineInsert() {
 }
 
 function barlineRemove() {
-  const m = currentMeasure();
+  const m = selectedBarlineMeasure.value || currentMeasure();
   if (!m) return;
   const keep = selected.value;
-  const next = removeBarline(doc.value, m);
-  if (next !== doc.value) commit(next, keep);
+  const next = deleteBarline(doc.value, m);
+  if (next !== doc.value) {
+    selectedBarline.value = null;
+    commit(next, keep);
+  }
 }
+
+function barlineSetType(type) {
+  const m = selectedBarlineMeasure.value || currentMeasure();
+  if (!m) return;
+  const keepBar = selectedBarline.value;
+  const keepMeasure = selectedMeasure.value;
+  const next = setBarlineType(doc.value, m, type);
+  if (next !== doc.value) {
+    commit(next, selected.value);
+    selectedBarline.value = keepBar;
+    selectedMeasure.value = keepMeasure;
+    scheduleRender();
+  }
+}
+
+function measureDelete() {
+  const m = currentMeasure();
+  if (!m) return;
+  selectMeasure(m.index);
+  deleteSelection();
+}
+
+function measureInsert(where) {
+  const m = currentMeasure();
+  if (!m) return;
+  const next = insertEmptyMeasure(doc.value, m, where);
+  commit(next, null);
+  const idx = where === "after" ? m.index + 1 : m.index;
+  if (measures.value[idx]) selectMeasure(idx);
+  scheduleRender();
+}
+
+function articulationToggle(name) {
+  if (!requireNote()) return;
+  commit(toggleArticulation(doc.value, selected.value, name));
+}
+
+function dynamicSet(name) {
+  if (!selectedToken.value) return;
+  commit(setDynamic(doc.value, selected.value, name));
+}
+
+function hairpinSet(kind) {
+  if (!selectedToken.value) return;
+  commit(setHairpin(doc.value, selected.value, kind));
+}
+
+const selectedDecorations = computed(() =>
+  selectedToken.value ? eventDecorations(selectedToken.value) : null,
+);
 
 const canInsertBarline = computed(() => {
   const t = selectedToken.value;
@@ -286,9 +427,183 @@ const canInsertBarline = computed(() => {
 });
 
 const canRemoveBarline = computed(() => {
-  const m = currentMeasure();
+  const m = selectedBarlineMeasure.value || currentMeasure();
   return !!m && m.endToken !== null && m.endToken !== undefined;
 });
+
+// ── Context menu ─────────────────────────────────────────────────────────
+
+const menuItems = computed(() => {
+  const items = [];
+  const t = selectedToken.value;
+  if (t) {
+    const deco = selectedDecorations.value;
+    if (t.kind === "note") {
+      items.push({ type: "header", label: "Artikulation" });
+      for (const [name, def] of Object.entries(ARTICULATIONS)) {
+        items.push({
+          type: "check",
+          label: def.label,
+          checked: deco.articulations.has(name),
+          action: () => articulationToggle(name),
+        });
+      }
+    }
+    if (t.kind !== "mmrest") {
+      items.push({ type: "header", label: "Dynamik" });
+      for (const dyn of DYNAMICS) {
+        items.push({
+          type: "radio",
+          label: dyn,
+          checked: deco.dynamic === dyn,
+          action: () => dynamicSet(deco.dynamic === dyn ? null : dyn),
+        });
+      }
+      items.push({ type: "header", label: "Gabel" });
+      for (const [kind, label] of [
+        ["cresc", "Crescendo beginnen"],
+        ["decresc", "Decrescendo beginnen"],
+        ["end", "Gabel beenden"],
+      ]) {
+        items.push({
+          type: "radio",
+          label,
+          checked: deco.hairpin === kind,
+          action: () => hairpinSet(deco.hairpin === kind ? null : kind),
+        });
+      }
+    }
+    items.push({ type: "sep" });
+    if (t.kind !== "spacer" && t.kind !== "mmrest") {
+      items.push({ type: "item", label: "Note ↔ Pause", action: restToggle });
+    }
+    items.push({
+      type: "item",
+      label: "Taktstrich danach einfügen",
+      disabled: !canInsertBarline.value,
+      action: barlineInsert,
+    });
+    items.push({ type: "item", label: "Löschen", danger: true, action: remove });
+    return items;
+  }
+  const bm = selectedBarlineMeasure.value;
+  if (bm) {
+    items.push({ type: "header", label: "Taktstrich" });
+    for (const [type, def] of Object.entries(BARLINE_TYPES)) {
+      items.push({
+        type: "radio",
+        label: def.label,
+        checked: selectedBarlineType.value === type,
+        action: () => barlineSetType(type),
+      });
+    }
+    items.push({ type: "sep" });
+    items.push({
+      type: "item",
+      label: "Taktstrich entfernen",
+      danger: true,
+      action: deleteSelection,
+    });
+    return items;
+  }
+  const m = currentMeasure();
+  if (m) {
+    items.push({ type: "header", label: measureLabel(m) });
+    items.push({
+      type: "item",
+      label: "Leeren Takt davor einfügen",
+      action: () => measureInsert("before"),
+    });
+    items.push({
+      type: "item",
+      label: "Leeren Takt danach einfügen",
+      action: () => measureInsert("after"),
+    });
+    if (m.endToken !== null && m.endToken !== undefined) {
+      const current = barlineTypeOf(doc.value.tokens, m);
+      items.push({ type: "header", label: "Taktstrich am Ende" });
+      for (const [type, def] of Object.entries(BARLINE_TYPES)) {
+        items.push({
+          type: "radio",
+          label: def.label,
+          checked: current === type,
+          action: () => barlineSetType(type),
+        });
+      }
+    }
+    items.push({ type: "sep" });
+    items.push({ type: "item", label: "Takt löschen", danger: true, action: measureDelete });
+  }
+  return items;
+});
+
+function openMenu(x, y) {
+  if (!hasSelection.value) return;
+  const width = 240;
+  const height = Math.min(window.innerHeight - 16, 40 * Math.min(menuItems.value.length, 12) + 16);
+  menu.value = {
+    x: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
+    y: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
+  };
+  document.addEventListener("pointerdown", onDocumentPointerDown, true);
+}
+
+function closeMenu() {
+  menu.value = null;
+  document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+}
+
+function onDocumentPointerDown(ev) {
+  if (ev.target.closest && ev.target.closest(".context-menu")) return;
+  closeMenu();
+}
+
+function runMenuItem(item) {
+  if (item.disabled) return;
+  closeMenu();
+  item.action();
+}
+
+function openMenuFromButton() {
+  if (menu.value) {
+    closeMenu();
+    return;
+  }
+  const r = menuButton.value?.getBoundingClientRect();
+  if (r) openMenu(r.left, r.bottom + 4);
+}
+
+function onContextMenu(ev) {
+  const hit = hitTarget(ev.target);
+  if (!hit) return;
+  ev.preventDefault();
+  applyHit(hit);
+  scheduleRender();
+  openMenu(ev.clientX, ev.clientY);
+}
+
+/** Resolve an SVG element to a selectable thing: note, barline, measure number, empty measure. */
+function hitTarget(el) {
+  if (!el || !el.closest) return null;
+  const target = el.closest("g.vf-stavenote, [id^='vf-empty-'], [id^='vf-bar-'], [id^='vf-mnum-']");
+  if (!target) return null;
+  if (target.id.startsWith("vf-empty-") || target.id.startsWith("vf-mnum-")) {
+    return { kind: "measure", index: Number(target.dataset.measure) };
+  }
+  if (target.id.startsWith("vf-bar-"))
+    return { kind: "barline", index: Number(target.dataset.measure) };
+  const id = target.id.slice(3);
+  return currentNoteMap.has(id) ? { kind: "note", tokenIndex: currentNoteMap.get(id) } : null;
+}
+
+function applyHit(hit) {
+  if (hit.kind === "note") selectNote(hit.tokenIndex);
+  else if (hit.kind === "barline") selectBarline(hit.index);
+  else selectMeasure(hit.index);
+  container.value?.focus();
+}
+
+let currentNoteMap = new Map();
 
 function defaultPitchForSelection() {
   const t = selectedToken.value;
@@ -334,13 +649,12 @@ function moveSelection(delta) {
   const order = measures.value.flatMap((m) => m.events);
   if (!order.length) return;
   if (selected.value === null) {
-    selected.value = delta > 0 ? order[0] : order[order.length - 1];
+    selectNote(delta > 0 ? order[0] : order[order.length - 1]);
   } else {
     const pos = order.indexOf(selected.value);
     const next = Math.min(order.length - 1, Math.max(0, pos + delta));
-    selected.value = order[next];
+    selectNote(order[next]);
   }
-  selectedMeasure.value = null;
   scheduleRender();
 }
 
@@ -359,6 +673,15 @@ function onKeydown(e) {
     return;
   }
   if (mod) return;
+  if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+    e.preventDefault();
+    openMenuFromButton();
+    return;
+  }
+  if (menu.value && e.key === "Escape") {
+    closeMenu();
+    return;
+  }
   switch (e.key) {
     case "ArrowUp":
       e.preventDefault();
@@ -391,7 +714,7 @@ function onKeydown(e) {
     case "Delete":
     case "Backspace":
       e.preventDefault();
-      remove();
+      deleteSelection();
       break;
     case "n":
       insert("note");
@@ -410,7 +733,7 @@ function onKeydown(e) {
       barlineRemove();
       break;
     case "Escape":
-      selected.value = null;
+      clearSelection();
       scheduleRender();
       break;
     default:
@@ -507,7 +830,7 @@ function layoutRows(cells, availableWidth, mode) {
     const cell = cells[i];
     const prev = i > 0 ? cells[i - 1] : null;
     const w = cellWidth(cell, row.length === 0, prev);
-    const breakBefore = cell.kind === "music" && cell.m.breakBefore;
+    const breakBefore = mode === "lilypond" && cell.kind === "music" && cell.m.breakBefore;
     const overflow = mode === "auto" && rowWidth + w > availableWidth;
     if (row.length && (breakBefore || overflow)) {
       rows.push(row);
@@ -640,12 +963,59 @@ function render() {
       if (isMusic && m.section) stave.setSection(m.section, 0, 0, 12, false);
       stave.setContext(ctx).draw();
 
-      // Printed measure number, small and muted, at the top left of the measure
+      // Printed measure number, small and muted, at the top left of the measure.
+      // Clicking it selects the whole measure.
+      const numGroup = ctx.openGroup("measure-number", `mnum-${m.index}-${cell.number}`);
+      ctx.rect(x, y + 2, 28, 26, { fill: "none", stroke: "none", "pointer-events": "all" });
       ctx.save();
       ctx.setFont("Academico", 9, "normal", "normal");
-      ctx.setFillStyle(colorNumber);
+      ctx.setFillStyle(selectedMeasure.value === m.index ? colorSel : colorNumber);
       ctx.fillText(String(cell.number), x + 3, stave.getYForTopText(0) + 2);
       ctx.restore();
+      ctx.closeGroup();
+      if (numGroup) {
+        numGroup.style.cursor = "pointer";
+        numGroup.dataset.measure = String(m.index);
+      }
+
+      // Whole-measure selection outline
+      if (selectedMeasure.value === m.index) {
+        ctx.rect(x + 1, y + 10, item.w - 2, 84, {
+          fill: colorSel,
+          "fill-opacity": 0.06,
+          stroke: colorSel,
+          "stroke-opacity": 0.7,
+          "stroke-dasharray": "4 3",
+          rx: 4,
+          "pointer-events": "none",
+        });
+      }
+
+      // End barline hit area (last cell of the measure only)
+      if (isLastCellOfMeasure && m.endToken !== null && m.endToken !== undefined) {
+        const isBarSel = selectedBarline.value === m.index;
+        const barGroup = ctx.openGroup("barline-hit", `bar-${m.index}`);
+        ctx.rect(
+          x + item.w - 8,
+          stave.getYForLine(0) - 8,
+          16,
+          stave.getYForLine(4) - stave.getYForLine(0) + 16,
+          isBarSel
+            ? {
+                fill: colorSel,
+                "fill-opacity": 0.25,
+                stroke: colorSel,
+                rx: 3,
+                "pointer-events": "auto",
+              }
+            : { fill: "none", stroke: "none", "pointer-events": "all" },
+        );
+        ctx.closeGroup();
+        if (barGroup) {
+          barGroup.style.cursor = "pointer";
+          barGroup.dataset.measure = String(m.index);
+        }
+      }
 
       if (!isMusic) {
         // Percent repeat: the "%"-like repeat sign centred on the middle line
@@ -745,8 +1115,9 @@ function render() {
         // Empty measure: make it selectable for inserts
         const g = ctx.openGroup("empty-measure", `empty-${m.index}`);
         ctx.rect(x + 2, y + 20, Math.max(1, item.w - 4), 50, {
-          fill: "transparent",
+          fill: "none",
           stroke: "none",
+          "pointer-events": "all",
         });
         ctx.closeGroup();
         if (g) {
@@ -770,22 +1141,13 @@ function render() {
       svg.style.maxWidth = "100%";
       svg.style.height = "auto";
     }
+    currentNoteMap = noteMap;
     svg.addEventListener("pointerdown", (ev) => {
-      const target = ev.target.closest("g.vf-stavenote, [id^='empty-']");
-      if (!target) return;
-      if (target.id.startsWith("empty-")) {
-        selected.value = null;
-        selectedMeasure.value = Number(target.dataset.measure);
-        scheduleRender();
-        return;
-      }
-      const id = target.id.slice(3);
-      if (noteMap.has(id)) {
-        selected.value = noteMap.get(id);
-        selectedMeasure.value = null;
-        container.value?.focus();
-        scheduleRender();
-      }
+      if (ev.button !== 0) return;
+      const hit = hitTarget(ev.target);
+      if (!hit) return;
+      applyHit(hit);
+      scheduleRender();
     });
     for (const id of noteMap.keys()) {
       const g = svg.querySelector(`#vf-${CSS.escape(id)}`);
@@ -939,6 +1301,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  closeMenu();
   if (resizeObserver) resizeObserver.disconnect();
   if (renderTimer) cancelAnimationFrame(renderTimer);
 });
@@ -1093,6 +1456,20 @@ onBeforeUnmount(() => {
       </div>
       <div class="tool-group">
         <button
+          ref="menuButton"
+          type="button"
+          class="tool"
+          :disabled="!hasSelection"
+          :aria-expanded="!!menu"
+          aria-haspopup="menu"
+          title="Aktionen für die Auswahl (Kontextmenü, auch Rechtsklick)"
+          @click="openMenuFromButton"
+        >
+          Aktionen ▾
+        </button>
+      </div>
+      <div class="tool-group">
+        <button
           type="button"
           class="tool"
           :disabled="!history.length"
@@ -1128,10 +1505,12 @@ onBeforeUnmount(() => {
         <span v-if="selectedMeasureInfo" class="status-measure">· {{ selectedMeasureInfo }}</span>
       </span>
       <span v-else-if="selectedMeasureInfo" class="status-sel"
-        >{{ selectedMeasureInfo }} (leer)</span
+        >{{ selectedMeasureInfo }} ·
+        {{ currentMeasure()?.events.length ? "ganzer Takt ausgewählt" : "leer" }}</span
       >
       <span v-else class="status-hint"
-        >Note anklicken, dann Pfeiltasten, Ziffern 1 2 4 8 6, Punkt, n, r, t, b, Entf</span
+        >Note, Taktstrich oder Taktnummer anklicken · Rechtsklick für Aktionen · Pfeiltasten, 1 2 4
+        8 6, Punkt, n, r, t, b, Entf</span
       >
       <span class="status-measures">
         {{ measureSummary.total }} Takte
@@ -1150,7 +1529,38 @@ onBeforeUnmount(() => {
       :hidden="!!parseError"
       @pointermove="onPointerMove"
       @pointerleave="onPointerLeave"
+      @contextmenu="onContextMenu"
     ></div>
+    <div
+      v-if="menu"
+      class="context-menu"
+      role="menu"
+      :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
+    >
+      <template v-for="(item, i) in menuItems" :key="i">
+        <div v-if="item.type === 'header'" class="menu-header">{{ item.label }}</div>
+        <div v-else-if="item.type === 'sep'" class="menu-sep" role="separator"></div>
+        <button
+          v-else
+          type="button"
+          class="menu-item"
+          :class="{ danger: item.danger, checked: item.checked }"
+          :role="
+            item.type === 'item'
+              ? 'menuitem'
+              : item.type === 'check'
+                ? 'menuitemcheckbox'
+                : 'menuitemradio'
+          "
+          :aria-checked="item.type === 'item' ? undefined : !!item.checked"
+          :disabled="item.disabled"
+          @click="runMenuItem(item)"
+        >
+          <span class="menu-mark">{{ item.checked ? "✓" : "" }}</span>
+          {{ item.label }}
+        </button>
+      </template>
+    </div>
     <div
       v-if="tooltip"
       class="measure-tooltip"
@@ -1262,6 +1672,76 @@ onBeforeUnmount(() => {
   font-size: 0.8rem;
   line-height: 1.4;
   pointer-events: none;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 1001;
+  min-width: 220px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 0.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-float);
+}
+
+.menu-header {
+  padding: 0.5rem 0.6rem 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 0.3rem 0;
+  background: var(--color-border);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 0.6rem;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: none;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible {
+  background: var(--color-bg-soft);
+  outline: none;
+}
+
+.menu-item.checked {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.menu-item.danger {
+  color: var(--color-danger);
+}
+
+.menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.menu-mark {
+  display: inline-block;
+  width: 1em;
+  font-size: 0.8rem;
 }
 
 .measure-tooltip strong {

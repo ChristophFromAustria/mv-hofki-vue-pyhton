@@ -13,6 +13,15 @@ import {
   insertEvent,
   insertBarline,
   removeBarline,
+  deleteBarline,
+  setBarlineType,
+  barlineTypeOf,
+  deleteMeasure,
+  insertEmptyMeasure,
+  toggleArticulation,
+  setDynamic,
+  setHairpin,
+  eventDecorations,
   toggleRest,
   normalizeDocument,
   parsePitch,
@@ -124,6 +133,7 @@ describe("document", () => {
     expect(ms[7].breakBefore).toBe(true); // \pseudoIndent starts a new system
     expect(ms[7].keyName).toBe("es");
     expect(ms[8].startBarline).toBe("repeat-begin");
+    expect(ms[9].startBarline).toBeNull(); // only the first measure of the repeat
     expect(ms[10].volta).toEqual({ count: 1, position: "begin-end" });
     expect(ms[10].endBarline).toBe("repeat-end");
     expect(ms[11].volta).toEqual({ count: 2, position: "begin-end" });
@@ -207,6 +217,59 @@ describe("editing", () => {
     const d3 = removeBarline(doc, ms[3]);
     expect(serializeDocument(d3)).toContain("bes,4 bes,4 bes,4 r4 |");
     expect(serializeDocument(d3)).not.toContain('\\bar ".|:"');
+  });
+
+  it("toggles articulations and sets dynamics and hairpins", () => {
+    const idx = ms[0].events[0]; // bes,2->\f
+    expect(eventDecorations(doc.tokens[idx])).toEqual({
+      articulations: new Set(["accent"]),
+      dynamic: "f",
+      hairpin: null,
+    });
+    let d = toggleArticulation(doc, idx, "accent");
+    expect(serializeDocument(d)).toContain("bes,2\\f d4->");
+    d = toggleArticulation(d, idx, "staccato");
+    expect(serializeDocument(d)).toContain("bes,2\\f-. d4->");
+    d = setDynamic(d, idx, "mp");
+    expect(serializeDocument(d)).toContain("bes,2-.\\mp d4->");
+    d = setDynamic(d, idx, null);
+    expect(serializeDocument(d)).toContain("bes,2-. d4->");
+    d = setHairpin(d, idx, "cresc");
+    expect(serializeDocument(d)).toContain("bes,2-.\\< d4->");
+    d = setHairpin(d, idx, "end");
+    expect(serializeDocument(d)).toContain("bes,2-.\\! d4->");
+    // articulations are not added to rests
+    const rest = ms[2].events[1];
+    expect(toggleArticulation(doc, rest, "accent").tokens[rest].suffix).toBe("");
+  });
+
+  it("changes barline types and deletes barlines", () => {
+    expect(barlineTypeOf(doc.tokens, ms[1])).toBe("single");
+    expect(barlineTypeOf(doc.tokens, ms[3])).toBe("repeat-begin");
+    let d = setBarlineType(doc, ms[1], "double");
+    expect(serializeDocument(d)).toContain('f2-> a2-> \\bar "||"');
+    d = setBarlineType(d, ms[3], "single");
+    expect(serializeDocument(d)).toContain("bes,4 bes,4 bes,4 r4 |");
+    d = deleteBarline(doc, ms[3]);
+    expect(serializeDocument(d)).toContain("bes,4 bes,4 bes,4 r4 \\repeat percent 2");
+  });
+
+  it("deletes and inserts whole measures", () => {
+    let d = normalizeDocument(deleteMeasure(doc, ms[2]));
+    expect(serializeDocument(d)).not.toContain("f4 r4 f,2->");
+    expect(buildMeasures(d.tokens)).toHaveLength(ms.length - 1);
+    // percent repeat measure: the wrapper goes too
+    d = deleteMeasure(doc, ms[4]);
+    expect(serializeDocument(d)).not.toContain("\\repeat percent");
+    expect(serializeDocument(d)).toContain('\\bar ".|:"\n    \\set Timing.measureLength = #(ly:make-moment 3/4)');
+    // insert an empty 2/2 measure after measure 2 and before measure 1
+    d = normalizeDocument(insertEmptyMeasure(doc, ms[1], "after"));
+    expect(serializeDocument(d)).toContain("f2-> a2-> |\n    r1 |\n    f4 r4 f,2-> |");
+    expect(buildMeasures(d.tokens)).toHaveLength(ms.length + 1);
+    d = normalizeDocument(insertEmptyMeasure(doc, ms[0], "before"));
+    expect(serializeDocument(d)).toContain(
+      "\\time 2/2\n    r1 |\n    \\set Timing.measureLength = #(ly:make-moment 3/4) \\markErr bes,2->\\f d4-> \\unmarkErr |",
+    );
   });
 
   it("toggles note and rest", () => {
