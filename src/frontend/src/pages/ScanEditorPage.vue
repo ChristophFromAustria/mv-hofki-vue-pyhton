@@ -260,15 +260,19 @@ async function onAnalysisDone() {
   }
 }
 
-async function generateLilypond() {
+const lilypondSource = ref("analysis"); // "analysis" | "edited"
+
+async function generateLilypond(reset = false) {
   if (lilypondLoading.value) return;
   lilypondLoading.value = true;
   try {
-    const result = await post(`/scanner/scans/${props.scanId}/generate-lilypond`);
+    const query = reset ? "?reset=true" : "";
+    const result = await post(`/scanner/scans/${props.scanId}/generate-lilypond${query}`);
     lilypondCode.value = result.lilypond_code;
     lilypondPdfPath.value = result.pdf_path;
     lilypondPngPaths.value = result.png_paths || [];
     lilypondWarnings.value = result.warnings || [];
+    lilypondSource.value = result.source || "analysis";
     showLilypond.value = true;
   } catch (e) {
     statusMessage.value = `LilyPond-Fehler: ${e.message}`;
@@ -283,6 +287,7 @@ function onLilypondRendered(result) {
   lilypondPdfPath.value = result.pdf_path;
   lilypondPngPaths.value = result.png_paths || [];
   lilypondWarnings.value = result.warnings || [];
+  lilypondSource.value = result.source || "edited";
 }
 
 function onAnalysisLogClose() {
@@ -625,7 +630,7 @@ onUnmounted(() => {
             <button
               class="btn btn-sm"
               :disabled="!measures.length || lilypondLoading"
-              @click="generateLilypond"
+              @click="generateLilypond(false)"
             >
               {{ lilypondLoading ? "Generiert..." : "LilyPond" }}
             </button>
@@ -787,7 +792,10 @@ onUnmounted(() => {
       :scan-id="scanId"
       :scan-image-path="scan?.image_path ?? null"
       :staves="staves"
+      :source="lilypondSource"
+      :resetting="lilypondLoading"
       @close="showLilypond = false"
+      @reset="generateLilypond(true)"
       @rendered="onLilypondRendered"
     />
 

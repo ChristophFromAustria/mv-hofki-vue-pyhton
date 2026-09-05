@@ -3,6 +3,7 @@ defineProps({
   open: Boolean,
   title: { type: String, default: "Bestätigung" },
   message: { type: String, default: "" },
+  confirmLabel: { type: String, default: "Löschen" },
 });
 defineEmits(["confirm", "cancel"]);
 </script>
@@ -15,7 +16,7 @@ defineEmits(["confirm", "cancel"]);
         <p style="margin-top: 0.5rem">{{ message }}</p>
         <div class="dialog-actions">
           <button @click="$emit('cancel')">Abbrechen</button>
-          <button class="btn-danger" @click="$emit('confirm')">Löschen</button>
+          <button class="btn-danger" @click="$emit('confirm')">{{ confirmLabel }}</button>
         </div>
       </div>
     </div>

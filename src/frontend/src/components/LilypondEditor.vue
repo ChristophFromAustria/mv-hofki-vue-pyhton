@@ -23,6 +23,7 @@ import {
   Modifier,
   StaveHairpin,
   StaveTie,
+  Curve,
 } from "vexflow/bravura";
 import {
   parseLilypond,
@@ -52,6 +53,11 @@ import {
   setKeyForRange,
   setPercentCount,
   toggleTie,
+  tieAllowed,
+  nextSoundingIndex,
+  placeSlur,
+  removeSlur,
+  findSlurs,
   removeHairpin,
   placeHairpin,
   normalizeDocument,
@@ -177,6 +183,12 @@ const selectedToken = computed(() => {
 });
 
 const selectedInfo = computed(() => {
+  const sl = selectedSlurIndices.value;
+  if (sl) {
+    const from = measureOfToken(sl.start);
+    const to = sl.end !== null ? measureOfToken(sl.end) : null;
+    return `Bindebogen · ${from ? measureLabel(from) : ""}${to && to !== from ? ` bis ${measureLabel(to)}` : ""}`;
+  }
   const hp = selectedHairpinIndices.value;
   if (hp) {
     const label = hp.kind === "cresc" ? "Crescendo" : "Decrescendo";
@@ -243,6 +255,7 @@ function clearSelection() {
   selectedMeasureEnd.value = null;
   selectedBarline.value = null;
   selectedHairpin.value = null;
+  if (typeof selectedSlur.value !== "undefined") selectedSlur.value = null;
 }
 
 function selectNote(tokenIndex) {
@@ -262,6 +275,19 @@ function selectHairpin(startUid, endUid, kind) {
   clearSelection();
   selectedHairpin.value = { startUid, endUid, kind };
 }
+
+const selectedSlur = ref(null); // { startUid, endUid }
+function selectSlur(startUid, endUid) {
+  clearSelection();
+  selectedSlur.value = { startUid, endUid };
+}
+const selectedSlurIndices = computed(() => {
+  const sl = selectedSlur.value;
+  if (!sl) return null;
+  const start = tokenIndexByUid(sl.startUid);
+  const end = tokenIndexByUid(sl.endUid);
+  return start >= 0 ? { start, end: end >= 0 ? end : null } : null;
+});
 
 /** Event token indices (score order, no spacers) covered by the note range. */
 const noteRangeIndices = computed(() => {
@@ -357,7 +383,8 @@ const hasSelection = computed(
     selected.value !== null ||
     selectedMeasure.value !== null ||
     selectedBarline.value !== null ||
-    selectedHairpin.value !== null,
+    selectedHairpin.value !== null ||
+    selectedSlur.value !== null,
 );
 
 // ── Parsing ──────────────────────────────────────────────────────────────
@@ -487,6 +514,13 @@ function restToggle() {
 }
 
 function deleteSelection() {
+  const sl = selectedSlurIndices.value;
+  if (sl) {
+    const next = removeSlur(doc.value, sl.start, sl.end);
+    selectedSlur.value = null;
+    commit(next, null);
+    return;
+  }
   const hp = selectedHairpinIndices.value;
   if (hp) {
     const next = removeHairpin(doc.value, hp.start, hp.end);
@@ -674,6 +708,38 @@ function tieToggle() {
   commit(toggleTie(doc.value, selected.value));
 }
 
+/** Slur from the selected note to the next sounding event (or remove it). */
+function slurToggle() {
+  if (!selectedToken.value) return;
+  const idx = selected.value;
+  const existing = findSlurs(doc.value.tokens).find((sl) => sl.start === idx);
+  if (existing) {
+    commit(removeSlur(doc.value, existing.start, existing.end));
+    return;
+  }
+  const next = nextSoundingIndex(doc.value.tokens, idx);
+  if (next === -1) return;
+  commit(placeSlur(doc.value, idx, next));
+}
+
+function slurOverRange() {
+  const idx = noteRangeIndices.value;
+  if (idx.length < 2) return;
+  const first = idx[0];
+  const last = idx[idx.length - 1];
+  const startUid = doc.value.tokens[first].uid;
+  const endUid = doc.value.tokens[last].uid;
+  commit(placeSlur(doc.value, first, last), null);
+  selectSlur(startUid, endUid);
+  scheduleRender();
+}
+
+const tieRangeAllowed = computed(() => {
+  const idx = noteRangeIndices.value;
+  if (idx.length < 2 || !doc.value) return false;
+  return idx.slice(0, -1).every((i) => tieAllowed(doc.value.tokens, i));
+});
+
 function hairpinToggleType() {
   const hp = selectedHairpinIndices.value;
   if (!hp) return;
@@ -741,6 +807,17 @@ const canRemoveBarline = computed(() => {
 
 const menuItems = computed(() => {
   const items = [];
+  const sl = selectedSlurIndices.value;
+  if (sl) {
+    items.push({ type: "header", label: "Bindebogen" });
+    items.push({
+      type: "item",
+      label: "Bindebogen entfernen",
+      danger: true,
+      action: deleteSelection,
+    });
+    return items;
+  }
   const hp = selectedHairpinIndices.value;
   if (hp) {
     items.push({ type: "header", label: hp.kind === "cresc" ? "Crescendo" : "Decrescendo" });
@@ -765,7 +842,15 @@ const menuItems = computed(() => {
       label: "Decrescendo über die Auswahl",
       action: () => hairpinOverRange("decresc"),
     });
-    items.push({ type: "item", label: "Mit Haltebögen verbinden", action: tieRange });
+    items.push({
+      type: "item",
+      label: tieRangeAllowed.value
+        ? "Mit Haltebögen verbinden"
+        : "Haltebögen nur bei gleicher Tonhöhe",
+      disabled: !tieRangeAllowed.value,
+      action: tieRange,
+    });
+    items.push({ type: "item", label: "Bindebogen über die Auswahl", action: slurOverRange });
     items.push({ type: "sep" });
     items.push({ type: "item", label: "Noten löschen", danger: true, action: deleteSelection });
     return items;
@@ -821,11 +906,22 @@ const menuItems = computed(() => {
       });
     }
     if (t.kind === "note") {
+      const tieOk = tieAllowed(doc.value.tokens, selected.value);
       items.push({
         type: "check",
-        label: "Haltebogen zur nächsten Note",
+        label:
+          tieOk || deco.tie
+            ? "Haltebogen zur nächsten Note"
+            : "Haltebogen nur bei gleicher Tonhöhe",
         checked: deco.tie,
+        disabled: !tieOk && !deco.tie,
         action: tieToggle,
+      });
+      items.push({
+        type: "check",
+        label: "Bindebogen zur nächsten Note",
+        checked: deco.slurStart,
+        action: slurToggle,
       });
     }
     if (t.kind !== "spacer" && t.kind !== "mmrest") {
@@ -984,9 +1080,16 @@ function cellSelectedForNumber(index) {
 function hitTarget(el) {
   if (!el || !el.closest) return null;
   const target = el.closest(
-    "g.vf-stavenote, [id^='vf-empty-'], [id^='vf-bar-'], [id^='vf-mnum-'], [id^='vf-hp-']",
+    "g.vf-stavenote, [id^='vf-empty-'], [id^='vf-bar-'], [id^='vf-mnum-'], [id^='vf-hp-'], [id^='vf-slur-']",
   );
   if (!target) return null;
+  if (target.id.startsWith("vf-slur-")) {
+    return {
+      kind: "slur",
+      startUid: Number(target.dataset.start),
+      endUid: target.dataset.end ? Number(target.dataset.end) : null,
+    };
+  }
   if (target.id.startsWith("vf-hp-")) {
     return {
       kind: "hairpin",
@@ -1011,6 +1114,7 @@ function applyHit(hit, extend = false) {
   if (hit.kind === "note" && extend) extendNoteSelection(hit.tokenIndex);
   else if (hit.kind === "note") selectNote(hit.tokenIndex);
   else if (hit.kind === "hairpin") selectHairpin(hit.startUid, hit.endUid, hit.hairpinKind);
+  else if (hit.kind === "slur") selectSlur(hit.startUid, hit.endUid);
   else if (hit.kind === "barline") selectBarline(hit.index);
   else if (extend) extendMeasureSelection(hit.index);
   else selectMeasure(hit.index, hit.cell ?? null);
@@ -1622,7 +1726,8 @@ function render() {
   });
 
   drawHairpins(ctx, sequence, colorInk, colorSel);
-  drawTies(ctx, sequence);
+  drawTies(ctx, sequence, colorErr);
+  drawSlurs(ctx, sequence, colorInk, colorSel);
 
   const svg = el.querySelector("svg");
   if (svg && snippetsOn) {
@@ -1788,34 +1893,79 @@ function drawHairpins(ctx, sequence, colorInk, colorSel) {
 }
 
 /** Ties (~): connect a note to the next drawn note, split at row breaks. */
-function drawTies(ctx, sequence) {
-  const drawn = sequence.filter((s) => s.note && s.tok.kind === "note");
+function drawTies(ctx, sequence, colorErr) {
+  const drawn = sequence.filter((s) => s.note && s.tok.kind !== "spacer");
   for (let i = 0; i < drawn.length; i += 1) {
     const cur = drawn[i];
-    if (!(cur.tok.suffix || "").includes("~")) continue;
+    if (cur.tok.kind !== "note" || !(cur.tok.suffix || "").includes("~")) continue;
     const next = drawn[i + 1];
+    // LilyPond only ties equal pitches: show an impossible tie in red
+    const valid = doc.value ? tieAllowed(doc.value.tokens, cur.ti) : true;
+    const style = valid ? undefined : { strokeStyle: colorErr, fillStyle: colorErr };
+    const opts = { firstIndices: [0], lastIndices: [0] };
     try {
-      if (next && next.row === cur.row) {
-        new StaveTie({
-          firstNote: cur.note,
-          lastNote: next.note,
-          firstIndices: [0],
-          lastIndices: [0],
-        })
-          .setContext(ctx)
-          .draw();
+      if (next && next.row === cur.row && next.tok.kind === "note") {
+        const tie = new StaveTie({ firstNote: cur.note, lastNote: next.note, ...opts });
+        if (style) tie.setStyle(style);
+        tie.setContext(ctx).draw();
       } else {
-        new StaveTie({ firstNote: cur.note, firstIndices: [0], lastIndices: [0] })
-          .setContext(ctx)
-          .draw();
-        if (next) {
-          new StaveTie({ lastNote: next.note, firstIndices: [0], lastIndices: [0] })
-            .setContext(ctx)
-            .draw();
+        const tie = new StaveTie({ firstNote: cur.note, ...opts });
+        if (style) tie.setStyle(style);
+        tie.setContext(ctx).draw();
+        if (next && next.tok.kind === "note" && valid) {
+          new StaveTie({ lastNote: next.note, ...opts }).setContext(ctx).draw();
         }
       }
     } catch {
       // ignore ties that cannot be drawn
+    }
+  }
+}
+
+/** Slurs ( … ): a curve from the start note to the end note, selectable. */
+function drawSlurs(ctx, sequence, colorInk, colorSel) {
+  if (!doc.value) return;
+  const byTi = new Map(sequence.filter((s) => s.note).map((s) => [s.ti, s]));
+  const sel = selectedSlurIndices.value;
+  for (const sl of findSlurs(doc.value.tokens)) {
+    const a = byTi.get(sl.start);
+    const b = sl.end !== null ? byTi.get(sl.end) : null;
+    if (!a) continue;
+    const isSel = !!sel && sel.start === sl.start;
+    const color = isSel ? colorSel : colorInk;
+    const pieces = [];
+    if (b && b.row === a.row) pieces.push([a.note, b.note]);
+    else {
+      pieces.push([a.note, undefined]);
+      if (b) pieces.push([undefined, b.note]);
+    }
+    for (const [first, last] of pieces) {
+      try {
+        const curve = new Curve(first, last, { thickness: isSel ? 3 : 2 });
+        curve.setStyle({ strokeStyle: color, fillStyle: color });
+        curve.setContext(ctx).draw();
+        // hit area between the two anchors, above the notes
+        const anchor = first || last;
+        const stave = anchor.checkStave();
+        const x1 = first ? first.getAbsoluteX() : stave.getNoteStartX();
+        const x2 = last ? last.getAbsoluteX() : stave.getNoteEndX();
+        const yTop = stave.getYForTopText(1) - 4;
+        const g = ctx.openGroup("slur-hit", `slur-${sl.start}-${a.row}`);
+        ctx.rect(Math.min(x1, x2), yTop, Math.abs(x2 - x1) + 10, 22, {
+          fill: isSel ? colorSel : "none",
+          "fill-opacity": isSel ? 0.12 : 0,
+          stroke: "none",
+          "pointer-events": "all",
+        });
+        ctx.closeGroup();
+        if (g) {
+          g.style.cursor = "pointer";
+          g.dataset.start = String(doc.value.tokens[sl.start].uid);
+          g.dataset.end = sl.end !== null ? String(doc.value.tokens[sl.end].uid) : "";
+        }
+      } catch {
+        // ignore slurs that cannot be drawn
+      }
     }
   }
 }
@@ -2148,10 +2298,10 @@ onBeforeUnmount(() => {
           type="button"
           class="tool"
           :disabled="!isDirty"
-          title="Alle Änderungen verwerfen"
+          title="Ungespeicherte Änderungen verwerfen (zurück zur zuletzt gespeicherten Fassung)"
           @click="resetToOriginal"
         >
-          Zurücksetzen
+          Änderungen verwerfen
         </button>
       </div>
     </div>

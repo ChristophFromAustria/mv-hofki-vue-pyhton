@@ -206,7 +206,7 @@ const PITCH_SRC = "[a-g](?:eses|isis|es|is|s)?[',]*";
 const DUR_SRC = "(?:1|2|4|8|16|32|64|128)\\.*(?:\\*\\d+(?:/\\d+)?)?";
 // Post-fix material on an event: articulations, dynamics, hairpins,
 // fingering-like "-x", and _\markup { … } / ^\markup { … } blocks.
-const SUFFIX_PIECE_RE = /^(?:~|-[>.^_+-]|-\\[a-zA-Z]+|\\[<>!]|\\[a-zA-Z]+(?![a-zA-Z]))/;
+const SUFFIX_PIECE_RE = /^(?:~|\\?[()]|-[>.^_+-]|-\\[a-zA-Z]+|\\[<>!]|\\[a-zA-Z]+(?![a-zA-Z]))/;
 
 const EVENT_RE = new RegExp(
   `^(?:(<>)|(<(?:\\s*${PITCH_SRC})+\\s*>)|(${PITCH_SRC})|(r|R|s))(${DUR_SRC})?`,
@@ -1076,7 +1076,69 @@ export function eventDecorations(tok) {
   else if (pieces.includes("\\>")) hairpin = "decresc";
   else if (pieces.includes("\\!")) hairpin = "end";
   const tie = pieces.includes("~");
-  return { articulations, dynamic, hairpin, tie };
+  const slurStart = pieces.includes("(");
+  const slurEnd = pieces.includes(")");
+  return { articulations, dynamic, hairpin, tie, slurStart, slurEnd };
+}
+
+/** The next sounding event after `tokenIndex` (rests included, spacers skipped). */
+export function nextSoundingIndex(tokens, tokenIndex) {
+  for (let i = tokenIndex + 1; i < tokens.length; i += 1) {
+    const t = tokens[i];
+    if (t.type === "event" && t.kind !== "spacer" && t.kind !== "skip") return i;
+  }
+  return -1;
+}
+
+/**
+ * A tie (~) only works towards a following note of the same pitch; LilyPond
+ * drops it otherwise ("unterminated tie").
+ */
+export function tieAllowed(tokens, tokenIndex) {
+  const t = tokens[tokenIndex];
+  if (!t || t.type !== "event" || t.kind !== "note") return false;
+  const n = nextSoundingIndex(tokens, tokenIndex);
+  if (n === -1) return false;
+  const next = tokens[n];
+  if (next.kind !== "note") return false;
+  const a = t.pitches.map(pitchToLily).sort().join(" ");
+  const b = next.pitches.map(pitchToLily).sort().join(" ");
+  return a === b;
+}
+
+/** Slur ( … ) from `startIndex` to `endIndex` (legato bow over different pitches). */
+export function placeSlur(doc, startIndex, endIndex) {
+  if (startIndex === endIndex) return doc;
+  const lo = Math.min(startIndex, endIndex);
+  const hi = Math.max(startIndex, endIndex);
+  let out = withSuffix(doc, lo, (pieces) => (pieces.includes("(") ? pieces : [...pieces, "("]));
+  out = withSuffix(out, hi, (pieces) => (pieces.includes(")") ? pieces : [...pieces, ")"]));
+  return out;
+}
+
+export function removeSlur(doc, startIndex, endIndex) {
+  let out = withSuffix(doc, startIndex, (pieces) => pieces.filter((p) => p !== "("));
+  if (endIndex !== null && endIndex !== undefined) {
+    out = withSuffix(out, endIndex, (pieces) => pieces.filter((p) => p !== ")"));
+  }
+  return out;
+}
+
+/** Slurs as [{ start, end }] token indices; `end` null when never closed. */
+export function findSlurs(tokens) {
+  const out = [];
+  let open = null;
+  tokens.forEach((t, i) => {
+    if (t.type !== "event") return;
+    const pieces = splitSuffix(t.suffix);
+    if (open !== null && pieces.includes(")")) {
+      out.push({ start: open, end: i });
+      open = null;
+    }
+    if (pieces.includes("(")) open = i;
+  });
+  if (open !== null) out.push({ start: open, end: null });
+  return out;
 }
 
 /** Add or remove the tie (~) that connects a note to the next one. */

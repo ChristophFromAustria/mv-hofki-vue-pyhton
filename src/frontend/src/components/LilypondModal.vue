@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, defineAsyncComponent } from "vue";
 import { post } from "../lib/api.js";
+import ConfirmDialog from "./ConfirmDialog.vue";
 
 // VexFlow is large; load the editor (and VexFlow) only when the tab is opened.
 const LilypondEditor = defineAsyncComponent(() => import("./LilypondEditor.vue"));
@@ -15,9 +16,17 @@ const props = defineProps({
   scanId: { type: [Number, String], default: null },
   scanImagePath: { type: String, default: null },
   staves: { type: Array, default: () => [] },
+  /** "analysis" = generated from the scan, "edited" = saved editor version */
+  source: { type: String, default: "analysis" },
+  resetting: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["close", "rendered"]);
+const emit = defineEmits(["close", "rendered", "reset"]);
+const confirmResetOpen = ref(false);
+function confirmReset() {
+  confirmResetOpen.value = false;
+  emit("reset");
+}
 
 // Fullscreen toggle (remembered per browser)
 const fullscreen = ref(false);
@@ -131,7 +140,15 @@ const cropRect = computed(() => {
   >
     <div class="dialog dialog-xl dialog-flush" :class="{ 'dialog-fullscreen': fullscreen }">
       <div class="dialog-header">
-        <h2>LilyPond</h2>
+        <h2>
+          LilyPond
+          <span
+            v-if="source === 'edited'"
+            class="source-badge"
+            title="Diese Fassung wurde im Editor bearbeitet und gespeichert"
+            >Bearbeitet</span
+          >
+        </h2>
         <div class="tab-bar">
           <button
             class="tab-btn"
@@ -223,8 +240,9 @@ const cropRect = computed(() => {
           />
           <p class="editor-note">
             Die Darstellung im Browser ist eine Näherung an den LilyPond-Satz. Änderungen werden in
-            den Code übernommen. „Vorschau rendern" schickt den Code ans Backend und erneuert PDF
-            und Vorschau, die Analyse selbst bleibt unverändert.
+            den Code übernommen. „Speichern & rendern" sichert die bearbeitete Fassung und erneuert
+            PDF und Vorschau. Die Analyse selbst bleibt unverändert; „Auf Analyse zurücksetzen"
+            verwirft die bearbeitete Fassung wieder.
           </p>
           <p v-if="renderError" class="render-error-msg">
             Rendern fehlgeschlagen: {{ renderError }}
@@ -254,7 +272,17 @@ const cropRect = computed(() => {
           :title="isEdited ? 'Bearbeiteten Code mit LilyPond rendern' : 'Keine Änderungen'"
           @click="renderEdited"
         >
-          {{ rendering ? "Rendert…" : "Vorschau rendern" }}
+          {{ rendering ? "Speichert…" : "Speichern & rendern" }}
+        </button>
+        <button
+          v-if="source === 'edited'"
+          type="button"
+          class="btn"
+          :disabled="resetting || rendering"
+          title="Bearbeitete Fassung verwerfen und aus den Analysedaten neu erzeugen"
+          @click="confirmResetOpen = true"
+        >
+          Auf Analyse zurücksetzen
         </button>
         <span class="footer-spacer"></span>
         <a v-if="pdfPath" :href="assetUrl(pdfPath)" target="_blank" class="btn btn-primary">
@@ -264,6 +292,14 @@ const cropRect = computed(() => {
       </div>
     </div>
   </div>
+  <ConfirmDialog
+    :open="confirmResetOpen"
+    title="Auf Analyse zurücksetzen"
+    confirm-label="Zurücksetzen"
+    message="Die im Editor bearbeitete Fassung wird verworfen und der LilyPond-Code aus den aktuellen Analysedaten neu erzeugt. Fortfahren?"
+    @confirm="confirmReset"
+    @cancel="confirmResetOpen = false"
+  />
 </template>
 
 <style scoped>
@@ -286,6 +322,19 @@ const cropRect = computed(() => {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-on-primary);
+}
+
+.source-badge {
+  margin-left: 0.5rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
 }
 
 .header-actions {

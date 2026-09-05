@@ -25,6 +25,10 @@ import {
   setKeySignature,
   setKeyForRange,
   toggleTie,
+  tieAllowed,
+  placeSlur,
+  removeSlur,
+  findSlurs,
   setHairpin,
   removeHairpin,
   placeHairpin,
@@ -234,6 +238,8 @@ describe("editing", () => {
       dynamic: "f",
       hairpin: null,
       tie: false,
+      slurStart: false,
+      slurEnd: false,
     });
     let d = toggleArticulation(doc, idx, "accent");
     expect(serializeDocument(d)).toContain("bes,2\\f d4->");
@@ -400,6 +406,20 @@ describe("editing", () => {
     const d = normalizeDocument(removeHairpin(setHairpin(doc, ms[5].events[0], null), start, end));
     expect(serializeDocument(d)).toContain("\\markErr bes,4 r4 f4 \\unmarkErr |");
     expect(serializeDocument(d)).not.toContain("<>");
+  });
+
+  it("knows when a tie is valid and handles slurs", () => {
+    const toks = tokenize("f2~ f4 g4( a4 b4) c4");
+    expect(tieAllowed(toks, 0)).toBe(true); // f2 → f4
+    expect(tieAllowed(toks, 1)).toBe(false); // f4 → g4
+    expect(findSlurs(toks)).toEqual([{ start: 2, end: 4 }]);
+    // sample: bes,4 bes,4 in measure 4 can be tied, f4 → r4 cannot
+    expect(tieAllowed(doc.tokens, ms[3].events[0])).toBe(true);
+    expect(tieAllowed(doc.tokens, ms[2].events[0])).toBe(false);
+    let d = placeSlur(doc, ms[2].events[0], ms[2].events[2]);
+    expect(serializeDocument(d)).toContain("f4( r4 f,2->) |");
+    d = removeSlur(d, ms[2].events[0], ms[2].events[2]);
+    expect(serializeDocument(d)).toContain("f4 r4 f,2-> |");
   });
 
   it("toggles note and rest", () => {
