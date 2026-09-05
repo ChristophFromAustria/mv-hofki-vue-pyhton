@@ -292,7 +292,7 @@ async function renderLilypond() {
 // variant), pen (paint black/white pixels, saved in place), anchor (click to
 // set a manual correction that is stored per variant).
 const canvasEl = ref(null);
-const previewMode = ref("crop"); // "crop" | "pen" | "anchor"
+const previewMode = ref("anchor"); // "crop" | "pen" | "anchor"
 const penColor = ref("black");
 const brushSize = ref(3);
 const zoom = ref(1);
@@ -402,7 +402,7 @@ function openPreview(v) {
   previewImageUrl.value = variantImageUrl(v);
   cropRect.value = null;
   cropDrawing.value = false;
-  previewMode.value = "crop";
+  previewMode.value = "anchor";
   zoom.value = 1;
   previewError.value = null;
   anchorDx.value = v.anchor_dx || 0;
