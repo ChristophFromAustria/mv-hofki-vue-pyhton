@@ -184,12 +184,22 @@ function assetUrl(path, cacheBust = null) {
   return cacheBust ? `${url}?v=${cacheBust}` : url;
 }
 
+// Every new render result (generate or save) gets a fresh cache stamp, so the
+// browser reloads PNG and PDF although their paths never change.
+watch(
+  () => [props.lilypondCode, props.pdfPath, props.pngPaths],
+  () => {
+    renderStamp.value = Date.now();
+  },
+);
+
+const bustStamp = computed(() =>
+  renderStamp.value ? `${props.cacheVersion || ""}-${renderStamp.value}` : props.cacheVersion,
+);
+
 const previewUrl = computed(() => {
   if (!props.pngPaths.length) return null;
-  const stamp = renderStamp.value
-    ? `${props.cacheVersion || ""}-${renderStamp.value}`
-    : props.cacheVersion;
-  return assetUrl(props.pngPaths[0], stamp);
+  return assetUrl(props.pngPaths[0], bustStamp.value);
 });
 
 function onPngLoad(e) {
@@ -269,89 +279,115 @@ const cropRect = computed(() => {
       </div>
 
       <div class="dialog-body">
-        <!-- Preview tab -->
-        <div v-if="activeTab === 'preview'" class="preview-container">
-          <div v-if="previewUrl" class="preview-wrap">
-            <img :src="previewUrl" alt="Vorschau" class="preview-img" @load="onPngLoad" />
-            <svg
-              v-if="cropRect"
-              class="crop-overlay"
-              :viewBox="`0 0 ${pngWidth} ${pngHeight}`"
-              preserveAspectRatio="xMidYMid meet"
+        <!-- Preview tab: image plus a layout drawer sliding in from the left -->
+        <div v-if="activeTab === 'preview'" class="preview-area">
+          <button
+            type="button"
+            class="drawer-toggle"
+            :class="{ active: layoutOpen }"
+            :aria-expanded="layoutOpen"
+            aria-controls="lilypond-layout-drawer"
+            title="LilyPond-Layout einstellen"
+            @click="layoutOpen = !layoutOpen"
+          >
+            <span aria-hidden="true">{{ layoutOpen ? "◂" : "▸" }}</span>
+            Layout
+            <span v-if="layoutHasOverrides" class="layout-badge" title="Für diesen Scan angepasst"
+              >●</span
             >
-              <rect
-                :x="cropRect.x"
-                :y="cropRect.y"
-                :width="cropRect.w"
-                :height="cropRect.h"
-                fill="none"
-                stroke="var(--overlay-measure)"
-                stroke-width="2"
-                stroke-dasharray="8 4"
-                opacity="0.8"
-              />
-            </svg>
-          </div>
-          <div v-else class="preview-empty">Keine Vorschau verfügbar</div>
-        </div>
+          </button>
 
-        <!-- LilyPond layout parameters: per-scan overrides, re-render on apply -->
-        <details
-          v-if="activeTab === 'preview'"
-          class="layout-panel"
-          :open="layoutOpen"
-          @toggle="layoutOpen = $event.target.open"
-        >
-          <summary>
-            LilyPond-Layout
-            <span v-if="layoutHasOverrides" class="layout-badge">für diesen Scan angepasst</span>
-          </summary>
-          <p v-if="layoutError" class="render-error-msg">{{ layoutError }}</p>
-          <div v-else-if="layoutLoading" class="layout-loading">Lade Einstellungen…</div>
-          <div v-else class="layout-groups">
-            <section v-for="group in layoutGroups" :key="group.label" class="layout-group">
-              <h4>{{ group.label }}</h4>
-              <template v-for="entry in group.entries" :key="entry.key">
-                <FieldToggle
-                  v-if="entry.type === 'toggle'"
-                  :entry="entry"
-                  @update="layoutUpdate"
-                  @reset="layoutReset"
-                />
-                <FieldSelect
-                  v-else-if="entry.type === 'select'"
-                  :entry="entry"
-                  @update="layoutUpdate"
-                  @reset="layoutReset"
-                />
-                <FieldNumber v-else :entry="entry" @update="layoutUpdate" @reset="layoutReset" />
-              </template>
-            </section>
-          </div>
-          <div class="layout-actions">
-            <button
-              type="button"
-              class="btn btn-primary btn-sm"
-              :disabled="resetting || layoutLoading"
-              @click="applyLayout"
-            >
-              Übernehmen & neu rendern
-            </button>
-            <button
-              type="button"
-              class="btn btn-sm"
-              :disabled="resetting || layoutLoading || !layoutHasOverrides"
-              title="Globale Standardwerte für diesen Scan wiederherstellen"
-              @click="resetLayout"
-            >
-              Standardwerte
-            </button>
-            <span class="layout-hint">
+          <aside
+            id="lilypond-layout-drawer"
+            class="layout-drawer"
+            :class="{ open: layoutOpen }"
+            :aria-hidden="!layoutOpen"
+            aria-label="LilyPond-Layout"
+          >
+            <div class="drawer-head">
+              <h3>LilyPond-Layout</h3>
+              <button
+                type="button"
+                class="dialog-close"
+                title="Leiste schließen"
+                @click="layoutOpen = false"
+              >
+                ✕
+              </button>
+            </div>
+            <p v-if="layoutHasOverrides" class="layout-hint">Für diesen Scan angepasst.</p>
+            <p v-if="layoutError" class="render-error-msg">{{ layoutError }}</p>
+            <div v-else-if="layoutLoading" class="layout-loading">Lade Einstellungen…</div>
+            <div v-else class="layout-groups">
+              <section v-for="group in layoutGroups" :key="group.label" class="layout-group">
+                <h4>{{ group.label }}</h4>
+                <template v-for="entry in group.entries" :key="entry.key">
+                  <FieldToggle
+                    v-if="entry.type === 'toggle'"
+                    :entry="entry"
+                    @update="layoutUpdate"
+                    @reset="layoutReset"
+                  />
+                  <FieldSelect
+                    v-else-if="entry.type === 'select'"
+                    :entry="entry"
+                    @update="layoutUpdate"
+                    @reset="layoutReset"
+                  />
+                  <FieldNumber v-else :entry="entry" @update="layoutUpdate" @reset="layoutReset" />
+                </template>
+              </section>
+            </div>
+            <div class="layout-actions">
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                :disabled="resetting || layoutLoading"
+                @click="applyLayout"
+              >
+                Übernehmen & neu rendern
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm"
+                :disabled="resetting || layoutLoading || !layoutHasOverrides"
+                title="Globale Standardwerte für diesen Scan wiederherstellen"
+                @click="resetLayout"
+              >
+                Standardwerte
+              </button>
+            </div>
+            <p class="layout-hint">
               Werte gelten nur für diesen Scan. Globale Standards unter Notenscanner →
               Konfiguration.
-            </span>
+            </p>
+          </aside>
+
+          <div class="preview-container">
+            <div v-if="previewUrl" class="preview-wrap">
+              <img :src="previewUrl" alt="Vorschau" class="preview-img" @load="onPngLoad" />
+              <svg
+                v-if="cropRect"
+                class="crop-overlay"
+                :viewBox="`0 0 ${pngWidth} ${pngHeight}`"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <rect
+                  :x="cropRect.x"
+                  :y="cropRect.y"
+                  :width="cropRect.w"
+                  :height="cropRect.h"
+                  fill="none"
+                  stroke="var(--overlay-measure)"
+                  stroke-width="2"
+                  stroke-dasharray="8 4"
+                  opacity="0.8"
+                />
+              </svg>
+            </div>
+            <div v-else class="preview-empty">Keine Vorschau verfügbar</div>
           </div>
-        </details>
+        </div>
 
         <!-- Warnings (measure fill mismatches etc.) -->
         <div v-if="activeTab === 'preview' && warnings.length" class="warnings">
@@ -422,7 +458,12 @@ const cropRect = computed(() => {
           Auf Analyse zurücksetzen
         </button>
         <span class="footer-spacer"></span>
-        <a v-if="pdfPath" :href="assetUrl(pdfPath)" target="_blank" class="btn btn-primary">
+        <a
+          v-if="pdfPath"
+          :href="assetUrl(pdfPath, bustStamp)"
+          target="_blank"
+          class="btn btn-primary"
+        >
           PDF öffnen
         </a>
         <button class="btn" @click="emit('close')">Schließen</button>
@@ -461,22 +502,81 @@ const cropRect = computed(() => {
   color: var(--color-on-primary);
 }
 
-.layout-panel {
-  margin-top: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 0.25rem 0.75rem 0.5rem;
+.preview-area {
+  position: relative;
+  min-height: 320px;
+  overflow: hidden;
 }
 
-.layout-panel summary {
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.875rem;
-  padding: 0.35rem 0;
+.drawer-toggle {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.25rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.drawer-toggle.active,
+.drawer-toggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.layout-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 340px;
+  max-width: 92%;
+  padding: 3.25rem 1rem 1rem;
+  overflow-y: auto;
+  background: var(--color-bg);
+  border-right: 1px solid var(--color-border);
+  box-shadow: var(--shadow-float);
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition:
+    transform var(--transition),
+    visibility 0s linear 0.2s;
+}
+
+.layout-drawer.open {
+  transform: none;
+  visibility: visible;
+  transition:
+    transform var(--transition),
+    visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layout-drawer,
+  .layout-drawer.open {
+    transition: none;
+  }
+}
+
+.drawer-head {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.drawer-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
 }
 
 .layout-badge {
@@ -487,8 +587,7 @@ const cropRect = computed(() => {
 
 .layout-groups {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 0.75rem 1.5rem;
+  gap: 0.75rem;
 }
 
 .layout-group h4 {
