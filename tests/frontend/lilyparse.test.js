@@ -336,6 +336,32 @@ describe("editing", () => {
     expect(after[4].percent).toBeNull();
   });
 
+  it("normalizes percent repeats, multi-measure rests and leftovers", () => {
+    const src = String.raw`\score { \new Staff {
+    \time 2/2 c1 |
+    \set Timing.measureLength = #(ly:make-moment 5/4) \repeat percent 4 { \markErr c4 d4 e4 f4 \unmarkErr } |
+    \set Timing.measureLength = #(ly:make-moment 1/8) \markErr \unmarkErr
+    \set Timing.measureLength = #(ly:make-moment 1/1) \repeat percent 2 { g4 r4 a4 r4 } |
+    R1*3 |
+    \repeat percent 2 { c2 } |
+    c1 |
+  } }`;
+    const d = normalizeDocument(parseLilypond(src));
+    const code = serializeDocument(d);
+    // stale 5/4 and the error marking are gone: the body is a full 2/2 measure
+    expect(code).toContain("\n    \\repeat percent 4 { c4 d4 e4 f4 } |");
+    // the leftover of a deleted measure disappears, the following measure needs no set
+    expect(code).toContain("\n    \\repeat percent 2 { g4 r4 a4 r4 } |");
+    expect(code).not.toContain("1/8");
+    // multi-measure rest: explicit length, no error marking
+    expect(code).toContain("\\set Timing.measureLength = #(ly:make-moment 3/1) R1*3 |");
+    // short percent body: length before the wrapper, marking inside it
+    expect(code).toContain(
+      "\\set Timing.measureLength = #(ly:make-moment 1/2) \\repeat percent 2 { \\markErr c2 \\unmarkErr } |",
+    );
+    expect(code).toContain("\\set Timing.measureLength = #(ly:make-moment 1/1) c1 |\n  } }");
+  });
+
   it("toggles note and rest", () => {
     const idx = ms[1].events[0];
     const d2 = toggleRest(doc, idx);

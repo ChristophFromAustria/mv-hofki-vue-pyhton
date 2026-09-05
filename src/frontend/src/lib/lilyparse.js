@@ -1451,61 +1451,84 @@ export function normalizeDocument(doc) {
       timeLen = m.timeLen;
       effective = timeLen;
     }
-    const isPlain = m.percent === null && !isMmrestMeasure(tokens, m) && m.events.length > 0;
-    const spacerOnly = m.events.every((i) => tokens[i].kind === "spacer");
-    if (!isPlain || spacerOnly) {
-      if (m.explicitLength !== null) effective = tokens[m.explicitLength].measureLength;
+    const hasMusic = m.events.some((i) => tokens[i].kind !== "spacer");
+    if (!hasMusic) {
+      // Nothing to measure: stale bookkeeping left behind by deletions goes away.
+      plan.push({ m, strip: true });
       continue;
     }
+    // Percent repeats and multi-measure rests take part too: their length may
+    // have changed through editing, and a stale measureLength derails LilyPond.
     const needed = m.actualLen;
     plan.push({
       m,
       needsSet: !fracEq(needed, effective),
       needed,
-      needsErr: !fracEq(needed, m.timeLen),
+      needsErr: !isMmrestMeasure(tokens, m) && !fracEq(needed, m.timeLen),
     });
     effective = needed;
   }
 
   // Rebuild each affected measure slice back to front so earlier indices stay valid.
   for (let p = plan.length - 1; p >= 0; p -= 1) {
-    const { m, needsSet, needed, needsErr } = plan[p];
+    const { m, needsSet, needed, needsErr, strip } = plan[p];
     const slice = tokens.slice(m.tokenStart, m.tokenEnd);
     const isBookkeeping = (t) =>
       (t.type === "set" && t.measureLength) ||
       (t.type === "command" && (t.command === "\\markErr" || t.command === "\\unmarkErr"));
-    const kept = slice.filter((t) => !isBookkeeping(t));
+    // Drop bookkeeping tokens; a removed token's line break moves to the next kept one.
+    const kept = [];
+    let pendingWs = null;
+    for (const t of slice) {
+      if (isBookkeeping(t)) {
+        if (/\n/.test(t.ws) && pendingWs === null) pendingWs = t.ws;
+        continue;
+      }
+      if (pendingWs !== null && !/\n/.test(t.ws)) {
+        kept.push({ ...t, ws: pendingWs });
+      } else {
+        kept.push(t);
+      }
+      pendingWs = null;
+    }
+    if (strip) {
+      if (kept.length && slice.length) kept[0] = { ...kept[0], ws: slice[0].ws };
+      tokens.splice(m.tokenStart, m.tokenEnd - m.tokenStart, ...kept);
+      continue;
+    }
     const eventPos = kept
       .map((t, i) => (t.type === "event" && t.kind !== "skip" ? i : -1))
       .filter((i) => i >= 0);
     const first = eventPos[0];
     const last = eventPos[eventPos.length - 1];
+    // measureLength goes in front of the percent-repeat wrapper, the error
+    // marking around the events inside it
+    const repeatPos = kept.findIndex((t) => t.type === "repeat" && t.repeatKind === "percent");
+    const setAnchor = repeatPos >= 0 ? repeatPos : first;
     const rebuilt = [];
     kept.forEach((t, i) => {
-      if (i === first) {
-        if (needsSet) {
-          const raw = MOMENT(needed);
-          rebuilt.push({
-            type: "set",
-            uid: nextUid(),
-            raw,
-            ws: t.ws,
-            property: "Timing.measureLength",
-            valueRaw: raw.slice(raw.indexOf("#(")),
-            measureLength: needed,
-          });
-          t = { ...t, ws: " " };
-        }
-        if (needsErr) {
-          rebuilt.push({
-            type: "command",
-            uid: nextUid(),
-            raw: "\\markErr",
-            ws: t.ws,
-            command: "\\markErr",
-          });
-          t = { ...t, ws: " " };
-        }
+      if (i === setAnchor && needsSet) {
+        const raw = MOMENT(needed);
+        rebuilt.push({
+          type: "set",
+          uid: nextUid(),
+          raw,
+          ws: t.ws,
+          property: "Timing.measureLength",
+          valueRaw: raw.slice(raw.indexOf("#(")),
+          measureLength: needed,
+        });
+        t = { ...t, ws: " " };
+      }
+      if (i === first && needsErr) {
+        rebuilt.push({
+          type: "command",
+          uid: nextUid(),
+          raw: "\\markErr",
+          ws: t.ws,
+          command: "\\markErr",
+        });
+        t = { ...t, ws: " " };
       }
       rebuilt.push(t);
       if (i === last && needsErr) {
