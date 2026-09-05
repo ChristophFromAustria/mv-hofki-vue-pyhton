@@ -22,6 +22,7 @@ import {
   Volta,
   Modifier,
   StaveHairpin,
+  StaveTie,
 } from "vexflow/bravura";
 import {
   parseLilypond,
@@ -50,6 +51,9 @@ import {
   MAJOR_KEYS,
   setKeyForRange,
   setPercentCount,
+  toggleTie,
+  removeHairpin,
+  placeHairpin,
   normalizeDocument,
   keyFlats,
   keyAlteration,
@@ -81,6 +85,11 @@ const selectedMeasure = ref(null); // whole measure (index) selected via its num
 const selectedCell = ref(null); // printed number of the clicked cell (percent repeats)
 const selectedMeasureEnd = ref(null); // other end of a measure range (Shift+click / Shift+arrows)
 const selectedBarline = ref(null); // index of the measure whose end barline is selected
+const selectedNoteEnd = ref(null); // other end of a note range (Shift+click / Shift+arrows)
+const selectedHairpin = ref(null); // { startUid, endUid, kind } of a selected hairpin
+let hairpinDrag = null; // { side, moved } while dragging a hairpin end
+let notePositions = []; // [{ ti, uid, x, row }] of drawn notes, for drag targets
+let rowTopsCache = [];
 // Context menu: { x, y } while open
 const menu = ref(null);
 const menuButton = ref(null);
@@ -168,6 +177,17 @@ const selectedToken = computed(() => {
 });
 
 const selectedInfo = computed(() => {
+  const hp = selectedHairpinIndices.value;
+  if (hp) {
+    const label = hp.kind === "cresc" ? "Crescendo" : "Decrescendo";
+    const from = measureOfToken(hp.start);
+    const to = hp.end !== null ? measureOfToken(hp.end) : null;
+    const span = `${from ? measureLabel(from) : ""}${to && to !== from ? ` bis ${measureLabel(to)}` : ""}`;
+    return `${label} · ${span} · Enden ziehen zum Verlängern`;
+  }
+  if (isNoteRange.value) {
+    return `${noteRangeIndices.value.length} Noten ausgewählt · Shift+Klick oder Shift+Pfeil erweitert`;
+  }
   if (selectedBarlineMeasure.value) {
     const type = BARLINE_TYPES[selectedBarlineType.value]?.label || "Taktstrich";
     return `Taktstrich nach ${measureLabel(selectedBarlineMeasure.value)} · ${type}`;
@@ -217,16 +237,60 @@ const measureSummary = computed(() => {
 
 function clearSelection() {
   selected.value = null;
+  selectedNoteEnd.value = null;
   selectedMeasure.value = null;
   selectedCell.value = null;
   selectedMeasureEnd.value = null;
   selectedBarline.value = null;
+  selectedHairpin.value = null;
 }
 
 function selectNote(tokenIndex) {
   clearSelection();
   selected.value = tokenIndex;
 }
+
+function extendNoteSelection(tokenIndex) {
+  if (selected.value === null) {
+    selectNote(tokenIndex);
+    return;
+  }
+  selectedNoteEnd.value = tokenIndex === selected.value ? null : tokenIndex;
+}
+
+function selectHairpin(startUid, endUid, kind) {
+  clearSelection();
+  selectedHairpin.value = { startUid, endUid, kind };
+}
+
+/** Event token indices (score order, no spacers) covered by the note range. */
+const noteRangeIndices = computed(() => {
+  if (selected.value === null || !doc.value) return [];
+  const a = selected.value;
+  const b = selectedNoteEnd.value ?? a;
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  const out = [];
+  for (let i = lo; i <= hi; i += 1) {
+    const t = doc.value.tokens[i];
+    if (t && t.type === "event" && t.kind !== "spacer" && t.kind !== "skip") out.push(i);
+  }
+  return out;
+});
+const isNoteRange = computed(() => noteRangeIndices.value.length > 1);
+
+function tokenIndexByUid(uid) {
+  if (!doc.value || uid === null || uid === undefined) return -1;
+  return doc.value.tokens.findIndex((t) => t.uid === uid);
+}
+
+const selectedHairpinIndices = computed(() => {
+  const h = selectedHairpin.value;
+  if (!h) return null;
+  const start = tokenIndexByUid(h.startUid);
+  const end = tokenIndexByUid(h.endUid);
+  return start >= 0 ? { start, end: end >= 0 ? end : null, kind: h.kind } : null;
+});
 
 function selectMeasure(index, cellNumber = null) {
   clearSelection();
@@ -289,7 +353,11 @@ const selectedBarlineType = computed(() =>
 );
 
 const hasSelection = computed(
-  () => selected.value !== null || selectedMeasure.value !== null || selectedBarline.value !== null,
+  () =>
+    selected.value !== null ||
+    selectedMeasure.value !== null ||
+    selectedBarline.value !== null ||
+    selectedHairpin.value !== null,
 );
 
 // ── Parsing ──────────────────────────────────────────────────────────────
@@ -345,6 +413,12 @@ function commit(nextDoc, nextSelected = selected.value) {
   }
   if (selectedMeasureEnd.value !== null && !measures.value[selectedMeasureEnd.value]) {
     selectedMeasureEnd.value = null;
+  }
+  if (selectedNoteEnd.value !== null && !normalized.tokens[selectedNoteEnd.value]) {
+    selectedNoteEnd.value = null;
+  }
+  if (selectedHairpin.value && tokenIndexByUid(selectedHairpin.value.startUid) < 0) {
+    selectedHairpin.value = null;
   }
   menu.value = null;
   emit("update:code", serializeDocument(normalized));
@@ -413,6 +487,24 @@ function restToggle() {
 }
 
 function deleteSelection() {
+  const hp = selectedHairpinIndices.value;
+  if (hp) {
+    const next = removeHairpin(doc.value, hp.start, hp.end);
+    selectedHairpin.value = null;
+    commit(next, null);
+    return;
+  }
+  if (isNoteRange.value) {
+    const idx = [...noteRangeIndices.value].sort((a, b) => b - a);
+    let next = doc.value;
+    for (const i of idx) next = deleteEvent(next, i);
+    const m = measureOfToken(idx[idx.length - 1]);
+    clearSelection();
+    commit(next, null);
+    if (m && measures.value[m.index]) selectMeasure(m.index);
+    scheduleRender();
+    return;
+  }
   if (selectedBarlineMeasure.value) {
     const m = selectedBarlineMeasure.value;
     const next = deleteBarline(doc.value, m);
@@ -553,6 +645,65 @@ function extendToEnd() {
   scheduleRender();
 }
 
+function hairpinOverRange(kind) {
+  const idx = noteRangeIndices.value;
+  if (idx.length < 2) return;
+  const first = idx[0];
+  const last = idx[idx.length - 1];
+  const startUid = doc.value.tokens[first].uid;
+  const endUid = doc.value.tokens[last].uid;
+  commit(placeHairpin(doc.value, first, last, kind), null);
+  selectHairpin(startUid, endUid, kind);
+  scheduleRender();
+}
+
+function tieRange() {
+  const idx = noteRangeIndices.value.filter((i) => doc.value.tokens[i].kind === "note");
+  if (idx.length < 2) return;
+  let next = doc.value;
+  for (let k = 0; k < idx.length - 1; k += 1) next = toggleTie(next, idx[k], true);
+  const keep = selected.value;
+  const end = selectedNoteEnd.value;
+  commit(next, keep);
+  selectedNoteEnd.value = end;
+  scheduleRender();
+}
+
+function tieToggle() {
+  if (!requireNote()) return;
+  commit(toggleTie(doc.value, selected.value));
+}
+
+function hairpinToggleType() {
+  const hp = selectedHairpinIndices.value;
+  if (!hp) return;
+  const kind = hp.kind === "cresc" ? "decresc" : "cresc";
+  const sel = { ...selectedHairpin.value, kind };
+  commit(setHairpin(doc.value, hp.start, kind), null);
+  selectedHairpin.value = sel;
+  scheduleRender();
+}
+
+/** Move one end of the selected hairpin to the event token `targetIdx`. */
+function moveHairpinEnd(side, targetIdx) {
+  const hp = selectedHairpinIndices.value;
+  if (!hp || targetIdx === null || targetIdx === undefined) return;
+  let start = hp.start;
+  let end = hp.end ?? hp.start;
+  if (side === "start") start = targetIdx;
+  else end = targetIdx;
+  if (start === end) return;
+  if (start > end) [start, end] = [end, start];
+  if (start === hp.start && end === hp.end) return;
+  const startUid = doc.value.tokens[start].uid;
+  const endUid = doc.value.tokens[end].uid;
+  let next = removeHairpin(doc.value, hp.start, hp.end);
+  next = placeHairpin(next, start, end, hp.kind);
+  commit(next, null);
+  selectHairpin(startUid, endUid, hp.kind);
+  scheduleRender();
+}
+
 function articulationToggle(name) {
   if (!requireNote()) return;
   commit(toggleArticulation(doc.value, selected.value, name));
@@ -590,6 +741,35 @@ const canRemoveBarline = computed(() => {
 
 const menuItems = computed(() => {
   const items = [];
+  const hp = selectedHairpinIndices.value;
+  if (hp) {
+    items.push({ type: "header", label: hp.kind === "cresc" ? "Crescendo" : "Decrescendo" });
+    items.push({
+      type: "item",
+      label: hp.kind === "cresc" ? "In Decrescendo ändern" : "In Crescendo ändern",
+      action: hairpinToggleType,
+    });
+    items.push({ type: "sep" });
+    items.push({ type: "item", label: "Gabel entfernen", danger: true, action: deleteSelection });
+    return items;
+  }
+  if (isNoteRange.value) {
+    items.push({ type: "header", label: `${noteRangeIndices.value.length} Noten` });
+    items.push({
+      type: "item",
+      label: "Crescendo über die Auswahl",
+      action: () => hairpinOverRange("cresc"),
+    });
+    items.push({
+      type: "item",
+      label: "Decrescendo über die Auswahl",
+      action: () => hairpinOverRange("decresc"),
+    });
+    items.push({ type: "item", label: "Mit Haltebögen verbinden", action: tieRange });
+    items.push({ type: "sep" });
+    items.push({ type: "item", label: "Noten löschen", danger: true, action: deleteSelection });
+    return items;
+  }
   const t = selectedToken.value;
   if (t) {
     const deco = selectedDecorations.value;
@@ -638,6 +818,14 @@ const menuItems = computed(() => {
           selectMeasure(nm.index);
           scheduleRender();
         },
+      });
+    }
+    if (t.kind === "note") {
+      items.push({
+        type: "check",
+        label: "Haltebogen zur nächsten Note",
+        checked: deco.tie,
+        action: tieToggle,
       });
     }
     if (t.kind !== "spacer" && t.kind !== "mmrest") {
@@ -795,8 +983,20 @@ function cellSelectedForNumber(index) {
 /** Resolve an SVG element to a selectable thing: note, barline, measure number, empty measure. */
 function hitTarget(el) {
   if (!el || !el.closest) return null;
-  const target = el.closest("g.vf-stavenote, [id^='vf-empty-'], [id^='vf-bar-'], [id^='vf-mnum-']");
+  const target = el.closest(
+    "g.vf-stavenote, [id^='vf-empty-'], [id^='vf-bar-'], [id^='vf-mnum-'], [id^='vf-hp-']",
+  );
   if (!target) return null;
+  if (target.id.startsWith("vf-hp-")) {
+    return {
+      kind: "hairpin",
+      startUid: Number(target.dataset.start),
+      endUid: target.dataset.end ? Number(target.dataset.end) : null,
+      hairpinKind: target.dataset.kind,
+      x1: Number(target.dataset.x1),
+      x2: Number(target.dataset.x2),
+    };
+  }
   if (target.id.startsWith("vf-empty-") || target.id.startsWith("vf-mnum-")) {
     const cell = target.dataset.cell !== undefined ? Number(target.dataset.cell) : null;
     return { kind: "measure", index: Number(target.dataset.measure), cell };
@@ -808,7 +1008,9 @@ function hitTarget(el) {
 }
 
 function applyHit(hit, extend = false) {
-  if (hit.kind === "note") selectNote(hit.tokenIndex);
+  if (hit.kind === "note" && extend) extendNoteSelection(hit.tokenIndex);
+  else if (hit.kind === "note") selectNote(hit.tokenIndex);
+  else if (hit.kind === "hairpin") selectHairpin(hit.startUid, hit.endUid, hit.hairpinKind);
   else if (hit.kind === "barline") selectBarline(hit.index);
   else if (extend) extendMeasureSelection(hit.index);
   else selectMeasure(hit.index, hit.cell ?? null);
@@ -855,6 +1057,18 @@ function currentMeasure() {
   if (selected.value !== null) return measureOfToken(selected.value);
   if (selectedMeasure.value !== null) return measures.value[selectedMeasure.value] || null;
   return null;
+}
+
+function extendNoteRange(delta) {
+  const order = measures.value
+    .flatMap((m) => m.events)
+    .filter((i) => doc.value.tokens[i].kind !== "spacer");
+  const cur = selectedNoteEnd.value ?? selected.value;
+  const pos = order.indexOf(cur);
+  if (pos === -1) return;
+  const next = Math.min(order.length - 1, Math.max(0, pos + delta));
+  extendNoteSelection(order[next]);
+  scheduleRender();
 }
 
 function moveSelection(delta) {
@@ -917,6 +1131,8 @@ function onKeydown(e) {
           Math.max(0, (selectedMeasureEnd.value ?? selectedMeasure.value) - 1),
         );
         scheduleRender();
+      } else if (e.shiftKey && selected.value !== null) {
+        extendNoteRange(-1);
       } else moveSelection(-1);
       break;
     case "ArrowRight":
@@ -929,6 +1145,8 @@ function onKeydown(e) {
           ),
         );
         scheduleRender();
+      } else if (e.shiftKey && selected.value !== null) {
+        extendNoteRange(1);
       } else moveSelection(1);
       break;
     case "1":
@@ -1118,6 +1336,7 @@ function render() {
   const tokens = doc.value.tokens;
   const ms = measures.value;
   measureBoxes = [];
+  notePositions = [];
   tooltip.value = null;
   const availableWidth = Math.max(320, width.value - 2 * SIDE_PAD);
   const cells = buildCells(ms);
@@ -1135,12 +1354,15 @@ function render() {
     const crop = snippetCrop(rowIdx);
     return crop ? { ...crop, px: Math.ceil(crop.height * snippetScale) } : null;
   });
+  // Gap between a snippet and its row: room for volta brackets and the number row
+  const SNIPPET_GAP = 18;
   const rowTops = [];
   let cursorY = TOP_PAD;
   snippets.forEach((sn) => {
-    rowTops.push(cursorY + (sn ? sn.px + 6 : 0));
-    cursorY += ROW_HEIGHT + (sn ? sn.px + 6 : 0);
+    rowTops.push(cursorY + (sn ? sn.px + SNIPPET_GAP : 0));
+    cursorY += ROW_HEIGHT + (sn ? sn.px + SNIPPET_GAP + 10 : 0);
   });
+  rowTopsCache = rowTops;
   const totalHeight = cursorY + 20;
 
   const colorInk = cssVar("--color-text", "#1c2733");
@@ -1204,10 +1426,11 @@ function render() {
           "begin-end": Volta.type.BEGIN_END,
         };
         const showNumber = m.volta.position === "begin" || m.volta.position === "begin-end";
+        // +25 pulls the bracket down, right above the number row
         stave.setVoltaType(
           vt[m.volta.position] || Volta.type.BEGIN,
           showNumber ? `${m.volta.count}.` : "",
-          -5,
+          25,
         );
       }
       if (isMusic && m.section) stave.setSection(m.section, 0, 0, 12, false);
@@ -1295,7 +1518,7 @@ function render() {
         const t = tokens[ti];
         if (t.kind === "spacer") {
           pendingDynamics.push(...extractDynamics(t.suffix));
-          sequence.push({ tok: t, note: null, row: rowIdx });
+          sequence.push({ tok: t, ti, note: null, row: rowIdx });
           continue;
         }
         const keys =
@@ -1326,13 +1549,14 @@ function render() {
           ann.setVerticalJustification(Annotation.VerticalJustify.TOP);
           note.addModifier(ann);
         }
-        const isSel = ti === selected.value;
+        const isSel =
+          ti === selected.value || (isNoteRange.value && noteRangeIndices.value.includes(ti));
         const color = isSel ? colorSel : m.mismatch ? colorErr : m.copy ? colorCopy : colorInk;
         note.setStyle({ fillStyle: color, strokeStyle: color });
         if (typeof note.setStemStyle === "function") note.setStemStyle({ strokeStyle: color });
         notes.push(note);
         tokenForNote.push(ti);
-        sequence.push({ tok: t, note, row: rowIdx });
+        sequence.push({ tok: t, ti, note, row: rowIdx });
       }
 
       if (notes.length) {
@@ -1350,10 +1574,21 @@ function render() {
           new Formatter().joinVoices([voice]).formatToStave([voice], stave, { alignRests: true });
           voice.draw(ctx, stave);
           beams.forEach((b) => b.setContext(ctx).draw());
-          // Selection highlight: soft rounded box behind the whole note column
-          const selIdx = tokenForNote.indexOf(selected.value);
-          if (selIdx >= 0) {
-            const bb = notes[selIdx].getBoundingBox();
+          notes.forEach((n, k) =>
+            notePositions.push({
+              ti: tokenForNote[k],
+              uid: tokens[tokenForNote[k]].uid,
+              x: n.getAbsoluteX(),
+              row: rowIdx,
+            }),
+          );
+          // Selection highlight: soft rounded box behind each selected note
+          const selSet = isNoteRange.value
+            ? new Set(noteRangeIndices.value)
+            : new Set([selected.value]);
+          for (let k = 0; k < notes.length; k += 1) {
+            if (!selSet.has(tokenForNote[k])) continue;
+            const bb = notes[k].getBoundingBox();
             const pad = 6;
             ctx.rect(bb.getX() - pad, y + 12, bb.getW() + 2 * pad, 84, {
               fill: colorSel,
@@ -1386,7 +1621,8 @@ function render() {
     });
   });
 
-  drawHairpins(ctx, sequence);
+  drawHairpins(ctx, sequence, colorInk, colorSel);
+  drawTies(ctx, sequence);
 
   const svg = el.querySelector("svg");
   if (svg && snippetsOn) {
@@ -1397,7 +1633,7 @@ function render() {
       if (!sn) return;
       const nested = document.createElementNS(NS, "svg");
       nested.setAttribute("x", String(SIDE_PAD));
-      nested.setAttribute("y", String(rowTops[rowIdx] - sn.px - 6));
+      nested.setAttribute("y", String(rowTops[rowIdx] - sn.px - SNIPPET_GAP));
       nested.setAttribute("width", String(contentWidth));
       nested.setAttribute("height", String(sn.px));
       nested.setAttribute("viewBox", `0 ${sn.top} ${imageSize.value.w} ${sn.height}`);
@@ -1426,6 +1662,7 @@ function render() {
       const hit = hitTarget(ev.target);
       if (!hit) return;
       applyHit(hit, ev.shiftKey);
+      if (hit.kind === "hairpin") startHairpinDrag(ev, hit);
       scheduleRender();
     });
     for (const id of noteMap.keys()) {
@@ -1441,38 +1678,67 @@ function render() {
  * (<>\!) close on the previous drawn note with a right shift. Spans over a
  * row break are drawn in two pieces: to the row end and from the row start.
  */
-function drawHairpins(ctx, sequence) {
+function drawHairpins(ctx, sequence, colorInk, colorSel) {
   const drawn = sequence.filter((s) => s.note);
-  let open = null; // { type, startNote, startRow, startIdx }
+  let open = null; // { type, kind, startNote, startRow, startTi, startUid }
+  const sel = selectedHairpinIndices.value;
 
-  const draw = (type, first, last, leftShift, rightShift) => {
+  const draw = (hp, first, last, leftShift, rightShift, row) => {
     if (!first || !last) return;
+    const isSel = !!sel && sel.start === hp.startTi;
     try {
-      const hp = new StaveHairpin({ firstNote: first, lastNote: last }, type);
-      hp.setPosition(Modifier.Position.BELOW);
-      hp.setRenderOptions({
+      const pin = new StaveHairpin({ firstNote: first, lastNote: last }, hp.type);
+      pin.setPosition(Modifier.Position.BELOW);
+      pin.setRenderOptions({
         height: 9,
         yShift: 8,
         leftShiftPx: leftShift,
         rightShiftPx: rightShift,
       });
-      hp.setContext(ctx).draw();
+      ctx.save();
+      ctx.setStrokeStyle(isSel ? colorSel : colorInk);
+      ctx.setLineWidth(isSel ? 2 : 1);
+      pin.setContext(ctx).draw();
+      ctx.restore();
+      // hit area over the whole hairpin
+      const x1 = first.getModifierStartXY(Modifier.Position.BELOW, 0).x + leftShift;
+      const x2 = last.getModifierStartXY(Modifier.Position.BELOW, 0).x + rightShift;
+      const stave = first.checkStave();
+      const yTop = stave.getY() + stave.getHeight() + 8 + 20 - 6;
+      const g = ctx.openGroup("hairpin-hit", `hp-${hp.startTi}-${row}`);
+      ctx.rect(Math.min(x1, x2) - 6, yTop, Math.abs(x2 - x1) + 12, 9 + 12, {
+        fill: isSel ? colorSel : "none",
+        "fill-opacity": isSel ? 0.12 : 0,
+        stroke: "none",
+        "pointer-events": "all",
+      });
+      ctx.closeGroup();
+      if (g) {
+        g.style.cursor = "ew-resize";
+        g.dataset.start = String(hp.startUid);
+        g.dataset.end = hp.endUid !== null && hp.endUid !== undefined ? String(hp.endUid) : "";
+        g.dataset.kind = hp.kind;
+        g.dataset.x1 = String(Math.min(x1, x2));
+        g.dataset.x2 = String(Math.max(x1, x2));
+      }
     } catch {
       // a hairpin that cannot be drawn is not worth breaking the score
     }
   };
 
-  const close = (endNote, endRow, rightShift) => {
+  const close = (endNote, endRow, rightShift, endTi) => {
     if (!open) return;
+    const endItem = endTi !== null ? sequence.find((s) => s.ti === endTi) : null;
+    const hp = { ...open, endUid: endItem ? endItem.tok.uid : null };
     if (endRow === open.startRow) {
-      draw(open.type, open.startNote, endNote, 0, rightShift);
+      draw(hp, open.startNote, endNote, 0, rightShift, endRow);
     } else {
       const rowNotes = drawn.filter((d) => d.row === open.startRow);
       const lastInRow = rowNotes[rowNotes.length - 1]?.note;
       const endRowNotes = drawn.filter((d) => d.row === endRow);
       const firstInEndRow = endRowNotes[0]?.note;
-      draw(open.type, open.startNote, lastInRow, 0, 18);
-      draw(open.type, firstInEndRow, endNote, -6, rightShift);
+      draw(hp, open.startNote, lastInRow, 0, 18, open.startRow);
+      draw(hp, firstInEndRow, endNote, -6, rightShift, endRow);
     }
     open = null;
   };
@@ -1486,20 +1752,121 @@ function drawHairpins(ctx, sequence) {
     const ends = suffix.includes("\\!") || DYNAMIC_RE.test(suffix);
     DYNAMIC_RE.lastIndex = 0;
     if (item.note) {
-      if (open && (ends || starts) && item.note !== open.startNote) close(item.note, item.row, 0);
+      if (open && (ends || starts) && item.note !== open.startNote) {
+        close(item.note, item.row, 0, item.ti);
+      }
       if (pendingStart) {
-        open = { type: pendingStart, startNote: item.note, startRow: item.row };
+        open = { ...pendingStart, startNote: item.note, startRow: item.row };
         pendingStart = null;
       }
-      if (starts) open = { type: starts, startNote: item.note, startRow: item.row };
+      if (starts) {
+        open = {
+          type: starts,
+          kind: starts === 1 ? "cresc" : "decresc",
+          startNote: item.note,
+          startRow: item.row,
+          startTi: item.ti,
+          startUid: item.tok.uid,
+        };
+      }
       lastNote = item.note;
       lastRow = item.row;
     } else {
-      // spacer <>\< / <>\!
-      if (open && ends) close(lastNote, lastRow, 22);
-      if (starts) pendingStart = starts;
+      // spacer <>\\< / <>\\!
+      if (open && ends) close(lastNote, lastRow, 22, item.ti);
+      if (starts) {
+        pendingStart = {
+          type: starts,
+          kind: starts === 1 ? "cresc" : "decresc",
+          startTi: item.ti,
+          startUid: item.tok.uid,
+        };
+      }
     }
   }
+  if (open && lastNote && lastNote !== open.startNote) close(lastNote, lastRow, 22, null);
+}
+
+/** Ties (~): connect a note to the next drawn note, split at row breaks. */
+function drawTies(ctx, sequence) {
+  const drawn = sequence.filter((s) => s.note && s.tok.kind === "note");
+  for (let i = 0; i < drawn.length; i += 1) {
+    const cur = drawn[i];
+    if (!(cur.tok.suffix || "").includes("~")) continue;
+    const next = drawn[i + 1];
+    try {
+      if (next && next.row === cur.row) {
+        new StaveTie({
+          firstNote: cur.note,
+          lastNote: next.note,
+          firstIndices: [0],
+          lastIndices: [0],
+        })
+          .setContext(ctx)
+          .draw();
+      } else {
+        new StaveTie({ firstNote: cur.note, firstIndices: [0], lastIndices: [0] })
+          .setContext(ctx)
+          .draw();
+        if (next) {
+          new StaveTie({ lastNote: next.note, firstIndices: [0], lastIndices: [0] })
+            .setContext(ctx)
+            .draw();
+        }
+      }
+    } catch {
+      // ignore ties that cannot be drawn
+    }
+  }
+}
+
+// ── Hairpin drag ─────────────────────────────────────────────────────────
+
+function svgPoint(ev) {
+  const svg = host.value?.querySelector("svg");
+  if (!svg || !svgLogicalWidth) return null;
+  const rect = svg.getBoundingClientRect();
+  if (!rect.width) return null;
+  const scale = svgLogicalWidth / rect.width;
+  return { x: (ev.clientX - rect.left) * scale, y: (ev.clientY - rect.top) * scale };
+}
+
+function startHairpinDrag(ev, hit) {
+  const pt = svgPoint(ev);
+  if (!pt) return;
+  const side = Math.abs(pt.x - hit.x1) <= Math.abs(pt.x - hit.x2) ? "start" : "end";
+  hairpinDrag = { side, moved: false };
+  window.addEventListener("pointermove", onHairpinDragMove);
+  window.addEventListener("pointerup", onHairpinDragEnd, { once: true });
+}
+
+function onHairpinDragMove() {
+  if (hairpinDrag) hairpinDrag.moved = true;
+}
+
+function onHairpinDragEnd(ev) {
+  window.removeEventListener("pointermove", onHairpinDragMove);
+  const drag = hairpinDrag;
+  hairpinDrag = null;
+  if (!drag || !drag.moved) return;
+  const pt = svgPoint(ev);
+  if (!pt) return;
+  // nearest drawn note in the row under the pointer (fallback: nearest anywhere)
+  const box = measureBoxes.find((b) => pt.y >= b.y && pt.y < b.y + b.h);
+  const rowIdx = box ? rowTopsCache.indexOf(box.y) : -1;
+  const inRow = notePositions.filter((n) => n.row === rowIdx);
+  const pool = inRow.length ? inRow : notePositions;
+  let best = null;
+  for (const n of pool) {
+    const d = Math.abs(n.x - pt.x);
+    if (!best || d < best.d) best = { ...n, d };
+  }
+  if (best) moveHairpinEnd(drag.side, best.ti);
+}
+
+/** Toolbar clicks must not steal the keyboard from the editor. */
+function refocusEditor() {
+  nextTick(() => container.value?.focus());
 }
 
 function extractDynamics(suffix) {
@@ -1588,7 +1955,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="container" class="ly-editor" tabindex="0" @keydown="onKeydown">
-    <div class="toolbar" role="toolbar" aria-label="Notenbearbeitung">
+    <div class="toolbar" role="toolbar" aria-label="Notenbearbeitung" @click="refocusEditor">
       <div class="tool-group">
         <button
           type="button"

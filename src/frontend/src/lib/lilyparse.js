@@ -206,7 +206,7 @@ const PITCH_SRC = "[a-g](?:eses|isis|es|is|s)?[',]*";
 const DUR_SRC = "(?:1|2|4|8|16|32|64|128)\\.*(?:\\*\\d+(?:/\\d+)?)?";
 // Post-fix material on an event: articulations, dynamics, hairpins,
 // fingering-like "-x", and _\markup { … } / ^\markup { … } blocks.
-const SUFFIX_PIECE_RE = /^(?:-[>.^_+-]|-\\[a-zA-Z]+|\\[<>!]|\\[a-zA-Z]+(?![a-zA-Z]))/;
+const SUFFIX_PIECE_RE = /^(?:~|-[>.^_+-]|-\\[a-zA-Z]+|\\[<>!]|\\[a-zA-Z]+(?![a-zA-Z]))/;
 
 const EVENT_RE = new RegExp(
   `^(?:(<>)|(<(?:\\s*${PITCH_SRC})+\\s*>)|(${PITCH_SRC})|(r|R|s))(${DUR_SRC})?`,
@@ -1075,7 +1075,75 @@ export function eventDecorations(tok) {
   if (pieces.includes("\\<")) hairpin = "cresc";
   else if (pieces.includes("\\>")) hairpin = "decresc";
   else if (pieces.includes("\\!")) hairpin = "end";
-  return { articulations, dynamic, hairpin };
+  const tie = pieces.includes("~");
+  return { articulations, dynamic, hairpin, tie };
+}
+
+/** Add or remove the tie (~) that connects a note to the next one. */
+export function toggleTie(doc, tokenIndex, force = null) {
+  return withSuffix(doc, tokenIndex, (pieces, t) => {
+    if (t.kind !== "note") return pieces;
+    const has = pieces.includes("~");
+    const want = force === null ? !has : force;
+    if (want === has) return pieces;
+    return want ? [...pieces, "~"] : pieces.filter((p) => p !== "~");
+  });
+}
+
+/** Start marks of a hairpin (\\< / \\>) and its end mark (\\!) as one operation. */
+export function removeHairpin(doc, startIndex, endIndex) {
+  let out = setHairpin(doc, startIndex, null);
+  if (endIndex !== null && endIndex !== undefined && endIndex !== startIndex) {
+    const end = out.tokens[endIndex];
+    if (end && splitSuffix(end.suffix).includes("\\!")) out = setHairpin(out, endIndex, null);
+  }
+  return out;
+}
+
+/**
+ * Lay a hairpin from `startIndex` to `endIndex` (score order). The end gets
+ * \\! unless it already carries a dynamic, which terminates the hairpin.
+ */
+export function placeHairpin(doc, startIndex, endIndex, kind) {
+  if (startIndex === endIndex) return doc;
+  const lo = Math.min(startIndex, endIndex);
+  const hi = Math.max(startIndex, endIndex);
+  let out = setHairpin(doc, lo, kind);
+  const endTok = out.tokens[hi];
+  if (endTok) {
+    const hasDynamic = eventDecorations(endTok).dynamic !== null;
+    out = setHairpin(out, hi, hasDynamic ? null : "end");
+  }
+  return out;
+}
+
+/**
+ * Hairpins as [{ start, end, kind }] token indices in score order; `end` is
+ * null for a hairpin that is never terminated.
+ */
+export function findHairpins(tokens) {
+  const out = [];
+  let open = null;
+  tokens.forEach((t, i) => {
+    if (t.type !== "event") return;
+    const deco = eventDecorations(t);
+    if (
+      open &&
+      (deco.hairpin === "end" ||
+        deco.dynamic !== null ||
+        deco.hairpin === "cresc" ||
+        deco.hairpin === "decresc")
+    ) {
+      if (i !== open.start) {
+        out.push({ ...open, end: i });
+        open = null;
+      }
+    }
+    if (deco.hairpin === "cresc" || deco.hairpin === "decresc")
+      open = { start: i, kind: deco.hairpin };
+  });
+  if (open) out.push({ ...open, end: null });
+  return out;
 }
 
 function withSuffix(doc, tokenIndex, fn) {
@@ -1439,8 +1507,21 @@ const MOMENT = (f) => `\\set Timing.measureLength = #(ly:make-moment ${f.n}/${f.
  * when it differs from the time signature, the red error marking.
  * Percent repeats and multi-measure rests are left untouched.
  */
+/** Spacers (<>) exist only to carry marks; one without marks is noise. */
+function dropBareSpacers(tokens) {
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    const t = tokens[i];
+    if (t.type === "event" && t.kind === "spacer" && !(t.suffix || "").trim()) {
+      const ws = t.ws;
+      tokens.splice(i, 1);
+      if (tokens[i] && /\n/.test(ws) && !/\n/.test(tokens[i].ws)) tokens[i].ws = ws;
+    }
+  }
+  return tokens;
+}
+
 export function normalizeDocument(doc) {
-  const tokens = dropEmptyPercentRepeats(cloneTokens(doc.tokens));
+  const tokens = dropEmptyPercentRepeats(dropBareSpacers(cloneTokens(doc.tokens)));
   const measures = buildMeasures(tokens);
   let effective = null;
   let timeLen = null;

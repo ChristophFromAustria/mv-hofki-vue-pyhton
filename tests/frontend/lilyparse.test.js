@@ -24,6 +24,11 @@ import {
   eventDecorations,
   setKeySignature,
   setKeyForRange,
+  toggleTie,
+  setHairpin,
+  removeHairpin,
+  placeHairpin,
+  findHairpins,
   setPercentCount,
   toggleRest,
   normalizeDocument,
@@ -228,6 +233,7 @@ describe("editing", () => {
       articulations: new Set(["accent"]),
       dynamic: "f",
       hairpin: null,
+      tie: false,
     });
     let d = toggleArticulation(doc, idx, "accent");
     expect(serializeDocument(d)).toContain("bes,2\\f d4->");
@@ -360,6 +366,40 @@ describe("editing", () => {
       "\\set Timing.measureLength = #(ly:make-moment 1/2) \\repeat percent 2 { \\markErr c2 \\unmarkErr } |",
     );
     expect(code).toContain("\\set Timing.measureLength = #(ly:make-moment 1/1) c1 |\n  } }");
+  });
+
+  it("handles ties and hairpin spans", () => {
+    const toks = tokenize("c4~ c4 d4\\< e4 f4\\! g4\\> a4\\f");
+    expect(toks[0].suffix).toBe("~");
+    expect(eventDecorations(toks[0]).tie).toBe(true);
+    expect(findHairpins(toks)).toEqual([
+      { start: 2, end: 4, kind: "cresc" },
+      { start: 5, end: 6, kind: "decresc" },
+    ]);
+    // range operations on the sample
+    const a = ms[2].events[0]; // f4
+    const b = ms[3].events[1]; // bes,4 (second)
+    let d = placeHairpin(doc, a, b, "cresc");
+    expect(serializeDocument(d)).toContain("f4\\< r4 f,2-> |\n    bes,4 bes,4\\! bes,4 r4");
+    d = removeHairpin(d, a, b);
+    expect(serializeDocument(d)).toContain("f4 r4 f,2-> |\n    bes,4 bes,4 bes,4 r4");
+    // end on a note with a dynamic gets no \\!
+    d = placeHairpin(doc, ms[6].events[0], ms[7].events[0], "decresc"); // ... es4\\f
+    expect(serializeDocument(d)).toContain("r4\\f\\> bes,4-> bes,2-> |");
+    expect(serializeDocument(d)).toContain("es4\\f r4 es4 r4 |");
+    // ties
+    d = toggleTie(doc, ms[1].events[0]);
+    expect(serializeDocument(d)).toContain("f2->~ a2-> |");
+    d = toggleTie(d, ms[1].events[0]);
+    expect(serializeDocument(d)).toContain("f2-> a2-> |");
+  });
+
+  it("removes spacers that lost their marks", () => {
+    const start = ms[5].events[1]; // bes,4 after <>\\>
+    const end = ms[5].events[4]; // <>\\!
+    const d = normalizeDocument(removeHairpin(setHairpin(doc, ms[5].events[0], null), start, end));
+    expect(serializeDocument(d)).toContain("\\markErr bes,4 r4 f4 \\unmarkErr |");
+    expect(serializeDocument(d)).not.toContain("<>");
   });
 
   it("toggles note and rest", () => {
