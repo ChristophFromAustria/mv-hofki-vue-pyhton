@@ -200,6 +200,7 @@ async def run_pipeline(
 
     variant_images = []
     variant_template_ids = []
+    variant_ids = []
     variant_heights = []
     variant_line_spacings = []
     for v in variants:
@@ -208,6 +209,7 @@ async def run_pipeline(
         if v_img is not None:
             variant_images.append(v_img)
             variant_template_ids.append(v.template_id)
+            variant_ids.append(v.id)
             variant_heights.append(v.height_in_lines or 4.0)
             variant_line_spacings.append(v.source_line_spacing)
 
@@ -218,6 +220,15 @@ async def run_pipeline(
     all_templates = list(tmpl_result.scalars().all())
     template_display_names = {t.id: t.display_name for t in all_templates}
     template_categories = {t.id: t.category for t in all_templates}
+    template_min_confidence = {
+        t.id: t.min_confidence for t in all_templates if t.min_confidence is not None
+    }
+    template_confidence_weight = {
+        t.id: t.confidence_weight
+        for t in all_templates
+        if t.confidence_weight is not None
+    }
+    template_merge_overlapping = {t.id for t in all_templates if t.merge_overlapping}
 
     # Load global scanner config
     config = await get_effective_config(session)
@@ -241,10 +252,14 @@ async def run_pipeline(
         TemplateMatchingStage(
             variant_images=variant_images,
             variant_template_ids=variant_template_ids,
+            variant_ids=variant_ids,
             variant_heights=variant_heights,
             variant_line_spacings=variant_line_spacings,
             template_display_names=template_display_names,
             template_categories=template_categories,
+            template_min_confidence=template_min_confidence,
+            template_confidence_weight=template_confidence_weight,
+            template_merge_overlapping=template_merge_overlapping,
         ),
     )
 
@@ -347,6 +362,7 @@ async def run_pipeline(
                 staff_x_end=sym_data.staff_x_end,
                 sequence_order=sym_data.sequence_order,
                 matched_symbol_id=sym_data.matched_template_id,
+                matched_variant_id=sym_data.matched_variant_id,
                 confidence=sym_data.confidence,
                 user_verified=sym_data.confidence is not None
                 and sym_data.confidence >= config.get("auto_verify_confidence", 0.85),

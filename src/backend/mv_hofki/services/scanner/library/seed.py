@@ -1,5 +1,7 @@
 """Pre-seed symbol template definitions for the symbol library."""
 
+from mv_hofki.services.scanner.library.key_signatures import key_signature_templates
+
 SYMBOL_TEMPLATES = [
     # Notes
     {
@@ -354,3 +356,6 @@ SYMBOL_TEMPLATES = [
         "musicxml_element": "<note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type><notations><ornaments><trill-mark/></ornaments></notations></note>",
     },
 ]
+
+# Key signatures (whole-group templates, category key_sig)
+SYMBOL_TEMPLATES.extend(key_signature_templates())

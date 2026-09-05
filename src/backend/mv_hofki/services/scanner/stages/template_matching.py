@@ -43,9 +43,14 @@ class TemplateMatchingStage(ProcessingStage):
         variant_line_spacings: list[float] | None = None,
         template_display_names: dict[int, str] | None = None,
         template_categories: dict[int, str] | None = None,
+        variant_ids: list[int] | None = None,
+        template_min_confidence: dict[int, float] | None = None,
+        template_confidence_weight: dict[int, float] | None = None,
+        template_merge_overlapping: set[int] | None = None,
     ) -> None:
         self._variant_images = variant_images
         self._variant_template_ids = variant_template_ids
+        self._variant_ids = variant_ids or []
         self._variant_heights = variant_heights
         self._variant_line_spacings = variant_line_spacings or [0.0] * len(
             variant_images
@@ -261,6 +266,15 @@ class TemplateMatchingStage(ProcessingStage):
                 continue
 
             # Determine scales to try
+            variant_id = self._variant_ids[i] if self._variant_ids else None
+            # Effective threshold and weight for this template. The weight is
+            # applied to the raw score *before* the threshold so that every
+            # stored confidence is >= the threshold the user configured.
+            tmpl_threshold = self._template_min_confidence.get(
+                template_id, confidence_threshold
+            )
+            tmpl_weight = self._template_confidence_weight.get(template_id, 1.0)
+            raw_threshold = tmpl_threshold / tmpl_weight if tmpl_weight > 0 else 1.01
             if multi_scale_enabled and multi_scale_steps > 1:
                 scales = np.linspace(
                     base_scale * (1 - multi_scale_range),
@@ -389,6 +403,7 @@ class TemplateMatchingStage(ProcessingStage):
     # ------------------------------------------------------------------
 
     @staticmethod
+                            matched_variant_id=variant_id,
     def _compute_scale(
         template: np.ndarray,
         height_in_lines: float,

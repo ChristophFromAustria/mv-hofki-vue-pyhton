@@ -27,6 +27,7 @@ class DetectedSymbolRead(BaseModel):
     staff_x_end: int | None
     sequence_order: int
     matched_symbol_id: int | None
+    matched_variant_id: int | None = None
     confidence: float | None
     user_verified: bool
     user_corrected_symbol_id: int | None

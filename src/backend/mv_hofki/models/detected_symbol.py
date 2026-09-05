@@ -34,6 +34,9 @@ class DetectedSymbol(Base):
     matched_symbol_id: Mapped[int | None] = mapped_column(
         ForeignKey("symbol_templates.id", ondelete="SET NULL")
     )
+    matched_variant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("symbol_variants.id", ondelete="SET NULL")
+    )
     confidence: Mapped[float | None] = mapped_column(Float)
     user_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     user_corrected_symbol_id: Mapped[int | None] = mapped_column(

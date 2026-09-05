@@ -43,6 +43,7 @@ class SymbolData:
     staff_x_end: int | None = None
     sequence_order: int = 0
     matched_template_id: int | None = None
+    matched_variant_id: int | None = None
     confidence: float | None = None
     alternatives: list[tuple[int, float]] = field(default_factory=list)
     filtered: bool = False
