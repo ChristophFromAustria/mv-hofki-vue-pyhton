@@ -417,3 +417,37 @@ async def test_delete_session_removes_pages_but_keeps_archive(client, storage_ro
 async def test_unknown_session_404(client):
     assert (await client.get("/api/v1/import/sessions/999")).status_code == 404
     assert (await client.delete("/api/v1/import/sessions/999")).status_code == 404
+
+
+async def test_draft_update_returns_validation(client):
+    resp = await client.post(
+        "/api/v1/instrument-types", json={"label": "Trompete", "label_short": "TR"}
+    )
+    assert resp.status_code == 201, resp.text
+    sid, _ = await _session_with_files(
+        client, [("files", ("a.png", io.BytesIO(_png()), "image/png"))]
+    )
+    draft = {
+        "version": 1,
+        "instruments": [
+            {
+                "key": "p0-i0",
+                "inventory_nr": "7",
+                "instrument_type": "Trompete Bb",
+                "loan": {"musician_name": "Maier Karl", "start_date": "1.1.2020"},
+            }
+        ],
+        "photos": [],
+    }
+    resp = await client.put(
+        f"/api/v1/import/sessions/{sid}/draft", json={"draft": draft}
+    )
+    assert resp.status_code == 200
+    validation = resp.json()["validation"]
+    assert validation["summary"]["instruments_new"] == 1
+    assert validation["summary"]["musicians_new"] == 1
+    assert validation["rows"][0]["fields"]["instrument_type_label"] == "Trompete"
+    assert validation["summary"]["blocking"] is False
+
+    resp = await client.get(f"/api/v1/import/sessions/{sid}")
+    assert resp.json()["validation"]["summary"] == validation["summary"]

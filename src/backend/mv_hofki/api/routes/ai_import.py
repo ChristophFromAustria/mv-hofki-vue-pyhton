@@ -46,7 +46,7 @@ async def create_session(
 @router.get("/sessions/{session_id}", response_model=ImportSessionRead)
 async def get_session(session_id: int, db: AsyncSession = Depends(get_db)):
     session = await session_service.get_by_id(db, session_id)
-    return session_service.to_read_dict(session)
+    return await session_service.read_with_validation(db, session)
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
@@ -76,7 +76,7 @@ async def update_draft(
 ):
     session = await session_service.get_by_id(db, session_id)
     session = await session_service.update_draft(db, session, body.draft)
-    return session_service.to_read_dict(session)
+    return await session_service.read_with_validation(db, session)
 
 
 @router.get("/sessions/{session_id}/pages/{page_id}/crop")

@@ -34,6 +34,7 @@ from .pages import (
     render_image_bytes,
     render_pdf_bytes,
 )
+from .resolve import load_context, validate_draft
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +116,17 @@ def to_read_dict(session: ImportSession) -> dict[str, Any]:
             for p in session.pages
         ],
     }
+
+
+async def read_with_validation(
+    db: AsyncSession, session: ImportSession
+) -> dict[str, Any]:
+    """to_read_dict plus the validation of the current draft (if any)."""
+    data = to_read_dict(session)
+    if data["draft"] is not None and session.status != "imported":
+        ctx = await load_context(db)
+        data["validation"] = validate_draft(data["draft"], ctx)
+    return data
 
 
 def to_summary_dict(session: ImportSession, page_count: int) -> dict[str, Any]:

@@ -44,6 +44,7 @@ class ImportSessionRead(ImportSessionSummary):
     error: str | None = None
     draft: dict[str, Any] | None = None
     import_result: dict[str, Any] | None = None
+    validation: dict[str, Any] | None = None
     pages: list[ImportPageRead] = Field(default_factory=list)
 
 
