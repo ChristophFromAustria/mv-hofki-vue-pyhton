@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, defineAsyncComponent } from "vue";
+import { ref, computed, watch, defineAsyncComponent, onBeforeUnmount } from "vue";
 import { get, post } from "../lib/api.js";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import FieldNumber from "./config/FieldNumber.vue";
@@ -78,11 +78,24 @@ const layoutGroups = computed(() => {
 
 const layoutHasOverrides = computed(() => layoutEntries.value.some((e) => e.is_modified));
 
+// Changes are applied automatically a moment after the last adjustment
+let applyTimer = null;
+const APPLY_DELAY_MS = 700;
+
+function scheduleApply() {
+  if (applyTimer) clearTimeout(applyTimer);
+  applyTimer = setTimeout(() => {
+    applyTimer = null;
+    applyLayout();
+  }, APPLY_DELAY_MS);
+}
+
 function layoutUpdate(key, value) {
   const e = layoutEntries.value.find((x) => x.key === key);
   if (!e) return;
   e.value = value;
   e.is_modified = String(value) !== String(layoutGlobals.value[key]);
+  scheduleApply();
 }
 
 function layoutReset(key) {
@@ -98,9 +111,18 @@ function applyLayout() {
 }
 
 function resetLayout() {
-  for (const e of layoutEntries.value) layoutReset(e.key);
+  if (applyTimer) clearTimeout(applyTimer);
+  applyTimer = null;
+  for (const e of layoutEntries.value) {
+    e.value = layoutGlobals.value[e.key];
+    e.is_modified = false;
+  }
   emit("apply-layout", { values: {}, reset: true });
 }
+
+onBeforeUnmount(() => {
+  if (applyTimer) clearTimeout(applyTimer);
+});
 const confirmResetOpen = ref(false);
 function confirmReset() {
   confirmResetOpen.value = false;
@@ -339,14 +361,8 @@ const cropRect = computed(() => {
               </section>
             </div>
             <div class="layout-actions">
-              <button
-                type="button"
-                class="btn btn-primary btn-sm"
-                :disabled="resetting || layoutLoading"
-                @click="applyLayout"
-              >
-                Übernehmen & neu rendern
-              </button>
+              <span v-if="resetting" class="layout-status" role="status">Wird neu gerendert…</span>
+              <span v-else class="layout-status">Änderungen werden automatisch gerendert.</span>
               <button
                 type="button"
                 class="btn btn-sm"
@@ -610,6 +626,11 @@ const cropRect = computed(() => {
   align-items: center;
   gap: 0.5rem;
   margin-top: 0.75rem;
+}
+
+.layout-status {
+  font-size: 0.75rem;
+  color: var(--color-muted);
 }
 
 .layout-hint {
