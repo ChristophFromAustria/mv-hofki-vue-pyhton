@@ -14,6 +14,21 @@ router = APIRouter(
     tags=["scanner"],
 )
 
+# Scan by id alone: the scan pages know only project id and scan id.
+flat_router = APIRouter(prefix="/api/v1/scanner/scans", tags=["scanner"])
+
+
+@flat_router.get("/{scan_id}", response_model=SheetMusicScanRead)
+async def get_scan_by_id(scan_id: int, db: AsyncSession = Depends(get_db)):
+    return await scan_service.get_scan(db, scan_id)
+
+
+@flat_router.put("/{scan_id}", response_model=SheetMusicScanRead)
+async def update_scan_by_id(
+    scan_id: int, data: SheetMusicScanUpdate, db: AsyncSession = Depends(get_db)
+):
+    return await scan_service.update_scan(db, scan_id, data)
+
 
 @router.get("", response_model=list[SheetMusicScanRead])
 async def list_scans(project_id: int, part_id: int, db: AsyncSession = Depends(get_db)):

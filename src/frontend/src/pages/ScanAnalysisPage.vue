@@ -1,8 +1,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { symbolCategoryLabel } from "../lib/symbolCategories.js";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import { get, put, post } from "../lib/api.js";
+import { fetchScan, saveScanAdjustments, parseAdjustments, scanAssetUrl } from "../lib/scans.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ImageAdjustBar from "../components/ImageAdjustBar.vue";
 import ScanCanvas from "../components/ScanCanvas.vue";
@@ -11,12 +12,13 @@ import TextRegionPanel from "../components/TextRegionPanel.vue";
 import FilterDropdown from "../components/FilterDropdown.vue";
 import ScannerConfigModal from "../components/ScannerConfigModal.vue";
 import AnalysisLogModal from "../components/AnalysisLogModal.vue";
-import LilypondModal from "../components/LilypondModal.vue";
 
 const props = defineProps({
   projectId: { type: String, required: true },
   scanId: { type: String, required: true },
 });
+
+const router = useRouter();
 
 const scan = ref(null);
 const staves = ref([]);
@@ -52,16 +54,20 @@ const showCorrectPicker = ref(false);
 const libraryTemplates = ref([]);
 
 const showConfig = ref(false);
-const showLilypond = ref(false);
-const lilypondCode = ref("");
-const lilypondPdfPath = ref(null);
-const lilypondPngPaths = ref([]);
-const lilypondWarnings = ref([]);
-const lilypondLoading = ref(false);
 const imageInfo = ref(null); // { width, height, type }
 const showAnalysisLog = ref(false);
 const viewMode = ref("original");
 const analysisLogRef = ref(null);
+
+// Binarised preview: rendered on demand when "Binär" is selected and the
+// preprocessing values changed since the last preview or analysis.
+const previewing = ref(false);
+const previewedPreprocessing = ref(null); // JSON snapshot of the last rendered values
+const preprocessingKey = computed(() => JSON.stringify(adjustments.value.preprocessing ?? {}));
+const previewStale = computed(
+  () =>
+    !scan.value?.processed_image_path || preprocessingKey.value !== previewedPreprocessing.value,
+);
 
 const captureMode = ref(false);
 const scanCanvasRef = ref(null);
@@ -106,15 +112,7 @@ async function fetchScanData() {
       get(`/scanner/scans/${props.scanId}/text-regions`).catch(() => []),
     ]);
 
-    // Get actual scan data through project/part lookup
-    // We fetch from the project-level parts list to find this scan's image_path
-    const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
-    let foundScan = null;
-    for (const part of partsData) {
-      const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
-      foundScan = scansData.find((s) => String(s.id) === String(props.scanId));
-      if (foundScan) break;
-    }
+    const foundScan = await fetchScan(props.scanId);
     scan.value = foundScan;
     staves.value = stavesData || [];
     symbols.value = symbolsData || [];
@@ -129,17 +127,13 @@ async function fetchScanData() {
       loadImageDimensions(foundScan.image_path, ext);
     }
 
-    if (foundScan?.adjustments_json) {
-      try {
-        adjustments.value = JSON.parse(foundScan.adjustments_json);
-      } catch {
-        // ignore parse errors
-      }
-    }
+    adjustments.value = parseAdjustments(foundScan?.adjustments_json, adjustments.value);
 
-    // Default to binary view if analysis results exist
+    // Default to binary view if analysis results exist. The stored values are
+    // the ones that produced the processed image.
     if (foundScan?.processed_image_path) {
       viewMode.value = "binary";
+      previewedPreprocessing.value = preprocessingKey.value;
     }
 
     updateStatus();
@@ -151,12 +145,11 @@ async function fetchScanData() {
 }
 
 function loadImageDimensions(imagePath, ext) {
-  const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
   const img = new Image();
   img.onload = () => {
     imageInfo.value = { width: img.naturalWidth, height: img.naturalHeight, type: ext };
   };
-  img.src = `${BASE}/scans/${imagePath.replace(/^data\/scans\//, "")}`;
+  img.src = scanAssetUrl(imagePath);
 }
 
 function updateStatus() {
@@ -182,17 +175,7 @@ function updateStatus() {
 
 async function saveAdjustments() {
   if (!scan.value) return;
-  const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
-  for (const part of partsData) {
-    const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
-    const found = scansData.find((s) => String(s.id) === String(props.scanId));
-    if (found) {
-      await put(`/scanner/projects/${props.projectId}/parts/${part.id}/scans/${props.scanId}`, {
-        adjustments_json: JSON.stringify(adjustments.value),
-      });
-      break;
-    }
-  }
+  await saveScanAdjustments(props.scanId, adjustments.value);
 }
 
 async function startAnalysis() {
@@ -235,15 +218,8 @@ async function onAnalysisDone() {
       get(`/scanner/scans/${props.scanId}/hairpin-debug`).catch(() => []),
       get(`/scanner/scans/${props.scanId}/text-regions`).catch(() => []),
     ]);
-    const partsData = await get(`/scanner/projects/${props.projectId}/parts`);
-    for (const part of partsData) {
-      const scansData = await get(`/scanner/projects/${props.projectId}/parts/${part.id}/scans`);
-      const foundScan = scansData.find((s) => String(s.id) === String(props.scanId));
-      if (foundScan) {
-        scan.value = foundScan;
-        break;
-      }
-    }
+    scan.value = await fetchScan(props.scanId);
+    previewedPreprocessing.value = preprocessingKey.value;
     staves.value = stavesData || [];
     symbols.value = symbolsData || [];
     measures.value = measuresData || [];
@@ -260,34 +236,13 @@ async function onAnalysisDone() {
   }
 }
 
-const lilypondSource = ref("analysis"); // "analysis" | "edited"
+/** The LilyPond editor page; available once measures exist or a saved edit does. */
+const editorAvailable = computed(
+  () => measures.value.length > 0 || !!scan.value?.has_lilypond_edit,
+);
 
-async function generateLilypond(reset = false) {
-  if (lilypondLoading.value) return;
-  lilypondLoading.value = true;
-  try {
-    const query = reset ? "?reset=true" : "";
-    const result = await post(`/scanner/scans/${props.scanId}/generate-lilypond${query}`);
-    lilypondCode.value = result.lilypond_code;
-    lilypondPdfPath.value = result.pdf_path;
-    lilypondPngPaths.value = result.png_paths || [];
-    lilypondWarnings.value = result.warnings || [];
-    lilypondSource.value = result.source || "analysis";
-    showLilypond.value = true;
-  } catch (e) {
-    statusMessage.value = `LilyPond-Fehler: ${e.message}`;
-  } finally {
-    lilypondLoading.value = false;
-  }
-}
-
-function onLilypondRendered(result) {
-  // Edited code rendered by the backend: it becomes the new base version.
-  lilypondCode.value = result.lilypond_code;
-  lilypondPdfPath.value = result.pdf_path;
-  lilypondPngPaths.value = result.png_paths || [];
-  lilypondWarnings.value = result.warnings || [];
-  lilypondSource.value = result.source || "edited";
+function openEditor() {
+  router.push({ name: "scan-editor", params: { id: props.projectId, scanId: props.scanId } });
 }
 
 function onAnalysisLogClose() {
@@ -303,7 +258,8 @@ function onAdjust(adj) {
 }
 
 async function startPreview() {
-  if (processing.value) return;
+  if (processing.value || previewing.value) return;
+  previewing.value = true;
   try {
     await saveAdjustments();
     const result = await post(`/scanner/scans/${props.scanId}/preview`, {
@@ -313,10 +269,22 @@ async function startPreview() {
       scan.value.processed_image_path = result.processed_image_path;
       scan.value.updated_at = new Date().toISOString();
     }
+    previewedPreprocessing.value = preprocessingKey.value;
     viewMode.value = "binary";
     showStaves.value = false;
   } catch (e) {
     statusMessage.value = `Vorschau-Fehler: ${e.message}`;
+  } finally {
+    previewing.value = false;
+  }
+}
+
+/** "Binär" view: render the preview first if the values changed. */
+function showBinary() {
+  if (previewStale.value) {
+    startPreview();
+  } else {
+    viewMode.value = "binary";
   }
 }
 
@@ -511,27 +479,6 @@ function onUpdateAdjustments(updated) {
   adjustments.value = updated;
 }
 
-/**
- * LilyPond layout values from the preview panel become per-scan overrides
- * (adjustments.analysis) and the score is rendered again.
- */
-async function onApplyLayout({ values, reset }) {
-  const analysis = { ...(adjustments.value.analysis || {}) };
-  for (const key of Object.keys(analysis)) {
-    if (key.startsWith("ly_")) delete analysis[key];
-  }
-  if (!reset) Object.assign(analysis, values);
-  analysis.enabled = Object.keys(analysis).some((k) => k !== "enabled");
-  adjustments.value = { ...adjustments.value, analysis };
-  try {
-    await saveAdjustments();
-  } catch (e) {
-    statusMessage.value = `Einstellungen konnten nicht gespeichert werden: ${e.message}`;
-    return;
-  }
-  await generateLilypond(false);
-}
-
 async function fetchLibraryIfNeeded() {
   if (libraryTemplates.value.length === 0) {
     const data = await get("/scanner/library/templates?limit=200");
@@ -576,7 +523,6 @@ onUnmounted(() => {
       :initial-values="initialPreprocessing"
       @adjust="onAdjust"
       @analyze="startAnalysis"
-      @preview="startPreview"
       @zoom-in="onZoomIn"
       @zoom-out="onZoomOut"
     />
@@ -635,10 +581,15 @@ onUnmounted(() => {
               <button
                 class="btn btn-sm"
                 :class="{ 'btn-active': viewMode === 'binary' }"
-                :disabled="!scan?.processed_image_path"
-                @click="viewMode = 'binary'"
+                :disabled="previewing"
+                :title="
+                  previewStale
+                    ? 'Binärbild mit den aktuellen Werten erzeugen'
+                    : 'Binärbild anzeigen'
+                "
+                @click="showBinary"
               >
-                Binär
+                {{ previewing ? "Binär…" : "Binär" }}
               </button>
             </div>
             <button
@@ -650,10 +601,15 @@ onUnmounted(() => {
             </button>
             <button
               class="btn btn-sm"
-              :disabled="!measures.length || lilypondLoading"
-              @click="generateLilypond(false)"
+              :disabled="!editorAvailable"
+              :title="
+                editorAvailable
+                  ? 'LilyPond-Vorschau und Editor öffnen'
+                  : 'Zuerst Analyse durchführen'
+              "
+              @click="openEditor"
             >
-              {{ lilypondLoading ? "Generiert..." : "LilyPond" }}
+              Zum Editor
             </button>
             <button
               class="btn btn-sm"
@@ -800,26 +756,6 @@ onUnmounted(() => {
       :open="showAnalysisLog"
       @close="onAnalysisLogClose"
       @done="onAnalysisDone"
-    />
-
-    <!-- LilyPond modal -->
-    <LilypondModal
-      :open="showLilypond"
-      :lilypond-code="lilypondCode"
-      :pdf-path="lilypondPdfPath"
-      :png-paths="lilypondPngPaths"
-      :warnings="lilypondWarnings"
-      :cache-version="cacheVersion"
-      :scan-id="scanId"
-      :scan-image-path="scan?.image_path ?? null"
-      :staves="staves"
-      :source="lilypondSource"
-      :resetting="lilypondLoading"
-      :adjustments="adjustments"
-      @close="showLilypond = false"
-      @reset="generateLilypond(true)"
-      @apply-layout="onApplyLayout"
-      @rendered="onLilypondRendered"
     />
 
     <!-- Capture dialog -->

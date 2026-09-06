@@ -9,7 +9,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(["adjust", "analyze", "preview", "zoom-in", "zoom-out"]);
+const emit = defineEmits(["adjust", "analyze", "zoom-in", "zoom-out"]);
 
 const brightness = ref(props.initialValues?.brightness ?? 0);
 const contrast = ref(props.initialValues?.contrast ?? 1.0);
@@ -140,7 +140,6 @@ watch([brightness, contrast, threshold, morphologyKernelSize], emitAdjust);
 
     <div class="adjust-spacer"></div>
 
-    <button class="btn btn-secondary" @click="emit('preview')">Vorschau</button>
     <button class="btn btn-primary" @click="emit('analyze')">Analyse starten</button>
   </div>
 </template>

@@ -99,6 +99,29 @@ async def upload(
     return scan
 
 
+async def get_scan(session: AsyncSession, scan_id: int) -> SheetMusicScan:
+    """Scan by id alone, without the project/part path.
+
+    Used by the scan pages, which know the scan id from the route and would
+    otherwise have to walk all parts of the project to find their scan.
+    """
+    scan = await session.get(SheetMusicScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan nicht gefunden")
+    return scan
+
+
+async def update_scan(
+    session: AsyncSession, scan_id: int, data: SheetMusicScanUpdate
+) -> SheetMusicScan:
+    scan = await get_scan(session, scan_id)
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(scan, key, value)
+    await session.commit()
+    await session.refresh(scan)
+    return scan
+
+
 async def update(
     session: AsyncSession,
     project_id: int,

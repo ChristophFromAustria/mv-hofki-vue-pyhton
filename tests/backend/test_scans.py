@@ -83,3 +83,30 @@ async def test_delete_scan(client, part_id):
         f"/api/v1/scanner/projects/{project_id}/parts/{p_id}/scans/{scan_id}"
     )
     assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_get_and_update_scan_by_id(client, part_id):
+    """The scan pages address a scan by id alone, without project/part path."""
+    project_id, p_id = part_id
+    resp = await client.post(
+        f"/api/v1/scanner/projects/{project_id}/parts/{p_id}/scans",
+        files={"file": ("test.png", io.BytesIO(_fake_png()), "image/png")},
+    )
+    scan_id = resp.json()["id"]
+
+    resp = await client.get(f"/api/v1/scanner/scans/{scan_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == scan_id
+    assert data["part_id"] == p_id
+    assert data["has_lilypond_edit"] is False
+
+    resp = await client.put(
+        f"/api/v1/scanner/scans/{scan_id}", json={"adjustments_json": '{"a": 1}'}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["adjustments_json"] == '{"a": 1}'
+
+    resp = await client.get("/api/v1/scanner/scans/999999")
+    assert resp.status_code == 404

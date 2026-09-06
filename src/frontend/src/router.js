@@ -80,8 +80,14 @@ const routes = [
   },
   {
     path: "/notenscanner/:id/scan/:scanId",
+    name: "scan-analysis",
+    component: () => import("./pages/ScanAnalysisPage.vue"),
+    props: (route) => ({ projectId: route.params.id, scanId: route.params.scanId }),
+  },
+  {
+    path: "/notenscanner/:id/scan/:scanId/editor",
     name: "scan-editor",
-    component: () => import("./pages/ScanEditorPage.vue"),
+    component: () => import("./pages/LilypondEditorPage.vue"),
     props: (route) => ({ projectId: route.params.id, scanId: route.params.scanId }),
   },
   {
