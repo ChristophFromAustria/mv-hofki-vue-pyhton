@@ -58,9 +58,12 @@ async function loadLayoutEntries() {
   }
 }
 
+// Load the entries when the dialog opens. Not on every adjustments change:
+// applying a value updates adjustments, and reloading would rebuild the
+// drawer under the user's hands.
 watch(
-  () => [props.open, props.adjustments],
-  ([isOpen]) => {
+  () => props.open,
+  (isOpen) => {
     if (isOpen) loadLayoutEntries();
   },
   { immediate: true },
