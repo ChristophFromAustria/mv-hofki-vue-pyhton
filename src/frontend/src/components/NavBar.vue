@@ -63,6 +63,7 @@ onMounted(() => {
         <RouterLink to="/leihen" @click="closeMenu">Leihregister</RouterLink>
         <RouterLink to="/rechnungen" @click="closeMenu">Rechnungen</RouterLink>
         <RouterLink to="/notenscanner" @click="closeMenu">Notenscanner</RouterLink>
+        <RouterLink to="/import" @click="closeMenu">KI-Import</RouterLink>
         <div class="dropdown" @mouseenter="settingsOpen = true" @mouseleave="settingsOpen = false">
           <span class="dropdown-trigger" @click="settingsOpen = !settingsOpen">Einstellungen</span>
           <div v-show="settingsOpen" class="dropdown-menu">

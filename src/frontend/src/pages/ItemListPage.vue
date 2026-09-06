@@ -150,9 +150,14 @@ function onModalSave() {
   <div>
     <div class="page-header">
       <h1>{{ cat.label }}</h1>
-      <button class="btn btn-primary" @click="showCreateModal = true">
-        {{ cat.labelSingular }} anlegen
-      </button>
+      <div class="header-actions">
+        <router-link v-if="cat.key === 'instrument'" to="/import" class="btn btn-secondary">
+          KI-Import
+        </router-link>
+        <button class="btn btn-primary" @click="showCreateModal = true">
+          {{ cat.labelSingular }} anlegen
+        </button>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -216,6 +221,12 @@ function onModalSave() {
 </template>
 
 <style scoped>
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .card-placeholder {
   width: 100%;
   height: 120px;

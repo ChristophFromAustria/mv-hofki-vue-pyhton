@@ -91,6 +91,17 @@ const routes = [
     props: (route) => ({ projectId: route.params.id, scanId: route.params.scanId }),
   },
   {
+    path: "/import",
+    name: "import-list",
+    component: () => import("./pages/ImportListPage.vue"),
+  },
+  {
+    path: "/import/:id",
+    name: "import-session",
+    component: () => import("./pages/ImportSessionPage.vue"),
+    props: true,
+  },
+  {
     path: "/einstellungen/instrumententypen",
     name: "instrument-types",
     component: () => import("./pages/InstrumentTypeListPage.vue"),

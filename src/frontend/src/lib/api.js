@@ -58,3 +58,22 @@ export function put(path, body) {
 export function del(path) {
   return request("DELETE", path);
 }
+
+/** POST multipart/form-data (file uploads). `formData` is a FormData instance. */
+export async function postForm(path, formData) {
+  const response = await fetch(`${API_PREFIX}${path}`, { method: "POST", body: formData });
+  if (!response.ok) {
+    const text = await response.text();
+    let detail = text;
+    try {
+      const json = JSON.parse(text);
+      if (json.detail) detail = json.detail;
+    } catch {
+      // keep raw text
+    }
+    throw new Error(detail);
+  }
+  return response.json();
+}
+
+export { API_PREFIX, BASE };
