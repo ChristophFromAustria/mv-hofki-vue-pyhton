@@ -1,9 +1,11 @@
 <script setup>
 import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { get } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 
+const router = useRouter();
 const stats = ref(null);
 const email = ref(null);
 const loading = ref(true);
@@ -11,6 +13,10 @@ const error = ref(null);
 
 function categoryRoute(category) {
   return CATEGORIES[category]?.routeBase || "/";
+}
+
+function goToCategory(category) {
+  router.push(categoryRoute(category));
 }
 
 async function load() {
@@ -37,6 +43,7 @@ onMounted(load);
         <h1>Dashboard</h1>
         <p v-if="email" class="page-subtitle">Angemeldet als {{ email }}</p>
       </div>
+      <router-link to="/notenscanner" class="btn btn-primary">Noten digitalisieren</router-link>
     </div>
 
     <LoadingSpinner v-if="loading" />
@@ -82,7 +89,12 @@ onMounted(load);
               </tr>
             </thead>
             <tbody>
-              <tr v-for="c in stats.items_by_category" :key="c.category">
+              <tr
+                v-for="c in stats.items_by_category"
+                :key="c.category"
+                class="row-link"
+                @click="goToCategory(c.category)"
+              >
                 <td>
                   <router-link :to="categoryRoute(c.category)">{{ c.label }}</router-link>
                 </td>
@@ -95,3 +107,14 @@ onMounted(load);
     </template>
   </div>
 </template>
+
+<style scoped>
+.row-link {
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.row-link:hover {
+  background: var(--color-bg-soft);
+}
+</style>

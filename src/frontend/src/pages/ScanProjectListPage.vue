@@ -5,12 +5,13 @@ import { get, post, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import BatchAnalysisModal from "../components/BatchAnalysisModal.vue";
+import { sortProjects } from "../lib/scanProjects.js";
 
 const router = useRouter();
 const projects = ref([]);
 const loading = ref(true);
 const search = ref("");
-const sortBy = ref("name");
+const sortBy = ref("catalog_number");
 const showCreate = ref(false);
 const newName = ref("");
 const newComposer = ref("");
@@ -73,14 +74,7 @@ const filteredProjects = computed(() => {
         (p.catalog_number != null && String(p.catalog_number).includes(q)),
     );
   }
-  return [...list].sort((a, b) => {
-    if (sortBy.value === "catalog_number") {
-      const na = a.catalog_number ?? Infinity;
-      const nb = b.catalog_number ?? Infinity;
-      return na - nb || a.name.localeCompare(b.name, "de");
-    }
-    return a.name.localeCompare(b.name, "de");
-  });
+  return sortProjects(list, sortBy.value);
 });
 
 async function startBatchAnalysis() {
@@ -154,8 +148,8 @@ onMounted(fetchProjects);
           class="search-input"
         />
         <select v-model="sortBy" class="sort-select">
-          <option value="name">A-Z</option>
           <option value="catalog_number">Nr.</option>
+          <option value="name">A-Z</option>
         </select>
       </div>
 

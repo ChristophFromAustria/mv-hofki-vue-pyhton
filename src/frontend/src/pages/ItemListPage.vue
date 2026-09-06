@@ -19,7 +19,7 @@ const loading = ref(true);
 const search = ref("");
 const limit = 50;
 const offset = ref(0);
-const viewMode = ref(localStorage.getItem(props.category + "-view-mode") || "list");
+const viewMode = ref(localStorage.getItem(props.category + "-view-mode") || "card");
 const showCreateModal = ref(false);
 const currencies = ref([]);
 
@@ -120,7 +120,7 @@ watch(
   () => {
     search.value = "";
     offset.value = 0;
-    viewMode.value = localStorage.getItem(props.category + "-view-mode") || "list";
+    viewMode.value = localStorage.getItem(props.category + "-view-mode") || "card";
     load();
   },
 );

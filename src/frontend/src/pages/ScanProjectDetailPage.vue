@@ -1,9 +1,10 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useRouter, RouterLink } from "vue-router";
 import { get, post, put, del } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import { sortProjects } from "../lib/scanProjects.js";
 
 const props = defineProps({
   id: { type: String, required: true },
@@ -13,6 +14,8 @@ const router = useRouter();
 
 const project = ref(null);
 const parts = ref([]);
+// All projects in list order, for prev/next navigation
+const allProjects = ref([]);
 const loading = ref(true);
 const error = ref(null);
 
@@ -62,6 +65,37 @@ async function fetchData() {
   } finally {
     loading.value = false;
   }
+}
+
+async function fetchAllProjects() {
+  try {
+    const data = await get("/scanner/projects?limit=200");
+    allProjects.value = sortProjects(data.items);
+  } catch {
+    // Navigation between projects is a convenience; the page works without it.
+    allProjects.value = [];
+  }
+}
+
+const currentIndex = computed(() =>
+  allProjects.value.findIndex((p) => String(p.id) === String(props.id)),
+);
+const prevProject = computed(() =>
+  currentIndex.value > 0 ? allProjects.value[currentIndex.value - 1] : null,
+);
+const nextProject = computed(() =>
+  currentIndex.value >= 0 && currentIndex.value < allProjects.value.length - 1
+    ? allProjects.value[currentIndex.value + 1]
+    : null,
+);
+
+function projectLabel(p) {
+  return p.catalog_number != null ? `${p.catalog_number}. ${p.name}` : p.name;
+}
+
+function goToProject(p) {
+  if (!p) return;
+  router.push({ name: "scanner-project-detail", params: { id: p.id } });
 }
 
 async function addPart() {
@@ -152,15 +186,12 @@ function triggerFileInput(partId) {
   fileInputs.value[partId]?.click();
 }
 
+/** Scans with a saved editor version open in the editor, new scans in the analysis. */
 function navigateToScan(scan) {
   router.push({
-    name: "scan-editor",
+    name: scan.has_lilypond_edit ? "scan-editor" : "scan-analysis",
     params: { id: props.id, scanId: scan.id },
   });
-}
-
-function exportMusicXml() {
-  alert("MusicXML-Export ist noch nicht implementiert.");
 }
 
 function statusLabel(status) {
@@ -173,7 +204,18 @@ function statusLabel(status) {
   return labels[status] || status;
 }
 
-onMounted(fetchData);
+onMounted(() => {
+  fetchData();
+  fetchAllProjects();
+});
+
+// The route component is reused when only the id changes
+watch(
+  () => props.id,
+  () => {
+    fetchData();
+  },
+);
 </script>
 
 <template>
@@ -197,7 +239,33 @@ onMounted(fetchData);
             <p v-if="project.composer" class="composer">{{ project.composer }}</p>
           </div>
         </div>
-        <button class="btn btn-secondary" @click="exportMusicXml">MusicXML exportieren</button>
+        <nav
+          v-if="allProjects.length > 1"
+          class="project-nav"
+          aria-label="Zwischen Projekten wechseln"
+        >
+          <button
+            class="btn btn-secondary btn-sm"
+            :disabled="!prevProject"
+            :title="prevProject ? projectLabel(prevProject) : 'Kein vorheriges Projekt'"
+            @click="goToProject(prevProject)"
+          >
+            <span aria-hidden="true">←</span>
+            Vorheriges
+          </button>
+          <span class="project-nav-position" aria-live="polite">
+            {{ currentIndex + 1 }} / {{ allProjects.length }}
+          </span>
+          <button
+            class="btn btn-secondary btn-sm"
+            :disabled="!nextProject"
+            :title="nextProject ? projectLabel(nextProject) : 'Kein nächstes Projekt'"
+            @click="goToProject(nextProject)"
+          >
+            Nächstes
+            <span aria-hidden="true">→</span>
+          </button>
+        </nav>
       </div>
 
       <!-- Parts list -->
@@ -228,6 +296,13 @@ onMounted(fetchData);
                 />
                 <span :class="['status-badge', `status-${scan.status}`]">
                   {{ statusLabel(scan.status) }}
+                </span>
+                <span
+                  v-if="scan.has_lilypond_edit"
+                  class="status-badge edit-badge"
+                  title="Im LilyPond-Editor bearbeitet – öffnet den Editor"
+                >
+                  Bearbeitet
                 </span>
               </div>
               <div class="thumb-footer">
@@ -361,6 +436,20 @@ onMounted(fetchData);
   margin-top: 0.25rem;
 }
 
+.project-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.project-nav-position {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .parts-list {
   display: flex;
   flex-direction: column;
@@ -488,6 +577,15 @@ onMounted(fetchData);
 .status-completed {
   background: var(--color-success-bg);
   color: var(--color-success);
+}
+
+.edit-badge {
+  bottom: auto;
+  top: 4px;
+  left: auto;
+  right: 4px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
 
 .thumb-footer {
