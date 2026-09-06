@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     CLOUDFLARE_ACCOUNT_ID: str | None = None
     CLOUDFLARE_POLICY_ID: str | None = None
 
+    # Local vision LLM (OpenAI-compatible, e.g. vLLM) used by the KI-Import.
+    # From inside the devcontainer the host's docker0 bridge is 172.17.0.1.
+    LLM_BASE_URL: str = "http://172.17.0.1:8000/v1"
+    LLM_MODEL: str = "qwen-vl"
+    LLM_TIMEOUT_SECONDS: float = 240.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
