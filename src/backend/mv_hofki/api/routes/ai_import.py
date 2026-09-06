@@ -18,6 +18,7 @@ from mv_hofki.schemas.ai_import import (
     ImportSessionSummary,
 )
 from mv_hofki.schemas.pagination import PaginatedResponse
+from mv_hofki.services.ai_import import importer
 from mv_hofki.services.ai_import import session as session_service
 from mv_hofki.services.ai_import.llm_client import LlmClient
 
@@ -76,6 +77,14 @@ async def update_draft(
 ):
     session = await session_service.get_by_id(db, session_id)
     session = await session_service.update_draft(db, session, body.draft)
+    return await session_service.read_with_validation(db, session)
+
+
+@router.post("/sessions/{session_id}/import", response_model=ImportSessionRead)
+async def run_import(session_id: int, db: AsyncSession = Depends(get_db)):
+    """Write the validated draft into the inventory (all or nothing)."""
+    session = await session_service.get_by_id(db, session_id)
+    await importer.run_import(db, session)
     return await session_service.read_with_validation(db, session)
 
 

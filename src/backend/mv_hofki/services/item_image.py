@@ -17,10 +17,13 @@ ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-def _item_dir(item_id: int) -> Path:
+def item_dir(item_id: int) -> Path:
     d = UPLOAD_DIR / str(item_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+_item_dir = item_dir
 
 
 async def get_all(session: AsyncSession, item_id: int) -> list[ItemImage]:

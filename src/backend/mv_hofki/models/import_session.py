@@ -16,9 +16,17 @@ if TYPE_CHECKING:
 # uploaded  -> files added, nothing analysed yet
 # analyzing -> extraction running
 # review    -> extraction finished (at least one page), user is correcting
+# importing -> import running (guards against double submission)
 # imported  -> data written to the inventory
 # error     -> every page failed / analysis aborted
-IMPORT_SESSION_STATUSES = ("uploaded", "analyzing", "review", "imported", "error")
+IMPORT_SESSION_STATUSES = (
+    "uploaded",
+    "analyzing",
+    "review",
+    "importing",
+    "imported",
+    "error",
+)
 
 
 class ImportSession(Base):
