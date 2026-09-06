@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from mv_hofki.api.routes.access import router as access_router
+from mv_hofki.api.routes.ai_import import router as ai_import_router
 from mv_hofki.api.routes.clothing_types import router as clothing_types_router
 from mv_hofki.api.routes.currencies import router as currencies_router
 from mv_hofki.api.routes.dashboard import router as dashboard_router
@@ -64,6 +65,22 @@ async def _reset_stale_processing(session):
         )
         await session.commit()
 
+    from mv_hofki.models.import_page import ImportPage
+    from mv_hofki.models.import_session import ImportSession
+
+    stale_pages = await session.execute(
+        update(ImportPage)
+        .where(ImportPage.status == "analyzing")
+        .values(status="error", error="Server wurde während der Analyse neu gestartet")
+    )
+    stale_sessions = await session.execute(
+        update(ImportSession)
+        .where(ImportSession.status == "analyzing")
+        .values(status="error", error="Server wurde während der Analyse neu gestartet")
+    )
+    if stale_pages.rowcount or stale_sessions.rowcount:  # type: ignore[union-attr]
+        await session.commit()
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -93,6 +110,7 @@ app.include_router(scans_flat_router)
 app.include_router(scan_processing_router)
 app.include_router(symbol_library_router)
 app.include_router(scanner_config_router)
+app.include_router(ai_import_router)
 
 _uploads_dir = settings.PROJECT_ROOT / "data" / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)
