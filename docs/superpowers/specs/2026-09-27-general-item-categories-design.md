@@ -90,9 +90,9 @@ Nach dem Muster von `clothing_types` (Route, Service, Schema je eigenes Modul).
 
 Mehrfachauswahl mit Anlegen, für das Item-Formular.
 
-- Props: `modelValue: number[]` (IDs), `options: {id,label}[]`, `label: string`.
-  Emits: `update:modelValue`, `create(label)` → Elternkomponente legt an und gibt die neue Option
-  zurück (Promise), die dann ausgewählt wird.
+- Props: `modelValue: number[]` (IDs), `options: {id,label}[]`, `label: string`,
+  `createOption: (label) => Promise<{id,label}>` (optional; die Elternkomponente legt an, nimmt die
+  Option in `options` auf und gibt sie zurück; sie wird dann ausgewählt). Emits: `update:modelValue`.
 - Gewählte Kategorien als Chips mit Entfernen-Button (`aria-label="„Deko“ entfernen"`).
 - Eingabefeld als Combobox (ARIA `combobox`/`listbox`): Tippen filtert Vorschläge (ohne bereits
   gewählte, Groß-/Kleinschreibung egal); ist kein exakter Treffer vorhanden, erscheint als letzte
@@ -142,4 +142,4 @@ Das Skript bleibt im Repo (klein, wiederverwendbar für spätere Massenkorrektur
   `categories`, Löschen eines Items entfernt Verknüpfungen.
 - Backend: Test für das Übernahmeskript (CSV → Zuordnung, idempotent, unbekannte Nummer gemeldet).
 - Frontend (`tests/frontend/TagSelect.test.js`): Filtern, Auswählen, Entfernen, Anlegen-Option nur
-  ohne exakten Treffer, Tastatursteuerung, `create`-Ablauf.
+  ohne exakten Treffer, Tastatursteuerung, `createOption`-Ablauf.
