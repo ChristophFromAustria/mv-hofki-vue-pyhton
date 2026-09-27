@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from mv_hofki.filters.base import PageParams, paginate
+from mv_hofki.filters.invoice import InvoiceFilter
 from mv_hofki.models.currency import Currency
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.item_invoice import ItemInvoice
@@ -20,79 +20,31 @@ from mv_hofki.schemas.invoice_overview import (
 )
 
 
-def _build_filters(
-    category: str | None,
-    search: str | None,
-    date_from: date | None,
-    date_to: date | None,
-):
-    """Return a list of SQLAlchemy filter expressions."""
-    filters = []
-    if category:
-        filters.append(InventoryItem.category == category)
-    if search:
-        term = f"%{search}%"
-        filters.append(
-            ItemInvoice.title.ilike(term) | ItemInvoice.invoice_issuer.ilike(term)
-        )
-    if date_from:
-        filters.append(ItemInvoice.date_issued >= date_from)
-    if date_to:
-        filters.append(ItemInvoice.date_issued <= date_to)
-    return filters
-
-
 async def get_list(
-    session: AsyncSession,
-    *,
-    category: str | None = None,
-    search: str | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    session: AsyncSession, flt: InvoiceFilter, page: PageParams
 ) -> InvoiceOverviewResponse:
-    filters = _build_filters(category, search, date_from, date_to)
-
-    # Base query joining InventoryItem
-    base_q = (
-        select(ItemInvoice)
-        .join(InventoryItem, ItemInvoice.item_id == InventoryItem.id)
-        .options(joinedload(ItemInvoice.currency))
-        .where(*filters)
+    base = select(ItemInvoice).join(
+        InventoryItem, ItemInvoice.item_id == InventoryItem.id
     )
+    filtered = flt.filter(base)
 
-    # Count query
-    count_q = (
-        select(func.count())
-        .select_from(ItemInvoice)
-        .join(InventoryItem, ItemInvoice.item_id == InventoryItem.id)
-        .where(*filters)
-    )
-    total = (await session.execute(count_q)).scalar_one()
-
-    # Totals-by-currency query (full filtered set, no pagination)
+    # Totals over every filtered invoice, not only the loaded page.
+    rows = filtered.order_by(None).subquery()
     totals_q = (
-        select(Currency.abbreviation, func.sum(ItemInvoice.amount))
-        .select_from(ItemInvoice)
-        .join(InventoryItem, ItemInvoice.item_id == InventoryItem.id)
-        .join(Currency, ItemInvoice.currency_id == Currency.id)
-        .where(*filters)
+        select(Currency.abbreviation, func.sum(rows.c.amount))
+        .select_from(rows)
+        .join(Currency, Currency.id == rows.c.currency_id)
         .group_by(Currency.abbreviation)
+        .order_by(Currency.abbreviation)
     )
-    totals_rows = (await session.execute(totals_q)).all()
     totals_by_currency = [
-        CurrencyTotal(abbreviation=abbr, total=total_amount)
-        for abbr, total_amount in totals_rows
+        CurrencyTotal(abbreviation=abbr, total=amount)
+        for abbr, amount in (await session.execute(totals_q)).all()
     ]
 
-    # Paginated items query
-    items_q = (
-        base_q.order_by(ItemInvoice.date_issued.desc().nulls_last())
-        .limit(limit)
-        .offset(offset)
+    invoice_rows, total = await paginate(
+        session, flt.sort(filtered), page, options=[joinedload(ItemInvoice.currency)]
     )
-    invoice_rows = (await session.execute(items_q)).unique().scalars().all()
 
     # Fetch InventoryItem data for each invoice (need category + inventory_nr + label)
     item_ids = list({inv.item_id for inv in invoice_rows})
@@ -122,6 +74,7 @@ async def get_list(
                 item_label=inv_item.label,
                 item_category=inv_item.category,
                 title=inv.title,
+                invoice_issuer=inv.invoice_issuer,
                 date_issued=inv.date_issued,
                 amount=inv.amount,
                 currency=CurrencyRead.model_validate(inv.currency),
@@ -134,5 +87,7 @@ async def get_list(
     return InvoiceOverviewResponse(
         items=items,
         total=total,
+        limit=page.limit,
+        offset=page.offset,
         totals_by_currency=totals_by_currency,
     )

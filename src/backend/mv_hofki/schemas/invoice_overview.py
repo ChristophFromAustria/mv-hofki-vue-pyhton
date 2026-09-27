@@ -17,6 +17,7 @@ class InvoiceOverviewItem(BaseModel):
     item_label: str
     item_category: str
     title: str
+    invoice_issuer: str | None = None
     date_issued: date
     amount: float
     currency: CurrencyRead
@@ -35,4 +36,6 @@ class CurrencyTotal(BaseModel):
 class InvoiceOverviewResponse(BaseModel):
     items: list[InvoiceOverviewItem]
     total: int
+    limit: int
+    offset: int
     totals_by_currency: list[CurrencyTotal]
