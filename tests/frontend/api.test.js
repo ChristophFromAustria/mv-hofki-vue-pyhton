@@ -29,3 +29,31 @@ describe("api error message handling", () => {
     await expect(post("/x", {})).rejects.toThrow("Kategorie existiert bereits");
   });
 });
+
+describe("getAll", () => {
+  it("pages until total and appends limit/offset to paths with a query", async () => {
+    const pages = [
+      { items: [{ id: 1 }, { id: 2 }], total: 3 },
+      { items: [{ id: 3 }], total: 3 },
+    ];
+    const calls = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) => {
+        calls.push(url);
+        const body = pages[calls.length - 1];
+        return {
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => body,
+          text: async () => JSON.stringify(body),
+        };
+      }),
+    );
+    const { getAll } = await import("../../src/frontend/src/lib/api.js");
+    const all = await getAll("/loans?item_id=5", 2);
+    expect(all.map((x) => x.id)).toEqual([1, 2, 3]);
+    expect(calls[0]).toMatch(/\/api\/v1\/loans\?item_id=5&limit=2&offset=0$/);
+    expect(calls[1]).toMatch(/offset=2$/);
+  });
+});

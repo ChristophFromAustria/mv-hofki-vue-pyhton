@@ -55,6 +55,20 @@ export function get(path) {
   return request("GET", path);
 }
 
+/**
+ * Every item of a paginated list endpoint ({items, total}), fetched page by page.
+ * Use for pickers and histories that must not be cut off.
+ */
+export async function getAll(path, pageSize = 200) {
+  const sep = path.includes("?") ? "&" : "?";
+  const all = [];
+  for (;;) {
+    const page = await get(`${path}${sep}limit=${pageSize}&offset=${all.length}`);
+    all.push(...page.items);
+    if (!page.items.length || all.length >= page.total) return all;
+  }
+}
+
 export function post(path, body) {
   return request("POST", path, body);
 }

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
 import { useRouter, RouterLink } from "vue-router";
-import { get, post, put, del } from "../lib/api.js";
+import { get, post, put, del, getAll } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import { sortProjects } from "../lib/scanProjects.js";
@@ -69,8 +69,7 @@ async function fetchData() {
 
 async function fetchAllProjects() {
   try {
-    const data = await get("/scanner/projects?limit=200");
-    allProjects.value = sortProjects(data.items);
+    allProjects.value = sortProjects(await getAll("/scanner/projects"));
   } catch {
     // Navigation between projects is a convenience; the page works without it.
     allProjects.value = [];

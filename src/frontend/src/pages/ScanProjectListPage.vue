@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { RouterLink, useRouter } from "vue-router";
-import { get, post, del } from "../lib/api.js";
+import { post, del, getAll } from "../lib/api.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import BatchAnalysisModal from "../components/BatchAnalysisModal.vue";
@@ -26,8 +26,7 @@ const batchFilter = ref({ projectId: null, statusFilter: "" });
 async function fetchProjects() {
   loading.value = true;
   try {
-    const data = await get("/scanner/projects");
-    projects.value = data.items;
+    projects.value = await getAll("/scanner/projects");
   } finally {
     loading.value = false;
   }
