@@ -127,7 +127,7 @@ function goTo(row) {
       />
     </div>
 
-    <p v-if="!loading" class="list-count">{{ itemTotal }} Musiker</p>
+    <p v-if="!loading && !error" class="list-count">{{ itemTotal }} Musiker</p>
 
     <FilterBar
       :defs="filterDefs"

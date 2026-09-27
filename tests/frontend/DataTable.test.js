@@ -66,6 +66,20 @@ describe("DataTable groups and selection", () => {
     expect(box.element.closest("label").classList.contains("dt-select-hit")).toBe(true);
   });
 
+  it("gives card-mode group headers heading semantics", async () => {
+    const originalWidth = window.innerWidth;
+    window.innerWidth = 375;
+    const w = mount(DataTable, {
+      props: { columns: cols, rows: grows, groups, cardBreakpoint: 2000 },
+    });
+    window.innerWidth = originalWidth;
+    await flushPromises();
+    const headings = w.findAll('[role="heading"][aria-level="2"]');
+    expect(headings).toHaveLength(2);
+    expect(headings[0].find("button").exists()).toBe(true);
+    expect(headings[0].text()).toContain("Alpha");
+  });
+
   it("gives the card selection checkbox a 44px label hit area and toggles on change", async () => {
     const originalWidth = window.innerWidth;
     window.innerWidth = 375;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toggleId, uniqueIds } from "../../src/frontend/src/lib/bulkSelection.js";
+import { toggleId, uniqueIds, mergeIds } from "../../src/frontend/src/lib/bulkSelection.js";
 
 describe("bulk selection", () => {
   it("toggles an id", () => {
@@ -8,5 +8,11 @@ describe("bulk selection", () => {
   });
   it("collects each item once even when it appears in several groups", () => {
     expect(uniqueIds([{ id: 1 }, { id: 2 }, { id: 1 }])).toEqual([1, 2]);
+  });
+  it("merges loaded rows into an existing selection instead of replacing it", () => {
+    expect(mergeIds([1], [{ id: 2 }, { id: 3 }])).toEqual([1, 2, 3]);
+  });
+  it("keeps each id once when merging overlapping ids", () => {
+    expect(mergeIds([1, 2], [{ id: 2 }, { id: 1 }, { id: 3 }])).toEqual([1, 2, 3]);
   });
 });

@@ -74,13 +74,14 @@ onUnmounted(() => {
     <LoadingSpinner v-if="loading" />
     <div v-else-if="!rows?.length" class="dt-empty">{{ emptyText }}</div>
     <template v-for="seg in segments" :key="seg.key">
-      <GroupHeader
-        v-if="seg.type === 'group'"
-        :label="seg.label"
-        :count="seg.count"
-        :collapsed="seg.collapsed"
-        @toggle="emit('toggle-group', seg.groupKey)"
-      />
+      <div v-if="seg.type === 'group'" class="group-heading" role="heading" aria-level="2">
+        <GroupHeader
+          :label="seg.label"
+          :count="seg.count"
+          :collapsed="seg.collapsed"
+          @toggle="emit('toggle-group', seg.groupKey)"
+        />
+      </div>
       <div
         v-else
         class="dt-card"
@@ -261,6 +262,11 @@ onUnmounted(() => {
 .dt-group th {
   padding: 0;
   background: var(--color-bg-soft);
+}
+
+.group-heading {
+  margin: 0;
+  font: inherit;
 }
 
 .dt-select {

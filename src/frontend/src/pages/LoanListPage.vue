@@ -242,7 +242,9 @@ async function returnWithDate(id) {
       />
     </div>
 
-    <p v-if="!loading" class="list-count">{{ itemTotal }} Leihen</p>
+    <p v-if="!loading && !error" class="list-count">
+      {{ itemTotal }} {{ itemTotal === 1 ? "Leihe" : "Leihen" }}
+    </p>
 
     <FilterBar
       :defs="filterDefs"

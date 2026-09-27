@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import { get, post } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { hasMultipleQuantities, quantityCell, quantityLabel } from "../lib/quantity.js";
-import { toggleId, uniqueIds } from "../lib/bulkSelection.js";
+import { toggleId, mergeIds } from "../lib/bulkSelection.js";
 import { useListQuery } from "../composables/useListQuery.js";
 import { useGroupCollapse } from "../composables/useGroupCollapse.js";
 import { buildSegments } from "../lib/grouping.js";
@@ -57,7 +57,7 @@ function toggleSelect(row) {
 }
 
 function selectAllLoaded() {
-  selectedIds.value = uniqueIds(items.value);
+  selectedIds.value = mergeIds(selectedIds.value, items.value);
 }
 
 async function applyBulk(ids) {
@@ -425,7 +425,7 @@ function onModalSave() {
       </div>
     </div>
 
-    <p v-if="!loading" class="list-count">
+    <p v-if="!loading && !error" class="list-count">
       {{ itemTotal }} {{ itemTotal === 1 ? cat.labelSingular : cat.label }}
     </p>
 
@@ -484,14 +484,19 @@ function onModalSave() {
 
         <div v-else class="item-grid">
           <template v-for="seg in cardSegments" :key="seg.key">
-            <GroupHeader
+            <div
               v-if="seg.type === 'group'"
-              class="item-grid-group"
-              :label="seg.label"
-              :count="seg.count"
-              :collapsed="seg.collapsed"
-              @toggle="toggleGroup(seg.groupKey)"
-            />
+              class="group-heading item-grid-group"
+              role="heading"
+              aria-level="2"
+            >
+              <GroupHeader
+                :label="seg.label"
+                :count="seg.count"
+                :collapsed="seg.collapsed"
+                @toggle="toggleGroup(seg.groupKey)"
+              />
+            </div>
             <ItemCard
               v-else
               :item="seg.row"
@@ -578,6 +583,11 @@ function onModalSave() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-4);
+}
+
+.group-heading {
+  margin: 0;
+  font: inherit;
 }
 
 .item-grid-group {

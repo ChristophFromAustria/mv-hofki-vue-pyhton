@@ -145,6 +145,8 @@ defineEmits(["toggle-select"]);
   }
 
   .item-card-thumb {
+    grid-column: 1;
+    grid-row: 1;
     width: 56px;
     height: 56px;
     border-radius: var(--radius-sm);
@@ -154,6 +156,8 @@ defineEmits(["toggle-select"]);
   }
 
   .item-card-body {
+    grid-column: 2;
+    grid-row: 1;
     padding: 0;
     min-width: 0;
   }
@@ -165,15 +169,16 @@ defineEmits(["toggle-select"]);
   }
 
   .item-card-status {
+    grid-column: 3;
+    grid-row: 1;
     padding: 0;
   }
 
   .item-card-check {
-    position: static;
-    grid-column: 1;
-    grid-row: 1;
-    justify-self: start;
-    align-self: start;
+    position: absolute;
+    top: var(--space-1);
+    left: var(--space-1);
+    z-index: 1;
   }
 }
 </style>
