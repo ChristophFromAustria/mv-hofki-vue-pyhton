@@ -7,6 +7,7 @@ from mv_hofki.models.detected_measure import DetectedMeasure
 from mv_hofki.models.detected_staff import DetectedStaff
 from mv_hofki.models.detected_symbol import DetectedSymbol
 from mv_hofki.models.detected_text_region import DetectedTextRegion
+from mv_hofki.models.general_item_category import GeneralItemCategory
 from mv_hofki.models.import_page import ImportPage
 from mv_hofki.models.import_session import ImportSession
 from mv_hofki.models.instrument_detail import InstrumentDetail
@@ -34,6 +35,7 @@ __all__ = [
     "DetectedStaff",
     "DetectedSymbol",
     "DetectedTextRegion",
+    "GeneralItemCategory",
     "ImportPage",
     "ImportSession",
     "InstrumentDetail",

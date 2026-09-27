@@ -14,6 +14,9 @@ from mv_hofki.api.routes.ai_import import router as ai_import_router
 from mv_hofki.api.routes.clothing_types import router as clothing_types_router
 from mv_hofki.api.routes.currencies import router as currencies_router
 from mv_hofki.api.routes.dashboard import router as dashboard_router
+from mv_hofki.api.routes.general_item_categories import (
+    router as general_item_categories_router,
+)
 from mv_hofki.api.routes.health import router as health_router
 from mv_hofki.api.routes.instrument_types import router as instrument_types_router
 from mv_hofki.api.routes.invoices import router as invoices_router
@@ -94,6 +97,7 @@ app.include_router(health_router)
 app.include_router(currencies_router)
 app.include_router(instrument_types_router)
 app.include_router(clothing_types_router)
+app.include_router(general_item_categories_router)
 app.include_router(sheet_music_genres_router)
 app.include_router(registers_router)
 app.include_router(items_router)
