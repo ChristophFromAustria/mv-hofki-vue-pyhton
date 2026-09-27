@@ -139,8 +139,13 @@ export function useListQuery({
 
   let seq = 0;
   // Queries this list wrote itself; their arrival in the route is not an
-  // external change (a quick second change may already be pending).
+  // external change (a quick second change may already be pending). Compared
+  // against lastWrittenKey, not the (possibly stale, since router.replace()
+  // is async) live route.query, so a revert-before-navigation-lands still
+  // writes the URL, and a stale ownQueries entry never blocks a genuine later
+  // external navigation to the same query.
   const ownQueries = new Set();
+  let lastWrittenKey = queryKey(route.query);
 
   async function fetchPage(append) {
     const my = ++seq;
@@ -190,12 +195,17 @@ export function useListQuery({
     );
     const next = { ...foreign, ...writeQuery(filters, state, sort.value, defaultSort) };
     const key = queryKey(next);
-    if (key === queryKey(route.query)) return;
+    if (key === lastWrittenKey) return;
+    lastWrittenKey = key;
     ownQueries.add(key);
     router.replace({ query: next });
   }
 
   function onChange() {
+    // A reload from an immediate change already reflects the current
+    // (possibly still-debounced) search, so a pending debounce timer would
+    // only repeat the same fetch.
+    clearTimeout(timer);
     pushUrl();
     reload();
   }
@@ -213,15 +223,20 @@ export function useListQuery({
   watch(() => snapshot(immediateKeys) + "|" + sort.value, onChange);
   watch(() => JSON.stringify(baseParams()), reload);
 
-  // Back/forward or a link: adopt the URL. Our own replace() is skipped.
+  // Back/forward or a link: adopt the URL. Our own replace() is skipped,
+  // unless it is the most recent one we wrote (lastWrittenKey) — once that
+  // one arrives, ownQueries is cleared so a later external navigation to the
+  // same query (e.g. the back button returning to it) is not swallowed.
   watch(
     () => route.query,
     (query) => {
       const key = queryKey(query);
       if (ownQueries.has(key)) {
-        ownQueries.delete(key);
+        if (key === lastWrittenKey) ownQueries.clear();
         return;
       }
+      lastWrittenKey = key;
+      ownQueries.clear();
       Object.assign(state, readState(filters, query));
       sort.value = typeof query.order_by === "string" ? query.order_by : defaultSort;
     },

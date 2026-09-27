@@ -200,6 +200,32 @@ describe("useListQuery", () => {
     expect(get).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps the URL in sync when a change is reverted before navigation lands", async () => {
+    get.mockResolvedValue(page([], 0));
+    const { list, router } = await setup();
+    list.setFilter("is_active", false);
+    await nextTick();
+    list.setFilter("is_active", true);
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({});
+    expect(get).toHaveBeenLastCalledWith(
+      "/musicians?is_active=true&order_by=last_name&limit=2&offset=0",
+    );
+  });
+
+  it("an external navigation to a previously written query is still applied", async () => {
+    get.mockResolvedValue(page([], 0));
+    const { list, router } = await setup();
+    list.setFilter("is_active", false);
+    await flushPromises();
+    list.setFilter("is_active", true);
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({});
+    await router.replace({ query: { is_active: "false" } });
+    await flushPromises();
+    expect(list.state.is_active).toBe(false);
+  });
+
   it("resetFilters restores defaults and clears the URL", async () => {
     get.mockResolvedValue(page([], 0));
     const { list, router } = await setup({ is_active: "alle", search: "x" });
@@ -207,6 +233,17 @@ describe("useListQuery", () => {
     await flushPromises();
     expect(list.state).toMatchObject({ search: "", is_active: true, register_id__in: [] });
     expect(router.currentRoute.value.query).toEqual({});
+  });
+
+  it("reset does not fetch twice", async () => {
+    get.mockResolvedValue(page([], 0));
+    const { list } = await setup({ is_active: "alle", search: "x" });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    list.resetFilters();
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(400);
+    await flushPromises();
+    expect(get).toHaveBeenCalledTimes(2);
   });
 
   it("keeps loaded items when loading more fails", async () => {
