@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from fastapi_filter import FilterDepends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
+from mv_hofki.filters.base import PageParams
+from mv_hofki.filters.loan import LoanFilter
 from mv_hofki.schemas.inventory_item import ItemRead, format_display_nr
 from mv_hofki.schemas.loan import LoanCreate, LoanRead, LoanReturn, LoanUpdate
+from mv_hofki.schemas.pagination import PaginatedResponse
 from mv_hofki.services import loan as loan_service
 
 router = APIRouter(prefix="/api/v1/loans", tags=["loans"])
@@ -44,17 +48,19 @@ def _loan_to_read(loan) -> LoanRead:
     )
 
 
-@router.get("", response_model=list[LoanRead])
+@router.get("", response_model=PaginatedResponse[LoanRead])
 async def list_loans(
-    active: bool | None = None,
-    item_id: int | None = None,
-    musician_id: int | None = None,
+    flt: LoanFilter = FilterDepends(LoanFilter),
+    page: PageParams = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    loans = await loan_service.get_list(
-        db, active=active, item_id=item_id, musician_id=musician_id
+    loans, total = await loan_service.get_list(db, flt, page)
+    return PaginatedResponse(
+        items=[_loan_to_read(loan) for loan in loans],
+        total=total,
+        limit=page.limit,
+        offset=page.offset,
     )
-    return [_loan_to_read(loan) for loan in loans]
 
 
 @router.post("", response_model=LoanRead, status_code=201)

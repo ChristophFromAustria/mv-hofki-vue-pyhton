@@ -9,37 +9,25 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from mv_hofki.filters.base import PageParams, paginate
+from mv_hofki.filters.loan import LoanFilter
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.loan import Loan
+from mv_hofki.models.musician import Musician
 from mv_hofki.schemas.loan import LoanCreate, LoanUpdate
 
 LOANABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 
 
 async def get_list(
-    session: AsyncSession,
-    *,
-    active: bool | None = None,
-    item_id: int | None = None,
-    musician_id: int | None = None,
-) -> list[Loan]:
-    query = select(Loan).options(
-        joinedload(Loan.item),
-        joinedload(Loan.musician),
+    session: AsyncSession, flt: LoanFilter, page: PageParams
+) -> tuple[list[Loan], int]:
+    query = (
+        select(Loan)
+        .join(InventoryItem, Loan.item_id == InventoryItem.id)
+        .join(Musician, Loan.musician_id == Musician.id)
     )
-    if active is True:
-        query = query.where(Loan.end_date.is_(None))
-    elif active is False:
-        query = query.where(Loan.end_date.is_not(None))
-
-    if item_id is not None:
-        query = query.where(Loan.item_id == item_id)
-    if musician_id is not None:
-        query = query.where(Loan.musician_id == musician_id)
-
-    query = query.order_by(Loan.start_date.desc())
-    result = await session.execute(query)
-    return list(result.unique().scalars().all())
+    return await paginate(session, flt.sort(flt.filter(query)), page)
 
 
 async def get_by_id(session: AsyncSession, loan_id: int) -> Loan:

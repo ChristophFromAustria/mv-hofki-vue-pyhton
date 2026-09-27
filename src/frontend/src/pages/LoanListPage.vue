@@ -1,46 +1,95 @@
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { computed, ref } from "vue";
 import { get, post, put } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
+import { fetchLoanableItemOptions, fetchMusicianOptions } from "../lib/pickers.js";
+import { useListQuery } from "../composables/useListQuery.js";
+import DataTable from "../components/DataTable.vue";
+import SearchBar from "../components/SearchBar.vue";
+import FilterBar from "../components/FilterBar.vue";
+import InfiniteLoader from "../components/InfiniteLoader.vue";
+import RemotePicker from "../components/RemotePicker.vue";
 
-const loans = ref([]);
-const loanableItems = ref([]);
-const musicians = ref([]);
-const loading = ref(true);
-const activeOnly = ref(true);
 const showForm = ref(false);
-
 const form = ref({ item_id: null, musician_id: null, start_date: "" });
 const formErrors = ref({});
+const formError = ref("");
 const returningLoanId = ref(null);
 const returnDate = ref("");
+const actionError = ref("");
+const filterMusicianLabel = ref("");
+
+const {
+  state,
+  sort,
+  setSort,
+  setFilter,
+  defaults,
+  activeFilterCount,
+  items,
+  total,
+  loading,
+  loadingMore,
+  error,
+  hasMore,
+  loadMore,
+  reload,
+  resetFilters,
+} = useListQuery({
+  endpoint: "/loans",
+  filters: {
+    search: { type: "string", default: "", debounce: true },
+    active: { type: "bool", default: true },
+    item_category: { type: "string", default: "" },
+    musician_id: { type: "number", default: null },
+  },
+  defaultSort: "-start_date",
+});
+
+const filterDefs = computed(() => [
+  {
+    key: "active",
+    label: "Status",
+    type: "segmented",
+    options: [
+      { value: true, label: "Offen" },
+      { value: false, label: "Zurückgegeben" },
+      { value: null, label: "Alle" },
+    ],
+  },
+  {
+    key: "item_category",
+    label: "Inventar-Art",
+    type: "select",
+    options: ["instrument", "clothing", "general_item"].map((c) => ({
+      value: c,
+      label: CATEGORIES[c].label,
+    })),
+  },
+]);
+
+const filtered = computed(() => activeFilterCount.value > 0 || !!state.search.trim());
+
+const columns = [
+  { key: "item", label: "Gegenstand" },
+  { key: "display_nr", label: "Inv.-Nr." },
+  { key: "musician", label: "Musiker" },
+  { key: "start_date", label: "Von", sortKey: "start_date" },
+  { key: "end_date", label: "Bis", sortKey: "end_date" },
+  { key: "status", label: "Status" },
+  { key: "actions", label: "" },
+];
+
+// Musician filter from the URL: show the name in the picker.
+if (state.musician_id != null) {
+  get(`/musicians/${state.musician_id}`)
+    .then((m) => (filterMusicianLabel.value = `${m.last_name} ${m.first_name}`))
+    .catch(() => (filterMusicianLabel.value = ""));
+}
 
 function itemRouteBase(category) {
   return CATEGORIES[category]?.routeBase || "/instrumente";
 }
-
-async function load() {
-  loading.value = true;
-  try {
-    loans.value = await get(`/loans?active=${activeOnly.value}`);
-  } finally {
-    loading.value = false;
-  }
-}
-
-onMounted(async () => {
-  const [instruments, clothing, generalItems, m] = await Promise.all([
-    get("/items?category=instrument&limit=200"),
-    get("/items?category=clothing&limit=200"),
-    get("/items?category=general_item&limit=200"),
-    get("/musicians?limit=200"),
-  ]);
-  loanableItems.value = [...instruments.items, ...clothing.items, ...generalItems.items];
-  musicians.value = m.items;
-  await load();
-});
-
-watch(activeOnly, load);
 
 function validateForm() {
   formErrors.value = {};
@@ -51,30 +100,41 @@ function validateForm() {
 }
 
 async function createLoan() {
+  formError.value = "";
   if (!validateForm()) return;
   try {
     await post("/loans", form.value);
     showForm.value = false;
     form.value = { item_id: null, musician_id: null, start_date: "" };
     formErrors.value = {};
-    await load();
+    await reload();
   } catch (e) {
-    alert("Fehler: " + e.message);
+    formError.value = e.message;
   }
 }
 
 async function returnToday(id) {
-  await put(`/loans/${id}/return`);
-  returningLoanId.value = null;
-  await load();
+  actionError.value = "";
+  try {
+    await put(`/loans/${id}/return`);
+    returningLoanId.value = null;
+    await reload();
+  } catch (e) {
+    actionError.value = `Rückgabe fehlgeschlagen: ${e.message}`;
+  }
 }
 
 async function returnWithDate(id) {
   if (!returnDate.value) return;
-  await put(`/loans/${id}/return`, { end_date: returnDate.value });
-  returningLoanId.value = null;
-  returnDate.value = "";
-  await load();
+  actionError.value = "";
+  try {
+    await put(`/loans/${id}/return`, { end_date: returnDate.value });
+    returningLoanId.value = null;
+    returnDate.value = "";
+    await reload();
+  } catch (e) {
+    actionError.value = `Rückgabe fehlgeschlagen: ${e.message}`;
+  }
 }
 </script>
 
@@ -90,23 +150,21 @@ async function returnWithDate(id) {
       <form @submit.prevent="createLoan">
         <div class="grid grid-3">
           <div class="form-group" :class="{ error: formErrors.item_id }">
-            <label>Gegenstand *</label>
-            <select v-model.number="form.item_id">
-              <option :value="null" disabled>Auswählen...</option>
-              <option v-for="i in loanableItems" :key="i.id" :value="i.id">
-                {{ i.display_nr }} {{ i.label }}
-              </option>
-            </select>
+            <RemotePicker
+              v-model="form.item_id"
+              :fetch-options="fetchLoanableItemOptions"
+              label="Gegenstand *"
+              placeholder="Nummer oder Bezeichnung …"
+            />
             <span v-if="formErrors.item_id" class="form-error">{{ formErrors.item_id }}</span>
           </div>
           <div class="form-group" :class="{ error: formErrors.musician_id }">
-            <label>Musiker *</label>
-            <select v-model.number="form.musician_id">
-              <option :value="null" disabled>Auswählen...</option>
-              <option v-for="m in musicians" :key="m.id" :value="m.id">
-                {{ m.last_name }} {{ m.first_name }}
-              </option>
-            </select>
+            <RemotePicker
+              v-model="form.musician_id"
+              :fetch-options="fetchMusicianOptions"
+              label="Musiker *"
+              placeholder="Name …"
+            />
             <span v-if="formErrors.musician_id" class="form-error">{{
               formErrors.musician_id
             }}</span>
@@ -121,82 +179,138 @@ async function returnWithDate(id) {
           <button type="submit" class="btn-primary">Ausleihen</button>
           <button type="button" @click="showForm = false">Abbrechen</button>
         </div>
+        <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
       </form>
     </div>
 
     <div class="toolbar">
-      <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem">
-        <input v-model="activeOnly" type="checkbox" style="width: auto" />
-        Nur aktive Leihen
-      </label>
+      <SearchBar
+        v-model="state.search"
+        placeholder="Suche (Gegenstand, Nummer, Musiker …)"
+        class="grow"
+      />
+      <RemotePicker
+        class="loan-musician-filter"
+        :model-value="state.musician_id"
+        :selected-label="filterMusicianLabel"
+        :fetch-options="(t) => fetchMusicianOptions(t, { activeOnly: false })"
+        label="Musiker"
+        placeholder="Alle Musiker"
+        @update:model-value="setFilter('musician_id', $event)"
+        @select="(o) => (filterMusicianLabel = o.label)"
+      />
     </div>
 
-    <div v-if="loading" style="text-align: center; padding: 2rem">Laden...</div>
-    <div v-else-if="loans.length" style="overflow-x: auto; -webkit-overflow-scrolling: touch">
-      <table>
-        <thead>
-          <tr>
-            <th>Gegenstand</th>
-            <th>Inv.-Nr.</th>
-            <th>Musiker</th>
-            <th>Von</th>
-            <th>Bis</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="l in loans" :key="l.id">
-            <td>
-              <router-link :to="itemRouteBase(l.item.category) + '/' + l.item.id">
-                {{ l.item.label }}
-              </router-link>
-            </td>
-            <td>{{ l.item.display_nr }}</td>
-            <td>
-              <router-link :to="`/musiker/${l.musician.id}`">
-                {{ l.musician.first_name }} {{ l.musician.last_name }}
-              </router-link>
-            </td>
-            <td>{{ l.start_date }}</td>
-            <td>{{ l.end_date || "—" }}</td>
-            <td>
-              <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
-                {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
-              </span>
-            </td>
-            <td>
-              <template v-if="!l.end_date">
-                <div
-                  v-if="returningLoanId === l.id"
-                  style="display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap"
-                >
-                  <input
-                    v-model="returnDate"
-                    type="date"
-                    style="max-width: 160px; padding: 0.2rem 0.4rem; font-size: 1rem"
-                  />
-                  <button
-                    class="btn-sm btn-primary"
-                    :disabled="!returnDate"
-                    @click="returnWithDate(l.id)"
-                  >
-                    OK
-                  </button>
-                  <button class="btn-sm" @click="returningLoanId = null">X</button>
-                </div>
-                <div v-else style="display: flex; gap: 0.25rem">
-                  <button class="btn-sm" @click="returnToday(l.id)">Heute</button>
-                  <button class="btn-sm" @click="returningLoanId = l.id">Datum</button>
-                </div>
-              </template>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <FilterBar
+      :defs="filterDefs"
+      :state="state"
+      :defaults="defaults"
+      @change="setFilter"
+      @reset="resetFilters"
+    />
+
+    <div v-if="error && !items.length" class="alert alert-danger list-alert" role="alert">
+      Leihen konnten nicht geladen werden: {{ error }}
+      <button type="button" class="btn-sm" @click="reload">Erneut versuchen</button>
     </div>
-    <p v-else style="text-align: center; padding: 2rem; color: var(--color-muted)">
-      Keine Leihen vorhanden
-    </p>
+
+    <template v-else>
+      <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
+
+      <DataTable
+        :columns="columns"
+        :rows="items"
+        :loading="loading"
+        :sort="sort"
+        :card-breakpoint="640"
+        :empty-text="filtered ? 'Keine Leihen für diese Filter.' : 'Noch keine Leihen.'"
+        @update:sort="setSort"
+      >
+        <template #item="{ row }">
+          <router-link :to="itemRouteBase(row.item.category) + '/' + row.item.id">
+            {{ row.item.label }}
+          </router-link>
+        </template>
+        <template #display_nr="{ row }">
+          {{ row.item.display_nr }}
+        </template>
+        <template #musician="{ row }">
+          <router-link :to="`/musiker/${row.musician.id}`">
+            {{ row.musician.first_name }} {{ row.musician.last_name }}
+          </router-link>
+        </template>
+        <template #end_date="{ row }">
+          {{ row.end_date || "—" }}
+        </template>
+        <template #status="{ row }">
+          <span :class="row.end_date ? 'badge badge-gray' : 'badge badge-green'">
+            {{ row.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
+          </span>
+        </template>
+        <template #actions="{ row }">
+          <template v-if="!row.end_date">
+            <div
+              v-if="returningLoanId === row.id"
+              style="display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap"
+            >
+              <input
+                v-model="returnDate"
+                type="date"
+                style="max-width: 160px; padding: 0.2rem 0.4rem; font-size: 1rem"
+                @click.stop
+              />
+              <button
+                class="btn-sm btn-primary"
+                :disabled="!returnDate"
+                @click.stop="returnWithDate(row.id)"
+              >
+                OK
+              </button>
+              <button class="btn-sm" @click.stop="returningLoanId = null">X</button>
+            </div>
+            <div v-else style="display: flex; gap: 0.25rem">
+              <button class="btn-sm" @click.stop="returnToday(row.id)">Heute</button>
+              <button class="btn-sm" @click.stop="returningLoanId = row.id">Datum</button>
+            </div>
+          </template>
+        </template>
+      </DataTable>
+
+      <p v-if="!loading && !items.length && filtered" class="empty-note">
+        <button type="button" class="btn-sm" @click="resetFilters">Filter zurücksetzen</button>
+      </p>
+
+      <InfiniteLoader
+        :has-more="hasMore"
+        :loading="loadingMore"
+        :error="items.length ? error : ''"
+        :count="items.length"
+        :total="total"
+        @load-more="loadMore"
+      />
+    </template>
   </div>
 </template>
+
+<style scoped>
+.loan-musician-filter {
+  min-width: 14rem;
+}
+
+.list-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.empty-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+</style>

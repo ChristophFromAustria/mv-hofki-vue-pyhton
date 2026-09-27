@@ -172,8 +172,7 @@ async def test_import_creates_items_musicians_loans_and_images(client, storage_r
     musicians = (await client.get("/api/v1/musicians?limit=100")).json()
     assert musicians["total"] == 2
 
-    loans = (await client.get("/api/v1/loans?limit=100")).json()
-    loans = loans["items"] if isinstance(loans, dict) else loans
+    loans = (await client.get("/api/v1/loans?limit=100")).json()["items"]
     assert len(loans) == 3
     ended = [loan for loan in loans if loan["end_date"]]
     assert len(ended) == 1 and ended[0]["end_date"] == "2022-01-01"

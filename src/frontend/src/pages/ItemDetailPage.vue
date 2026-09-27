@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { get, post, put, del } from "../lib/api.js";
+import { get, getAll, post, put, del } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import CategoryChips from "../components/CategoryChips.vue";
@@ -11,6 +11,8 @@ import { splitImages } from "../lib/images.js";
 import { quantityDetail } from "../lib/quantity.js";
 import InvoiceModal from "../components/InvoiceModal.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
+import RemotePicker from "../components/RemotePicker.vue";
+import { fetchMusicianOptions } from "../lib/pickers.js";
 
 const props = defineProps({
   category: { type: String, required: true },
@@ -21,7 +23,6 @@ const router = useRouter();
 const cat = computed(() => CATEGORIES[props.category]);
 const item = ref(null);
 const loans = ref([]);
-const musicians = ref([]);
 const images = ref([]);
 const currencies = ref([]);
 const invoices = ref([]);
@@ -55,7 +56,7 @@ async function reload() {
   item.value = await get(`/items/${props.id}`);
   images.value = await get(`/items/${props.id}/images`);
   if (cat.value.hasLoans) {
-    loans.value = await get(`/loans?item_id=${props.id}`);
+    loans.value = await getAll(`/loans?item_id=${props.id}`);
   }
   if (cat.value.hasInvoices) {
     invoices.value = await get(`/items/${props.id}/invoices`);
@@ -93,15 +94,7 @@ async function deleteImage(imageId) {
 }
 
 onMounted(async () => {
-  const promises = [get("/currencies")];
-  if (cat.value.hasLoans) {
-    promises.push(get("/musicians?limit=200"));
-  }
-  const results = await Promise.all(promises);
-  currencies.value = results[0];
-  if (cat.value.hasLoans && results[1]) {
-    musicians.value = results[1].items;
-  }
+  currencies.value = await get("/currencies");
   await reload();
 });
 
@@ -379,13 +372,12 @@ async function onEditSave() {
         </p>
         <form class="cluster cluster-end" @submit.prevent="createLoan">
           <div class="form-group grow" :class="{ error: loanErrors.musician_id }">
-            <label>Musiker</label>
-            <select v-model.number="loanForm.musician_id">
-              <option :value="null" disabled>Auswählen...</option>
-              <option v-for="m in musicians" :key="m.id" :value="m.id">
-                {{ m.last_name }} {{ m.first_name }}
-              </option>
-            </select>
+            <RemotePicker
+              v-model="loanForm.musician_id"
+              :fetch-options="fetchMusicianOptions"
+              label="Musiker"
+              placeholder="Name eingeben …"
+            />
             <span v-if="loanErrors.musician_id" class="form-error">{{
               loanErrors.musician_id
             }}</span>

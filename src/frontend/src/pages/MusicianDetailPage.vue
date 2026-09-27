@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { get, del } from "../lib/api.js";
+import { get, getAll, del } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { registerLabels } from "../lib/musicians.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
@@ -18,7 +18,7 @@ onMounted(async () => {
   try {
     const [m, l] = await Promise.all([
       get(`/musicians/${route.params.id}`),
-      get(`/loans?musician_id=${route.params.id}`),
+      getAll(`/loans?musician_id=${route.params.id}`),
     ]);
     musician.value = m;
     loans.value = l;

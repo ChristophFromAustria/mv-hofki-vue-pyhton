@@ -75,7 +75,7 @@ async def test_return_item(client, loan):
 async def test_list_active_loans(client, loan):
     resp = await client.get("/api/v1/loans?active=true")
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    assert len(resp.json()["items"]) == 1
 
 
 async def test_return_already_returned(client, loan):
@@ -124,3 +124,78 @@ async def test_create_loan_for_sheet_music_rejected(client, setup_data):
 
 async def test_loan_shows_item_display_number(client, loan):
     assert loan["item"]["display_nr"] == "TR-001"
+
+
+async def test_loan_filters_sort_and_search(client):
+    tu = (
+        await client.post(
+            "/api/v1/instrument-types", json={"label": "Tuba", "label_short": "TU"}
+        )
+    ).json()
+    hr = (
+        await client.post(
+            "/api/v1/instrument-types", json={"label": "Horn", "label_short": "HR"}
+        )
+    ).json()
+    hat_type = (
+        await client.post("/api/v1/clothing-types", json={"label": "Hut"})
+    ).json()
+
+    async def item(**data):
+        resp = await client.post("/api/v1/items", json=data)
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    async def musician(first, last):
+        resp = await client.post(
+            "/api/v1/musicians", json={"first_name": first, "last_name": last}
+        )
+        return resp.json()["id"]
+
+    async def lend(item_id, musician_id, start):
+        resp = await client.post(
+            "/api/v1/loans",
+            json={"item_id": item_id, "musician_id": musician_id, "start_date": start},
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["id"]
+
+    tuba = await item(category="instrument", label="Tuba", instrument_type_id=tu["id"])
+    hat = await item(category="clothing", label="Hut", clothing_type_id=hat_type["id"])
+    horn = await item(category="instrument", label="Horn", instrument_type_id=hr["id"])
+    anna_id = await musician("Anna", "Maier")
+    berta_id = await musician("Berta", "Huber")
+    await lend(tuba, anna_id, "2026-01-01")
+    hat_loan = await lend(hat, anna_id, "2026-02-01")
+    await client.put(
+        f"/api/v1/loans/{hat_loan}/return", json={"end_date": "2026-03-01"}
+    )
+    await lend(horn, berta_id, "2026-03-01")
+
+    def labels(r):
+        assert r.status_code == 200, r.text
+        return [loan["item"]["label"] for loan in r.json()["items"]]
+
+    assert labels(await client.get("/api/v1/loans")) == ["Horn", "Hut", "Tuba"]
+    assert labels(await client.get("/api/v1/loans?active=true")) == ["Horn", "Tuba"]
+    assert labels(await client.get("/api/v1/loans?active=false")) == ["Hut"]
+    assert labels(await client.get("/api/v1/loans?item_category=clothing")) == ["Hut"]
+    assert labels(await client.get(f"/api/v1/loans?musician_id={anna_id}")) == [
+        "Hut",
+        "Tuba",
+    ]
+    assert labels(await client.get("/api/v1/loans?search=huber")) == ["Horn"]
+    assert labels(await client.get("/api/v1/loans?search=tu-001")) == ["Tuba"]
+    assert labels(await client.get("/api/v1/loans?order_by=start_date")) == [
+        "Tuba",
+        "Hut",
+        "Horn",
+    ]
+    # NULL end dates last
+    assert labels(await client.get("/api/v1/loans?order_by=-end_date")) == [
+        "Hut",
+        "Tuba",
+        "Horn",
+    ]
+    body = (await client.get("/api/v1/loans?limit=2")).json()
+    assert body["total"] == 3 and len(body["items"]) == 2
