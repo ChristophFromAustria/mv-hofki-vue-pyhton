@@ -87,14 +87,14 @@ onUnmounted(() => {
         :class="{ 'dt-card--selectable': selectable }"
         @click="$emit('row-click', seg.row)"
       >
-        <div v-if="selectable" class="dt-card-select" @click.stop>
+        <label v-if="selectable" class="dt-card-select" @click.stop>
           <input
             type="checkbox"
             :checked="selectedSet.has(seg.row.id)"
             :aria-label="`„${rowLabel(seg.row)}“ auswählen`"
             @change="emit('toggle-select', seg.row)"
           />
-        </div>
+        </label>
         <div v-for="col in cardColumns(seg.row)" :key="col.key" class="dt-card-row">
           <span class="dt-card-label">{{ col.label }}</span>
           <span class="dt-card-value">
@@ -151,12 +151,14 @@ onUnmounted(() => {
           </tr>
           <tr v-else style="cursor: pointer" @click="$emit('row-click', seg.row)">
             <td v-if="selectable" class="dt-select" @click.stop>
-              <input
-                type="checkbox"
-                :checked="selectedSet.has(seg.row.id)"
-                :aria-label="`„${rowLabel(seg.row)}“ auswählen`"
-                @change="emit('toggle-select', seg.row)"
-              />
+              <label class="dt-select-hit">
+                <input
+                  type="checkbox"
+                  :checked="selectedSet.has(seg.row.id)"
+                  :aria-label="`„${rowLabel(seg.row)}“ auswählen`"
+                  @change="emit('toggle-select', seg.row)"
+                />
+              </label>
             </td>
             <td v-for="col in columns" :key="col.key" :class="col.class">
               <slot :name="col.key" :row="seg.row" :value="seg.row[col.key]">
@@ -273,6 +275,15 @@ onUnmounted(() => {
   margin: 0;
 }
 
+.dt-select-hit {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto;
+  cursor: pointer;
+}
+
 .dt-card-select {
   position: absolute;
   top: var(--space-2);
@@ -281,5 +292,6 @@ onUnmounted(() => {
   place-items: center;
   width: 44px;
   height: 44px;
+  cursor: pointer;
 }
 </style>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mount } from "@vue/test-utils";
+import { mount, flushPromises } from "@vue/test-utils";
 import DataTable from "../../src/frontend/src/components/DataTable.vue";
 
 const columns = [
@@ -57,5 +57,32 @@ describe("DataTable groups and selection", () => {
     expect(boxes[1].attributes("aria-label")).toBe("„Zwei“ auswählen");
     await boxes[1].trigger("change");
     expect(w.emitted("toggle-select")[0][0]).toMatchObject({ id: 2 });
+  });
+
+  it("gives the table selection checkbox a 44px label hit area", () => {
+    const w = mount(DataTable, { props: { columns: cols, rows: grows, groups, selectable: true } });
+    const box = w.find('input[type="checkbox"]');
+    expect(box.element.closest("label")).not.toBeNull();
+    expect(box.element.closest("label").classList.contains("dt-select-hit")).toBe(true);
+  });
+
+  it("gives the card selection checkbox a 44px label hit area and toggles on change", async () => {
+    const originalWidth = window.innerWidth;
+    window.innerWidth = 375;
+    const w = mount(DataTable, {
+      props: { columns: cols, rows: grows, groups, selectable: true, cardBreakpoint: 2000 },
+    });
+    window.innerWidth = originalWidth;
+    await flushPromises();
+    expect(w.find(".dt-cards").exists()).toBe(true);
+    const box = w.find('input[type="checkbox"]');
+    const label = box.element.closest("label");
+    expect(label).not.toBeNull();
+    expect(label.classList.contains("dt-card-select")).toBe(true);
+    // jsdom does not forward a label click to its control's "change" event, so
+    // the toggle is verified by triggering "change" on the input itself, which
+    // is what a forwarded label click ultimately fires in a real browser.
+    await box.trigger("change");
+    expect(w.emitted("toggle-select")[0][0]).toMatchObject({ id: 1 });
   });
 });
