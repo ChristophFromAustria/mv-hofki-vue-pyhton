@@ -117,6 +117,10 @@ export function useListQuery({
 }) {
   const route = useRoute();
   const router = useRouter();
+  // App.vue's page Transition is out-in with a fade; the leaving page stays
+  // mounted (and its watchers active) for ~150ms while the next route is
+  // already current. Ignore route changes once we are no longer that route.
+  const ownPath = route.path;
 
   const defaults = Object.fromEntries(
     Object.entries(filters).map(([k, def]) => [k, clone(def.default)]),
@@ -230,6 +234,7 @@ export function useListQuery({
   watch(
     () => route.query,
     (query) => {
+      if (route.path !== ownPath) return;
       const key = queryKey(query);
       if (ownQueries.has(key)) {
         if (key === lastWrittenKey) ownQueries.clear();

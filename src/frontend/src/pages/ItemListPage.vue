@@ -36,7 +36,7 @@ const QUANTITY_COLUMN = {
 const STATUS_OPTIONS = [
   { value: "", label: "Alle" },
   { value: "verfuegbar", label: "Verfügbar" },
-  { value: "verliehen", label: "Verliehen" },
+  { value: "verliehen", label: "Ausgeliehen" },
 ];
 
 const search = { type: "string", default: "", debounce: true };
@@ -281,7 +281,7 @@ function mapItem(i) {
 
 onMounted(async () => {
   const [cur, types, facetData] = await Promise.all([
-    get("/currencies"),
+    get("/currencies").catch(() => []),
     get(TYPE_ENDPOINTS[props.category]).catch(() => []),
     get(`/items/facets?category=${props.category}`).catch(() => ({})),
   ]);
@@ -314,7 +314,7 @@ function onModalSave() {
     </div>
 
     <div class="toolbar">
-      <SearchBar v-model="state.search" placeholder="Suche..." class="grow" />
+      <SearchBar v-model="state.search" placeholder="Suche (Bezeichnung, Nummer …)" class="grow" />
       <div class="view-toggle">
         <button :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">Liste</button>
         <button :class="{ active: viewMode === 'card' }" @click="viewMode = 'card'">Karten</button>
@@ -332,24 +332,30 @@ function onModalSave() {
     <div v-if="error && !items.length" class="alert alert-danger list-alert" role="alert">
       {{ cat.label }} konnten nicht geladen werden: {{ error }}
       <button type="button" class="btn-sm" @click="reload">Erneut versuchen</button>
+      <button type="button" class="btn-sm" @click="resetFilters">Filter zurücksetzen</button>
     </div>
 
     <template v-else>
-      <DataTable
-        v-if="viewMode === 'list'"
-        :columns="columns"
-        :rows="items"
-        :loading="loading"
-        :card-breakpoint="640"
-        :sort="sort"
-        :empty-text="filtered ? 'Keine Einträge für diese Filter.' : 'Noch keine Einträge.'"
-        @update:sort="setSort"
-        @row-click="goTo"
-      >
-        <template #categories="{ value }">
-          <CategoryChips :categories="value || []" />
-        </template>
-      </DataTable>
+      <template v-if="viewMode === 'list'">
+        <DataTable
+          :columns="columns"
+          :rows="items"
+          :loading="loading"
+          :card-breakpoint="640"
+          :sort="sort"
+          :empty-text="filtered ? 'Keine Einträge für diese Filter.' : 'Noch keine Einträge.'"
+          @update:sort="setSort"
+          @row-click="goTo"
+        >
+          <template #categories="{ value }">
+            <CategoryChips :categories="value || []" />
+          </template>
+        </DataTable>
+
+        <p v-if="!loading && !items.length && filtered" class="empty-note">
+          <button type="button" class="btn-sm" @click="resetFilters">Filter zurücksetzen</button>
+        </p>
+      </template>
 
       <template v-else>
         <SortSelect
@@ -402,7 +408,7 @@ function onModalSave() {
 
       <InfiniteLoader
         :has-more="hasMore"
-        :loading="loadingMore"
+        :loading="loading || loadingMore"
         :error="items.length ? error : ''"
         :count="items.length"
         :total="total"

@@ -20,7 +20,13 @@ function detailToMessage(text) {
     // keep raw text
   }
   if (Array.isArray(detail)) {
-    return detail.map((entry) => (entry && entry.msg) || JSON.stringify(entry)).join("; ");
+    return (
+      detail
+        .map((entry) => (entry && entry.msg) || JSON.stringify(entry))
+        // pydantic prefixes a raised ValueError's message with "Value error, ".
+        .map((msg) => msg.replace(/^Value error,\s*/, ""))
+        .join("; ")
+    );
   }
   return detail;
 }

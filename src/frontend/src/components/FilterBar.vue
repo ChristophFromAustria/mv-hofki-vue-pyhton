@@ -77,22 +77,20 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
 
     <div :id="panelId" class="filter-panel" :class="{ open }">
       <template v-for="def in defs" :key="defKey(def)">
-        <div
-          v-if="def.type === 'segmented'"
-          class="view-toggle"
-          role="group"
-          :aria-label="def.label"
-        >
-          <button
-            v-for="o in def.options"
-            :key="String(o.value)"
-            type="button"
-            :class="{ active: same(state[def.key], o.value) }"
-            :aria-pressed="String(same(state[def.key], o.value))"
-            @click="$emit('change', def.key, o.value)"
-          >
-            {{ o.label }}
-          </button>
+        <div v-if="def.type === 'segmented'" class="filter-field">
+          <span class="filter-label">{{ def.label }}</span>
+          <div class="view-toggle" role="group" :aria-label="def.label">
+            <button
+              v-for="o in def.options"
+              :key="String(o.value)"
+              type="button"
+              :class="{ active: same(state[def.key], o.value) }"
+              :aria-pressed="String(same(state[def.key], o.value))"
+              @click="$emit('change', def.key, o.value)"
+            >
+              {{ o.label }}
+            </button>
+          </div>
         </div>
 
         <label v-else-if="def.type === 'select'" class="filter-field">

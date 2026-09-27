@@ -497,6 +497,11 @@ tbody tr:hover {
   color: var(--color-muted);
 }
 
+.list-alert .btn-sm,
+.empty-note .btn-sm {
+  min-height: 44px;
+}
+
 /* Key figures — a strip of real numbers, separated by hairlines, not tiles */
 .key-figures {
   display: flex;

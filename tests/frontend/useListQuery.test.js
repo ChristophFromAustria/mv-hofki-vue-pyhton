@@ -75,7 +75,10 @@ describe("pure helpers", () => {
 async function setup(query = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: "/", component: { render: () => null } }],
+    routes: [
+      { path: "/", component: { render: () => null } },
+      { path: "/other", component: { render: () => null } },
+    ],
   });
   router.push({ path: "/", query });
   await router.isReady();
@@ -252,6 +255,19 @@ describe("useListQuery", () => {
     await list.loadMore();
     expect(list.error.value).toBe("Netz weg");
     expect(list.items.value).toHaveLength(2);
+  });
+
+  it("ignores a route change to another page during the fade-out transition", async () => {
+    get.mockResolvedValue(page([], 0));
+    const { list, router } = await setup();
+    const stateBefore = JSON.stringify(list.state);
+    get.mockClear();
+    // The old page (still mounted during the 150ms Transition fade-out) must
+    // not react to a query that now belongs to a different route.
+    await router.push({ path: "/other", query: { is_active: "false" } });
+    await flushPromises();
+    expect(get).not.toHaveBeenCalled();
+    expect(JSON.stringify(list.state)).toBe(stateBefore);
   });
 
   it("a failed first load clears items and reports the error", async () => {

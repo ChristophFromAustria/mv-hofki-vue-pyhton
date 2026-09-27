@@ -122,6 +122,7 @@ function goToItem(inv) {
     <div v-if="error && !items.length" class="alert alert-danger list-alert" role="alert">
       Rechnungen konnten nicht geladen werden: {{ error }}
       <button type="button" class="btn-sm" @click="reload">Erneut versuchen</button>
+      <button type="button" class="btn-sm" @click="resetFilters">Filter zurücksetzen</button>
     </div>
 
     <template v-else>
@@ -154,7 +155,7 @@ function goToItem(inv) {
 
       <InfiniteLoader
         :has-more="hasMore"
-        :loading="loadingMore"
+        :loading="loading || loadingMore"
         :error="items.length ? error : ''"
         :count="items.length"
         :total="total"

@@ -28,6 +28,16 @@ describe("api error message handling", () => {
     stubFetch("Kategorie existiert bereits");
     await expect(post("/x", {})).rejects.toThrow("Kategorie existiert bereits");
   });
+
+  it("strips a leading pydantic 'Value error, ' from a msg", async () => {
+    stubFetch([{ msg: "Value error, „x“ ist kein gültiger Sortierschlüssel." }]);
+    try {
+      await post("/x", {});
+      throw new Error("expected post() to reject");
+    } catch (e) {
+      expect(e.message).toBe("„x“ ist kein gültiger Sortierschlüssel.");
+    }
+  });
 });
 
 describe("getAll", () => {

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { get, post, put } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { fetchLoanableItemOptions, fetchMusicianOptions } from "../lib/pickers.js";
@@ -80,12 +80,29 @@ const columns = [
   { key: "actions", label: "" },
 ];
 
-// Musician filter from the URL: show the name in the picker.
-if (state.musician_id != null) {
-  get(`/musicians/${state.musician_id}`)
-    .then((m) => (filterMusicianLabel.value = `${m.last_name} ${m.first_name}`))
-    .catch(() => (filterMusicianLabel.value = ""));
-}
+// Musician filter label: fetched whenever the id changes to one we have not
+// already shown (a picker @select already knows the label, see below).
+const lastMusicianId = ref(null);
+
+watch(
+  () => state.musician_id,
+  async (id) => {
+    if (id == null) {
+      filterMusicianLabel.value = "";
+      lastMusicianId.value = null;
+      return;
+    }
+    if (id === lastMusicianId.value) return;
+    lastMusicianId.value = id;
+    try {
+      const m = await get(`/musicians/${id}`);
+      filterMusicianLabel.value = `${m.last_name} ${m.first_name}`;
+    } catch {
+      filterMusicianLabel.value = "";
+    }
+  },
+  { immediate: true },
+);
 
 function itemRouteBase(category) {
   return CATEGORIES[category]?.routeBase || "/instrumente";
@@ -197,7 +214,12 @@ async function returnWithDate(id) {
         label="Musiker"
         placeholder="Alle Musiker"
         @update:model-value="setFilter('musician_id', $event)"
-        @select="(o) => (filterMusicianLabel = o.label)"
+        @select="
+          (o) => {
+            filterMusicianLabel = o.label;
+            lastMusicianId = o.id;
+          }
+        "
       />
     </div>
 
@@ -212,6 +234,7 @@ async function returnWithDate(id) {
     <div v-if="error && !items.length" class="alert alert-danger list-alert" role="alert">
       Leihen konnten nicht geladen werden: {{ error }}
       <button type="button" class="btn-sm" @click="reload">Erneut versuchen</button>
+      <button type="button" class="btn-sm" @click="resetFilters">Filter zurücksetzen</button>
     </div>
 
     <template v-else>
@@ -282,7 +305,7 @@ async function returnWithDate(id) {
 
       <InfiniteLoader
         :has-more="hasMore"
-        :loading="loadingMore"
+        :loading="loading || loadingMore"
         :error="items.length ? error : ''"
         :count="items.length"
         :total="total"
