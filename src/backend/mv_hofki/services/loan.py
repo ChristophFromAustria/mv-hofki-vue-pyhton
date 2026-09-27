@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from mv_hofki.filters.base import PageParams, paginate
+from mv_hofki.filters.base import ListPage, PageParams, fetch_page
 from mv_hofki.filters.loan import LoanFilter
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.loan import Loan
@@ -21,13 +21,13 @@ LOANABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 
 async def get_list(
     session: AsyncSession, flt: LoanFilter, page: PageParams
-) -> tuple[list[Loan], int]:
+) -> ListPage:
     query = (
         select(Loan)
         .join(InventoryItem, Loan.item_id == InventoryItem.id)
         .join(Musician, Loan.musician_id == Musician.id)
     )
-    return await paginate(session, flt.sort(flt.filter(query)), page)
+    return await fetch_page(session, flt, query, page)
 
 
 async def get_by_id(session: AsyncSession, loan_id: int) -> Loan:

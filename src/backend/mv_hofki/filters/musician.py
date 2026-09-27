@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, case, select
 
-from mv_hofki.filters.base import ListFilter
+from mv_hofki.filters.base import GroupSpec, ListFilter
 from mv_hofki.models.musician import Musician
-from mv_hofki.models.register import musician_registers
+from mv_hofki.models.register import Register, musician_registers
+
+
+def _join_registers(query: Select) -> Select:
+    return query.outerjoin(
+        musician_registers, musician_registers.c.musician_id == Musician.id
+    ).outerjoin(Register, Register.id == musician_registers.c.register_id)
 
 
 class MusicianFilter(ListFilter):
@@ -22,6 +28,22 @@ class MusicianFilter(ListFilter):
             "first_name": [Musician.first_name, Musician.last_name],
         }
         default_sort = ["last_name", "first_name"]
+        group_fields = {
+            "register": GroupSpec(
+                key=Register.id,
+                label=Register.label,
+                order=Register.sort_order,
+                empty_label="Ohne Register",
+                join=_join_registers,
+                multi=True,
+            ),
+            "status": GroupSpec(
+                key=case((Musician.is_active, "aktiv"), else_="inaktiv"),
+                label=case((Musician.is_active, "Aktiv"), else_="Inaktiv"),
+                order=case((Musician.is_active, 0), else_=1),
+                empty_label="—",
+            ),
+        }
 
     def filter_register_id__in(self, query: Select, value: list[int]) -> Select:
         members = select(musician_registers.c.musician_id).where(

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mv_hofki.filters.base import PageParams, paginate
+from mv_hofki.filters.base import ListPage, PageParams, fetch_page
 from mv_hofki.filters.musician import MusicianFilter
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
@@ -16,9 +16,8 @@ from mv_hofki.services import register as register_service
 
 async def get_list(
     session: AsyncSession, flt: MusicianFilter, page: PageParams
-) -> tuple[list[Musician], int]:
-    query = flt.sort(flt.filter(select(Musician)))
-    return await paginate(session, query, page)
+) -> ListPage:
+    return await fetch_page(session, flt, select(Musician), page)
 
 
 async def get_by_id(session: AsyncSession, musician_id: int) -> Musician:

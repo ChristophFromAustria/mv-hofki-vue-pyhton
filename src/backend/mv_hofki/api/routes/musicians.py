@@ -7,25 +7,29 @@ from fastapi_filter import FilterDepends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
+from mv_hofki.api.routes._listing import page_response
 from mv_hofki.filters.base import PageParams
 from mv_hofki.filters.musician import MusicianFilter
-from mv_hofki.schemas.musician import MusicianCreate, MusicianRead, MusicianUpdate
+from mv_hofki.schemas.musician import (
+    MusicianCreate,
+    MusicianListRow,
+    MusicianRead,
+    MusicianUpdate,
+)
 from mv_hofki.schemas.pagination import PaginatedResponse
 from mv_hofki.services import musician as musician_service
 
 router = APIRouter(prefix="/api/v1/musicians", tags=["musicians"])
 
 
-@router.get("", response_model=PaginatedResponse[MusicianRead])
+@router.get("", response_model=PaginatedResponse[MusicianListRow])
 async def list_musicians(
     flt: MusicianFilter = FilterDepends(MusicianFilter),
     page: PageParams = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await musician_service.get_list(db, flt, page)
-    return PaginatedResponse(
-        items=items, total=total, limit=page.limit, offset=page.offset
-    )
+    lp = await musician_service.get_list(db, flt, page)
+    return page_response(lp, page, [MusicianListRow.model_validate(m) for m in lp.rows])
 
 
 @router.post("", response_model=MusicianRead, status_code=201)

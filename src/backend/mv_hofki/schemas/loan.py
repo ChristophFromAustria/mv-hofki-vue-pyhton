@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from mv_hofki.schemas.inventory_item import ItemRead
 from mv_hofki.schemas.musician import MusicianRead
+from mv_hofki.schemas.pagination import Grouped
 
 
 class LoanCreate(BaseModel):
@@ -36,3 +37,7 @@ class LoanRead(BaseModel):
     musician: MusicianRead
 
     model_config = {"from_attributes": True}
+
+
+class LoanListRow(LoanRead, Grouped):
+    pass

@@ -6,6 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, field_validator
 
+from mv_hofki.schemas.pagination import Grouped
 from mv_hofki.schemas.register import RegisterRef
 
 
@@ -67,3 +68,7 @@ class MusicianRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class MusicianListRow(MusicianRead, Grouped):
+    pass

@@ -199,3 +199,61 @@ async def test_loan_filters_sort_and_search(client):
     ]
     body = (await client.get("/api/v1/loans?limit=2")).json()
     assert body["total"] == 3 and len(body["items"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Grouping
+# ---------------------------------------------------------------------------
+
+
+async def _setup_three_loans(client):
+    tu = (
+        await client.post(
+            "/api/v1/instrument-types", json={"label": "Tuba", "label_short": "TU"}
+        )
+    ).json()
+    hat_type = (
+        await client.post("/api/v1/clothing-types", json={"label": "Hut"})
+    ).json()
+
+    async def item(**data):
+        return (await client.post("/api/v1/items", json=data)).json()["id"]
+
+    async def musician(first, last):
+        return (
+            await client.post(
+                "/api/v1/musicians", json={"first_name": first, "last_name": last}
+            )
+        ).json()["id"]
+
+    tuba = await item(category="instrument", label="Tuba", instrument_type_id=tu["id"])
+    tuba2 = await item(category="instrument", label="Tuba", instrument_type_id=tu["id"])
+    hat = await item(category="clothing", label="Hut", clothing_type_id=hat_type["id"])
+    anna = await musician("Anna", "Maier")
+    berta = await musician("Berta", "Huber")
+    for item_id, m, start in (
+        (tuba, anna, "2026-01-01"),
+        (hat, anna, "2026-02-01"),
+        (tuba2, berta, "2026-03-01"),
+    ):
+        r = await client.post(
+            "/api/v1/loans",
+            json={"item_id": item_id, "musician_id": m, "start_date": start},
+        )
+        assert r.status_code == 201
+    return anna, berta
+
+
+async def test_loans_group_by_musician_category_status(client):
+    anna, berta = await _setup_three_loans(client)
+    body = (await client.get("/api/v1/loans?group_by=musician")).json()
+    assert [g["label"] for g in body["groups"]] == ["Huber Berta", "Maier Anna"]
+    assert [g["count"] for g in body["groups"]] == [1, 2]
+    body = (await client.get("/api/v1/loans?group_by=item_category")).json()
+    assert [(g["key"], g["label"]) for g in body["groups"]] == [
+        ("instrument", "Instrumente"),
+        ("clothing", "Kleidung"),
+    ]
+    body = (await client.get("/api/v1/loans?group_by=status")).json()
+    assert body["groups"] == [{"key": "offen", "label": "Offen", "count": 3}]
+    assert all(row["group_key"] == "offen" for row in body["items"])

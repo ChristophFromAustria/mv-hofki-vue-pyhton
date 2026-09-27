@@ -127,3 +127,49 @@ async def test_paging_with_equal_sort_values_has_no_gaps(client):
     assert first["total"] == 60
     assert len(ids) == 60
     assert len(set(ids)) == 60
+
+
+# ---------------------------------------------------------------------------
+# Grouping
+# ---------------------------------------------------------------------------
+
+
+async def test_group_by_register_repeats_members_and_counts(client):
+    wood = (
+        await client.post("/api/v1/registers", json={"label": "Holz", "sort_order": 1})
+    ).json()
+    brass = (
+        await client.post("/api/v1/registers", json={"label": "Blech", "sort_order": 2})
+    ).json()
+    await _musician(client, "Anna", "Maier", register_ids=[wood["id"], brass["id"]])
+    await _musician(client, "Berta", "Huber", register_ids=[brass["id"]])
+    await _musician(client, "Carl", "Aigner")
+    body = (await client.get("/api/v1/musicians?group_by=register")).json()
+    assert [(m["first_name"], m["group_label"]) for m in body["items"]] == [
+        ("Anna", "Holz"),
+        ("Berta", "Blech"),
+        ("Anna", "Blech"),
+        ("Carl", "Ohne Register"),
+    ]
+    assert body["total"] == 4 and body["item_total"] == 3
+    assert body["groups"] == [
+        {"key": str(wood["id"]), "label": "Holz", "count": 1},
+        {"key": str(brass["id"]), "label": "Blech", "count": 2},
+        {"key": "", "label": "Ohne Register", "count": 1},
+    ]
+
+
+async def test_group_by_status_and_invalid_group(client):
+    await _musician(client, "Anna", "Maier")
+    await _musician(client, "Berta", "Huber", is_active=False)
+    body = (await client.get("/api/v1/musicians?group_by=status")).json()
+    assert [g["label"] for g in body["groups"]] == ["Aktiv", "Inaktiv"]
+    assert (await client.get("/api/v1/musicians?group_by=city")).status_code == 422
+
+
+async def test_without_grouping_no_group_fields(client):
+    await _musician(client, "Anna", "Maier")
+    body = (await client.get("/api/v1/musicians")).json()
+    assert body["groups"] is None
+    assert body["item_total"] == body["total"] == 1
+    assert body["items"][0]["group_key"] is None
