@@ -5,9 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
+from fastapi_filter import FilterDepends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
+from mv_hofki.filters.base import PageParams
+from mv_hofki.filters.inventory_item import ItemFilter
 from mv_hofki.schemas.inventory_item import (
     ClothingItemCreate,
     ClothingItemRead,
@@ -63,20 +66,24 @@ async def list_items(
     category: str = Query(
         ..., description="Category: instrument, clothing, sheet_music, general_item"
     ),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    search: str | None = None,
+    flt: ItemFilter = FilterDepends(ItemFilter),
+    page: PageParams = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await item_service.get_list(
-        db, category=category, search=search, limit=limit, offset=offset
+        db, category=category, flt=flt, page=page
     )
     return PaginatedResponse(
         items=[_to_read(item) for item in items],
         total=total,
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
     )
+
+
+@router.get("/facets")
+async def item_facets(category: str = Query(...), db: AsyncSession = Depends(get_db)):
+    return await item_service.get_facets(db, category)
 
 
 @router.post("", status_code=201)

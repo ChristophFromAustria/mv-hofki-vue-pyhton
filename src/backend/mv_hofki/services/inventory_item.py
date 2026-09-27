@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import ColumnElement, and_, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from mv_hofki.core.config import settings
+from mv_hofki.filters.base import PageParams, paginate
+from mv_hofki.filters.inventory_item import ItemFilter
 from mv_hofki.models.clothing_detail import ClothingDetail
+from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.models.inventory_item import InventoryItem
@@ -30,8 +32,6 @@ from mv_hofki.services import general_item_category as category_service
 
 UPLOADS_ROOT = Path(settings.PROJECT_ROOT) / "data" / "uploads"
 
-# "TU-002", "tu 2", "TU2" -> ("TU", 2)
-_DISPLAY_NR_RE = re.compile(r"^\s*([^\W\d_]+)\s*-?\s*0*(\d+)\s*$")
 LOANABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 INVOICEABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 
@@ -240,63 +240,84 @@ async def create(session: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
     return _build_read_dict(item, detail)
 
 
+def _base_query(category: str) -> Any:
+    query: Any = select(InventoryItem).where(InventoryItem.category == category)
+    if category == "instrument":
+        query = query.outerjoin(
+            InstrumentDetail, InstrumentDetail.item_id == InventoryItem.id
+        ).outerjoin(
+            InstrumentType, InstrumentType.id == InstrumentDetail.instrument_type_id
+        )
+    elif category == "clothing":
+        query = query.outerjoin(
+            ClothingDetail, ClothingDetail.item_id == InventoryItem.id
+        ).outerjoin(ClothingType, ClothingType.id == ClothingDetail.clothing_type_id)
+    elif category == "sheet_music":
+        query = query.outerjoin(
+            SheetMusicDetail, SheetMusicDetail.item_id == InventoryItem.id
+        )
+    return query
+
+
+async def _get_details(
+    session: AsyncSession, item_ids: list[int], category: str
+) -> dict[int, Any]:
+    """Detail rows of many items in one query."""
+    detail_model, _ = CATEGORY_DETAIL_MAP[category]
+    if detail_model is None or not item_ids:
+        return {}
+    query: Any = select(detail_model).where(detail_model.item_id.in_(item_ids))  # type: ignore[attr-defined]
+    if category in _DETAIL_JOINEDLOAD:
+        query = _DETAIL_JOINEDLOAD[category](query)
+    result = await session.execute(query)
+    return {d.item_id: d for d in result.unique().scalars()}
+
+
 async def get_list(
     session: AsyncSession,
     *,
     category: str,
-    search: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    flt: ItemFilter,
+    page: PageParams,
 ) -> tuple[list[dict[str, Any]], int]:
     if category not in CATEGORY_DETAIL_MAP:
         raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {category}")
-
-    query = (
-        select(InventoryItem)
-        .options(joinedload(InventoryItem.currency))
-        .where(InventoryItem.category == category)
+    flt.bind(category)
+    query = flt.sort(flt.filter(_base_query(category)))
+    items, total = await paginate(
+        session, query, page, options=[joinedload(InventoryItem.currency)]
     )
-    count_query = (
-        select(func.count())
-        .select_from(InventoryItem)
-        .where(InventoryItem.category == category)
-    )
-
-    if search:
-        pattern = f"%{search}%"
-        conditions: list[ColumnElement[bool]] = [
-            InventoryItem.label.ilike(pattern),
-            InventoryItem.manufacturer.ilike(pattern),
-            InventoryItem.notes.ilike(pattern),
-        ]
-        if match := _DISPLAY_NR_RE.match(search):
-            conditions.append(
-                and_(
-                    func.upper(InventoryItem.number_prefix) == match[1].upper(),
-                    InventoryItem.inventory_nr == int(match[2]),
-                )
-            )
-        search_filter = or_(*conditions)
-        query = query.where(search_filter)
-        count_query = count_query.where(search_filter)
-
-    total = (await session.execute(count_query)).scalar_one()
-    query = (
-        query.order_by(InventoryItem.number_prefix, InventoryItem.inventory_nr)
-        .limit(limit)
-        .offset(offset)
-    )
-    result = await session.execute(query)
-    items = list(result.unique().scalars().all())
     await _enrich(session, items)
+    details = await _get_details(session, [i.id for i in items], category)
+    return [_build_read_dict(i, details.get(i.id)) for i in items], total
 
-    # Fetch details for all items
-    read_items: list[dict[str, Any]] = []
-    for item in items:
-        detail = await _get_detail(session, item.id, category)
-        read_items.append(_build_read_dict(item, detail))
 
-    return read_items, total
+FACETS: dict[str, dict[str, tuple[Any, Any]]] = {
+    "instrument": {"owners": (None, InventoryItem.owner)},
+    "clothing": {
+        "sizes": (ClothingDetail, ClothingDetail.size),
+        "genders": (ClothingDetail, ClothingDetail.gender),
+    },
+    "sheet_music": {"difficulties": (SheetMusicDetail, SheetMusicDetail.difficulty)},
+    "general_item": {},
+}
+
+
+async def get_facets(session: AsyncSession, category: str) -> dict[str, list[str]]:
+    """Distinct non-empty values that the list filters offer as choices."""
+    if category not in FACETS:
+        raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {category}")
+    out: dict[str, list[str]] = {}
+    for key, (detail_model, column) in FACETS[category].items():
+        query: Any = select(column).distinct().select_from(InventoryItem)
+        if detail_model is not None:
+            query = query.join(detail_model, detail_model.item_id == InventoryItem.id)
+        query = query.where(
+            InventoryItem.category == category, column.is_not(None), column != ""
+        )
+        values = (await session.execute(query)).scalars().all()
+        out[key] = sorted(values, key=str.casefold)
+    return out
 
 
 async def get_by_id(session: AsyncSession, item_id: int) -> dict[str, Any]:
