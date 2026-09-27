@@ -754,6 +754,29 @@ a.key-figure:hover dd {
   color: var(--color-warning);
 }
 
+/* Category chips (general items) */
+.category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  background: var(--color-primary-light);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
 /* Semantic text colours (confidence, status) */
 .text-success {
   color: var(--color-success);
