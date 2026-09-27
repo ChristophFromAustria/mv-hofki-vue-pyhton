@@ -7,6 +7,7 @@ import ConfirmDialog from "../components/ConfirmDialog.vue";
 import ImageGallery from "../components/ImageGallery.vue";
 import ScanDocuments from "../components/ScanDocuments.vue";
 import { splitImages } from "../lib/images.js";
+import { quantityDetail } from "../lib/quantity.js";
 import InvoiceModal from "../components/InvoiceModal.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
 
@@ -266,6 +267,8 @@ async function onEditSave() {
         <dd>{{ item.display_nr }}</dd>
         <dt>Bezeichnung</dt>
         <dd>{{ item.label }}</dd>
+        <dt>Menge</dt>
+        <dd>{{ quantityDetail(item) }}</dd>
 
         <!-- Instrument-specific -->
         <template v-if="category === 'instrument'">

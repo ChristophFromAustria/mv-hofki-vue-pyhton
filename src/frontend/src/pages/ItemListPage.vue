@@ -3,6 +3,7 @@ import { ref, onMounted, watch, computed } from "vue";
 import { useRouter } from "vue-router";
 import { get } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
+import { hasMultipleQuantities, quantityCell, quantityLabel } from "../lib/quantity.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
@@ -25,7 +26,24 @@ const currencies = ref([]);
 
 watch(viewMode, (v) => localStorage.setItem(props.category + "-view-mode", v));
 
+const QUANTITY_COLUMN = {
+  key: "quantity_cell",
+  label: "Menge",
+  class: "col-num",
+  hideEmptyInCard: true,
+};
+
+// Die Spalte „Menge“ erscheint nur, wenn auf der Seite ein Eintrag mehr als ein Stück hat.
+const showQuantity = computed(() => hasMultipleQuantities(items.value));
+
 const columns = computed(() => {
+  const base = baseColumns.value;
+  if (!showQuantity.value) return base;
+  // Direkt nach der Bezeichnung (Typ/Titel), also an Position 2.
+  return [...base.slice(0, 2), QUANTITY_COLUMN, ...base.slice(2)];
+});
+
+const baseColumns = computed(() => {
   switch (props.category) {
     case "instrument":
       return [
@@ -70,6 +88,8 @@ function mapItem(i) {
   const mapped = {
     ...i,
     display_nr: i.display_nr || "",
+    quantity_cell: quantityCell(i),
+    quantity_label: quantityLabel(i),
   };
   if (props.category === "instrument") {
     mapped.type_label = i.instrument_type?.label || "";
@@ -190,7 +210,10 @@ function onModalSave() {
           </div>
         </div>
         <div class="instrument-card-body">
-          <h3>{{ item.label }}</h3>
+          <h3>
+            {{ item.label }}
+            <span v-if="item.quantity_label" class="card-quantity">{{ item.quantity_label }}</span>
+          </h3>
           <p>{{ item.display_nr }} {{ item.manufacturer ? "· " + item.manufacturer : "" }}</p>
         </div>
         <div v-if="cat.hasLoans" class="instrument-card-footer">
@@ -221,6 +244,22 @@ function onModalSave() {
 </template>
 
 <style scoped>
+:deep(td.col-num),
+:deep(th.col-num) {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-quantity {
+  margin-left: var(--space-1);
+  font-weight: 500;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .header-actions {
   display: flex;
   gap: 0.5rem;

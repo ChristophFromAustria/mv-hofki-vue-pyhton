@@ -2,6 +2,7 @@
 import { ref, watch, computed } from "vue";
 import { get, post, put } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
+import { itemQuantity, validateQuantity } from "../lib/quantity.js";
 
 const props = defineProps({
   open: Boolean,
@@ -31,6 +32,7 @@ function defaultForm() {
   const euroCurrency = props.currencies.find((c) => c.abbreviation === "€");
   return {
     label: "",
+    quantity: 1,
     instrument_type_id: null,
     clothing_type_id: null,
     serial_nr: "",
@@ -83,6 +85,7 @@ watch(
       const item = await get(`/items/${props.itemId}`);
       form.value = {
         label: item.label || "",
+        quantity: itemQuantity(item),
         instrument_type_id: item.instrument_type_id || null,
         clothing_type_id: item.clothing_type_id || null,
         serial_nr: item.serial_nr || "",
@@ -131,6 +134,8 @@ function validate() {
   } else {
     if (!form.value.label?.trim()) errors.value.label = "Pflichtfeld";
   }
+  const quantityError = validateQuantity(form.value.quantity);
+  if (quantityError) errors.value.quantity = quantityError;
   if (!form.value.owner?.trim()) errors.value.owner = "Pflichtfeld";
   return Object.keys(errors.value).length === 0;
 }
@@ -141,6 +146,7 @@ function buildPayload() {
 
   // Label
   data.label = form.value.label;
+  data.quantity = Number(form.value.quantity);
 
   // Type ID for dropdown categories
   if (c.labelField === "dropdown" && c.typeIdField) {
@@ -209,6 +215,7 @@ async function save() {
 
       <form
         style="margin-top: 1rem; display: flex; flex-direction: column; overflow: hidden; flex: 1"
+        novalidate
         @submit.prevent="save"
       >
         <div style="overflow-y: auto; flex: 1; padding-bottom: 0.5rem">
@@ -232,6 +239,24 @@ async function save() {
             <label>{{ cat.labelFieldName }} *</label>
             <input v-model="form.label" />
             <span v-if="errors.label" class="form-error">{{ errors.label }}</span>
+          </div>
+
+          <div class="form-group" :class="{ error: errors.quantity }">
+            <label for="item-quantity">Menge (Stück) *</label>
+            <input
+              id="item-quantity"
+              v-model.number="form.quantity"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              class="input-narrow quantity-input"
+              :aria-invalid="errors.quantity ? 'true' : undefined"
+              :aria-describedby="errors.quantity ? 'item-quantity-error' : undefined"
+            />
+            <span v-if="errors.quantity" id="item-quantity-error" class="form-error">{{
+              errors.quantity
+            }}</span>
           </div>
 
           <!-- Instrument-specific fields -->
@@ -390,6 +415,10 @@ async function save() {
 </template>
 
 <style scoped>
+.quantity-input {
+  font-variant-numeric: tabular-nums;
+}
+
 .currency-edit-btn {
   background: none;
   border: none;

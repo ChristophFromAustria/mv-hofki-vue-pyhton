@@ -12,6 +12,13 @@ defineEmits(["row-click"]);
 
 const useCards = ref(false);
 
+// Spalten mit `hideEmptyInCard` erscheinen in der Kartenansicht nur mit Wert.
+function cardColumns(row) {
+  return props.columns.filter(
+    (col) => !col.hideEmptyInCard || (row[col.key] !== "" && row[col.key] != null),
+  );
+}
+
 function checkWidth() {
   useCards.value = props.cardBreakpoint > 0 && window.innerWidth <= props.cardBreakpoint;
 }
@@ -32,7 +39,7 @@ onUnmounted(() => {
     <LoadingSpinner v-if="loading" />
     <div v-else-if="!rows?.length" class="dt-empty">Keine Einträge</div>
     <div v-for="row in rows" :key="row.id" class="dt-card" @click="$emit('row-click', row)">
-      <div v-for="col in columns" :key="col.key" class="dt-card-row">
+      <div v-for="col in cardColumns(row)" :key="col.key" class="dt-card-row">
         <span class="dt-card-label">{{ col.label }}</span>
         <span class="dt-card-value">
           <slot :name="col.key" :row="row" :value="row[col.key]">
