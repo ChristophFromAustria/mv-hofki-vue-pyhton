@@ -815,57 +815,6 @@ a.key-figure:hover dd {
   font-weight: 500;
 }
 
-/* Instrument card grid */
-.instrument-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1rem;
-}
-
-.instrument-card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  cursor: pointer;
-  transition: box-shadow 0.15s;
-  background: var(--color-bg);
-}
-
-.instrument-card:hover {
-  box-shadow: var(--shadow-float);
-}
-
-.instrument-card-img {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: var(--color-bg-soft);
-}
-
-.instrument-card-body {
-  padding: 0.75rem;
-}
-
-.instrument-card-body h3 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-}
-
-.instrument-card-body p {
-  font-size: 0.8rem;
-  color: var(--color-muted);
-  margin: 0;
-}
-
-.instrument-card-footer {
-  padding: 0 0.75rem 0.75rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 /* View toggle buttons */
 .view-toggle {
   display: inline-flex;

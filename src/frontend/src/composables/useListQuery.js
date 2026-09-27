@@ -11,6 +11,10 @@ import { get } from "../lib/api.js";
 
 const ALL = "alle";
 
+// Filters that describe *how* the list is displayed, not what it is
+// narrowed to; they never count towards "filters are active".
+const NOT_FILTERS = ["search", "group_by"];
+
 function emptyOf(type) {
   if (type === "list") return [];
   if (type === "bool" || type === "number") return null;
@@ -140,7 +144,9 @@ export function useListQuery({
   const groups = computed(() => lastResponse.value?.groups ?? null);
   const itemTotal = computed(() => lastResponse.value?.item_total ?? total.value);
   const activeFilterCount = computed(
-    () => Object.keys(filters).filter((k) => k !== "search" && !same(state[k], defaults[k])).length,
+    () =>
+      Object.keys(filters).filter((k) => !NOT_FILTERS.includes(k) && !same(state[k], defaults[k]))
+        .length,
   );
 
   let seq = 0;

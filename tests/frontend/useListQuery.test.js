@@ -298,4 +298,35 @@ describe("useListQuery", () => {
     expect(list.groups.value).toBe(null);
     expect(list.itemTotal.value).toBe(1);
   });
+
+  it("group_by is not counted as a filter", async () => {
+    get.mockResolvedValue(page([], 0));
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/", component: { render: () => null } }],
+    });
+    router.push({ path: "/" });
+    await router.isReady();
+    let list;
+    const Host = defineComponent({
+      setup() {
+        list = useListQuery({
+          endpoint: "/items",
+          filters: { ...FILTERS, group_by: { type: "string", default: "type" } },
+          defaultSort: "last_name",
+          pageSize: 2,
+        });
+        return () => h("div");
+      },
+    });
+    mounted.push(mount(Host, { global: { plugins: [router] } }));
+    await flushPromises();
+    expect(list.activeFilterCount.value).toBe(0);
+    list.setFilter("group_by", "status");
+    await flushPromises();
+    expect(list.activeFilterCount.value).toBe(0);
+    list.setFilter("is_active", false);
+    await flushPromises();
+    expect(list.activeFilterCount.value).toBe(1);
+  });
 });

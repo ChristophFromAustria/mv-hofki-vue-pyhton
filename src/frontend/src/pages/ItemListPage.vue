@@ -5,9 +5,14 @@ import { get } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { hasMultipleQuantities, quantityCell, quantityLabel } from "../lib/quantity.js";
 import { useListQuery } from "../composables/useListQuery.js";
+import { useGroupCollapse } from "../composables/useGroupCollapse.js";
+import { buildSegments } from "../lib/grouping.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import FilterBar from "../components/FilterBar.vue";
+import GroupSelect from "../components/GroupSelect.vue";
+import GroupHeader from "../components/GroupHeader.vue";
+import ItemCard from "../components/ItemCard.vue";
 import InfiniteLoader from "../components/InfiniteLoader.vue";
 import SortSelect from "../components/SortSelect.vue";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
@@ -40,6 +45,26 @@ const STATUS_OPTIONS = [
 ];
 
 const search = { type: "string", default: "", debounce: true };
+const GROUP_DEFAULTS = { instrument: "type" };
+const GROUP_OPTIONS = {
+  instrument: [
+    { key: "type", label: "Typ" },
+    { key: "status", label: "Status" },
+    { key: "owner", label: "Eigentümer" },
+  ],
+  clothing: [
+    { key: "type", label: "Typ" },
+    { key: "size", label: "Größe" },
+    { key: "status", label: "Status" },
+  ],
+  sheet_music: [{ key: "genre", label: "Gattung" }],
+  general_item: [
+    { key: "category", label: "Kategorie" },
+    { key: "room", label: "Raum" },
+    { key: "status", label: "Status" },
+  ],
+};
+const groupBy = (category) => ({ type: "string", default: GROUP_DEFAULTS[category] || "" });
 const FILTERS = {
   instrument: {
     search,
@@ -48,6 +73,7 @@ const FILTERS = {
     owner: { type: "string", default: "" },
     construction_year__gte: { type: "number", default: null },
     construction_year__lte: { type: "number", default: null },
+    group_by: groupBy("instrument"),
   },
   clothing: {
     search,
@@ -55,12 +81,14 @@ const FILTERS = {
     size: { type: "string", default: "" },
     gender: { type: "string", default: "" },
     status: { type: "string", default: "" },
+    group_by: groupBy("clothing"),
   },
   sheet_music: {
     search,
     genre_id__in: { type: "list", default: [] },
     difficulty: { type: "string", default: "" },
     storage_location__ilike: { type: "string", default: "", debounce: true },
+    group_by: groupBy("sheet_music"),
   },
   general_item: {
     search,
@@ -68,6 +96,7 @@ const FILTERS = {
     without_category: { type: "bool", default: null },
     storage_location__ilike: { type: "string", default: "", debounce: true },
     status: { type: "string", default: "" },
+    group_by: groupBy("general_item"),
   },
 };
 
@@ -97,6 +126,8 @@ const {
   activeFilterCount,
   items,
   total,
+  groups,
+  itemTotal,
   loading,
   loadingMore,
   error,
@@ -105,6 +136,10 @@ const {
   reload,
   resetFilters,
 } = list;
+
+const collapseKey = computed(() => `${props.category}:${state.group_by || "none"}`);
+const { collapsed, toggle: toggleGroup } = useGroupCollapse(collapseKey);
+const cardSegments = computed(() => buildSegments(items.value, groups.value, collapsed.value));
 
 const toOptions = (values) => (values || []).map((v) => ({ value: v, label: v }));
 const typeChoice = computed(() =>
@@ -315,11 +350,20 @@ function onModalSave() {
 
     <div class="toolbar">
       <SearchBar v-model="state.search" placeholder="Suche (Bezeichnung, Nummer …)" class="grow" />
+      <GroupSelect
+        :options="GROUP_OPTIONS[category]"
+        :model-value="state.group_by"
+        @update:model-value="setFilter('group_by', $event)"
+      />
       <div class="view-toggle">
         <button :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">Liste</button>
         <button :class="{ active: viewMode === 'card' }" @click="viewMode = 'card'">Karten</button>
       </div>
     </div>
+
+    <p v-if="!loading" class="list-count">
+      {{ itemTotal }} {{ itemTotal === 1 ? cat.labelSingular : cat.label }}
+    </p>
 
     <FilterBar
       :defs="filterDefs"
@@ -343,9 +387,12 @@ function onModalSave() {
           :loading="loading"
           :card-breakpoint="640"
           :sort="sort"
+          :groups="groups"
+          :collapsed-groups="collapsed"
           :empty-text="filtered ? 'Keine Einträge für diese Filter.' : 'Noch keine Einträge.'"
           @update:sort="setSort"
           @row-click="goTo"
+          @toggle-group="toggleGroup"
         >
           <template #categories="{ value }">
             <CategoryChips :categories="value || []" />
@@ -368,34 +415,23 @@ function onModalSave() {
 
         <LoadingSpinner v-if="loading" />
 
-        <div v-else class="instrument-grid">
-          <div v-for="item in items" :key="item.id" class="instrument-card" @click="goTo(item)">
-            <div class="instrument-card-img">
-              <img
-                v-if="item.profile_image_url"
-                :src="item.profile_image_url"
-                style="width: 100%; height: 120px; object-fit: cover"
-              />
-              <div v-else class="card-placeholder">
-                <span>{{ item.display_nr }}</span>
-              </div>
-            </div>
-            <div class="instrument-card-body">
-              <h3>
-                {{ item.label }}
-                <span v-if="item.quantity_label" class="card-quantity">{{
-                  item.quantity_label
-                }}</span>
-              </h3>
-              <p>{{ item.display_nr }} {{ item.manufacturer ? "· " + item.manufacturer : "" }}</p>
-              <CategoryChips v-if="item.categories?.length" :categories="item.categories" />
-            </div>
-            <div v-if="cat.hasLoans" class="instrument-card-footer">
-              <span :class="item.active_loan ? 'badge badge-green' : 'badge badge-gray'">
-                {{ item.active_loan ? "Ausgeliehen" : "Verfügbar" }}
-              </span>
-            </div>
-          </div>
+        <div v-else class="item-grid">
+          <template v-for="seg in cardSegments" :key="seg.key">
+            <GroupHeader
+              v-if="seg.type === 'group'"
+              class="item-grid-group"
+              :label="seg.label"
+              :count="seg.count"
+              :collapsed="seg.collapsed"
+              @toggle="toggleGroup(seg.groupKey)"
+            />
+            <ItemCard
+              v-else
+              :item="seg.row"
+              :has-loans="cat.hasLoans"
+              :to="`${cat.routeBase}/${seg.row.id}`"
+            />
+          </template>
         </div>
 
         <p v-if="!loading && !items.length" class="empty-note">
@@ -436,30 +472,34 @@ function onModalSave() {
   font-variant-numeric: tabular-nums;
 }
 
-.card-quantity {
-  margin-left: var(--space-1);
-  font-weight: 500;
-  color: var(--color-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .header-actions {
   display: flex;
   gap: 0.5rem;
   align-items: center;
 }
 
-.card-placeholder {
-  width: 100%;
-  height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-bg-soft);
+.list-count {
+  font-variant-numeric: tabular-nums;
   color: var(--color-muted);
-  font-size: 1.2rem;
-  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.item-grid-group {
+  grid-column: 1 / -1;
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 640px) {
+  .item-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
 }
 
 .list-alert {
