@@ -4,11 +4,19 @@ import { get, post, put } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { fetchLoanableItemOptions, fetchMusicianOptions } from "../lib/pickers.js";
 import { useListQuery } from "../composables/useListQuery.js";
+import { useGroupCollapse } from "../composables/useGroupCollapse.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import FilterBar from "../components/FilterBar.vue";
+import GroupSelect from "../components/GroupSelect.vue";
 import InfiniteLoader from "../components/InfiniteLoader.vue";
 import RemotePicker from "../components/RemotePicker.vue";
+
+const GROUP_OPTIONS = [
+  { key: "musician", label: "Musiker" },
+  { key: "item_category", label: "Inventar-Art" },
+  { key: "status", label: "Status" },
+];
 
 const showForm = ref(false);
 const form = ref({ item_id: null, musician_id: null, start_date: "" });
@@ -28,6 +36,8 @@ const {
   activeFilterCount,
   items,
   total,
+  groups,
+  itemTotal,
   loading,
   loadingMore,
   error,
@@ -42,9 +52,13 @@ const {
     active: { type: "bool", default: true },
     item_category: { type: "string", default: "" },
     musician_id: { type: "number", default: null },
+    group_by: { type: "string", default: "" },
   },
   defaultSort: "-start_date",
 });
+
+const collapseKey = computed(() => `loans:${state.group_by || "none"}`);
+const { collapsed, toggle: toggleGroup } = useGroupCollapse(collapseKey);
 
 const filterDefs = computed(() => [
   {
@@ -221,7 +235,14 @@ async function returnWithDate(id) {
           }
         "
       />
+      <GroupSelect
+        :options="GROUP_OPTIONS"
+        :model-value="state.group_by"
+        @update:model-value="setFilter('group_by', $event)"
+      />
     </div>
+
+    <p v-if="!loading" class="list-count">{{ itemTotal }} Leihen</p>
 
     <FilterBar
       :defs="filterDefs"
@@ -246,8 +267,11 @@ async function returnWithDate(id) {
         :loading="loading"
         :sort="sort"
         :card-breakpoint="640"
+        :groups="groups"
+        :collapsed-groups="collapsed"
         :empty-text="filtered ? 'Keine Leihen für diese Filter.' : 'Noch keine Leihen.'"
         @update:sort="setSort"
+        @toggle-group="toggleGroup"
       >
         <template #item="{ row }">
           <router-link :to="itemRouteBase(row.item.category) + '/' + row.item.id">
@@ -318,6 +342,12 @@ async function returnWithDate(id) {
 <style scoped>
 .loan-musician-filter {
   min-width: 14rem;
+}
+
+.list-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+  margin: 0 0 var(--space-2);
 }
 
 .list-alert {

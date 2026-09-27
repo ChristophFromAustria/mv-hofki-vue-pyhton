@@ -5,13 +5,20 @@ import { get } from "../lib/api.js";
 import { registerLabels } from "../lib/musicians.js";
 import { sortRegisters } from "../lib/registers.js";
 import { useListQuery } from "../composables/useListQuery.js";
+import { useGroupCollapse } from "../composables/useGroupCollapse.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import FilterBar from "../components/FilterBar.vue";
+import GroupSelect from "../components/GroupSelect.vue";
 import InfiniteLoader from "../components/InfiniteLoader.vue";
 
 const router = useRouter();
 const registers = ref([]);
+
+const GROUP_OPTIONS = [
+  { key: "register", label: "Register" },
+  { key: "status", label: "Status" },
+];
 
 const {
   state,
@@ -22,6 +29,8 @@ const {
   activeFilterCount,
   items,
   total,
+  groups,
+  itemTotal,
   loading,
   loadingMore,
   error,
@@ -36,6 +45,7 @@ const {
     is_active: { type: "bool", default: true },
     register_id__in: { type: "list", default: [] },
     is_extern: { type: "bool", default: null },
+    group_by: { type: "string", default: "" },
   },
   defaultSort: "last_name",
   mapItem: (m) => ({
@@ -44,6 +54,9 @@ const {
     is_extern_label: m.is_extern ? "Ja" : "Nein",
   }),
 });
+
+const collapseKey = computed(() => `musicians:${state.group_by || "none"}`);
+const { collapsed, toggle: toggleGroup } = useGroupCollapse(collapseKey);
 
 const filterDefs = computed(() => [
   {
@@ -107,7 +120,14 @@ function goTo(row) {
 
     <div class="toolbar">
       <SearchBar v-model="state.search" placeholder="Suche (Name, Ort, E-Mail …)" class="grow" />
+      <GroupSelect
+        :options="GROUP_OPTIONS"
+        :model-value="state.group_by"
+        @update:model-value="setFilter('group_by', $event)"
+      />
     </div>
+
+    <p v-if="!loading" class="list-count">{{ itemTotal }} Musiker</p>
 
     <FilterBar
       :defs="filterDefs"
@@ -130,9 +150,12 @@ function goTo(row) {
         :loading="loading"
         :card-breakpoint="480"
         :sort="sort"
+        :groups="groups"
+        :collapsed-groups="collapsed"
         :empty-text="filtered ? 'Keine Musiker für diese Filter.' : 'Noch keine Musiker erfasst.'"
         @update:sort="setSort"
         @row-click="goTo"
+        @toggle-group="toggleGroup"
       >
         <template #last_name="{ row, value }">
           <span :class="{ 'text-muted': row.is_active === false }">{{ value }}</span>
@@ -164,6 +187,12 @@ function goTo(row) {
 <style scoped>
 .inactive-badge {
   margin-left: var(--space-2);
+}
+
+.list-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+  margin: 0 0 var(--space-2);
 }
 
 .list-alert {
