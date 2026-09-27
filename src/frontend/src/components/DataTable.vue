@@ -1,16 +1,33 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import LoadingSpinner from "./LoadingSpinner.vue";
+import SortSelect from "./SortSelect.vue";
 
 const props = defineProps({
   columns: { type: Array, default: () => [] },
   rows: { type: Array, default: () => [] },
   loading: Boolean,
   cardBreakpoint: { type: Number, default: 0 },
+  sort: { type: String, default: "" },
+  emptyText: { type: String, default: "Keine Einträge" },
 });
-defineEmits(["row-click"]);
+const emit = defineEmits(["row-click", "update:sort"]);
 
 const useCards = ref(false);
+
+const sortKeyOf = (s) => s.replace(/^[-+]/, "");
+const sortOptions = computed(() =>
+  props.columns.filter((c) => c.sortKey).map((c) => ({ key: c.sortKey, label: c.label })),
+);
+function ariaSort(col) {
+  if (!col.sortKey) return undefined;
+  if (sortKeyOf(props.sort) !== col.sortKey) return "none";
+  return props.sort.startsWith("-") ? "descending" : "ascending";
+}
+function toggleSort(col) {
+  const active = sortKeyOf(props.sort) === col.sortKey;
+  emit("update:sort", active && !props.sort.startsWith("-") ? `-${col.sortKey}` : col.sortKey);
+}
 
 // Spalten mit `hideEmptyInCard` erscheinen in der Kartenansicht nur mit Wert.
 function cardColumns(row) {
@@ -36,8 +53,15 @@ onUnmounted(() => {
 <template>
   <!-- Card layout for mobile when cardBreakpoint is set -->
   <div v-if="useCards" class="dt-cards">
+    <SortSelect
+      v-if="sortOptions.length"
+      class="dt-sort"
+      :options="sortOptions"
+      :model-value="sort"
+      @update:model-value="emit('update:sort', $event)"
+    />
     <LoadingSpinner v-if="loading" />
-    <div v-else-if="!rows?.length" class="dt-empty">Keine Einträge</div>
+    <div v-else-if="!rows?.length" class="dt-empty">{{ emptyText }}</div>
     <div v-for="row in rows" :key="row.id" class="dt-card" @click="$emit('row-click', row)">
       <div v-for="col in cardColumns(row)" :key="col.key" class="dt-card-row">
         <span class="dt-card-label">{{ col.label }}</span>
@@ -55,7 +79,15 @@ onUnmounted(() => {
     <table>
       <thead>
         <tr>
-          <th v-for="col in columns" :key="col.key" :class="col.class">{{ col.label }}</th>
+          <th v-for="col in columns" :key="col.key" :class="col.class" :aria-sort="ariaSort(col)">
+            <button v-if="col.sortKey" type="button" class="th-sort" @click="toggleSort(col)">
+              {{ col.label
+              }}<span v-if="ariaSort(col) !== 'none'" aria-hidden="true" class="th-sort-arrow">{{
+                ariaSort(col) === "descending" ? "▼" : "▲"
+              }}</span>
+            </button>
+            <template v-else>{{ col.label }}</template>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -69,7 +101,7 @@ onUnmounted(() => {
             :colspan="columns.length"
             style="text-align: center; padding: 2rem; color: var(--color-muted)"
           >
-            Keine Einträge
+            {{ emptyText }}
           </td>
         </tr>
         <tr
@@ -140,5 +172,33 @@ onUnmounted(() => {
 
 .dt-card-value {
   text-align: right;
+}
+
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.th-sort:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.th-sort-arrow {
+  font-size: 0.7em;
+  color: var(--color-muted);
+}
+
+.dt-sort {
+  align-self: flex-end;
 }
 </style>
