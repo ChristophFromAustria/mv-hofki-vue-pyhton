@@ -8,17 +8,29 @@ from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import PrivateAttr
-from sqlalchemy import ColumnElement, Select, and_, exists, func, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    Select,
+    and_,
+    case,
+    exists,
+    func,
+    literal,
+    or_,
+    select,
+)
 
-from mv_hofki.filters.base import ListFilter
+from mv_hofki.filters.base import GroupSpec, ListFilter
 from mv_hofki.models.clothing_detail import ClothingDetail
 from mv_hofki.models.clothing_type import ClothingType
+from mv_hofki.models.general_item_category import GeneralItemCategory
 from mv_hofki.models.general_item_category import general_item_category_links as links
 from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
+from mv_hofki.models.sheet_music_genre import SheetMusicGenre
 
 # "TU-002", "tu 2", "TU2" -> ("TU", 2)
 _DISPLAY_NR_RE = re.compile(r"^\s*([^\W\d_]+)\s*-?\s*0*(\d+)\s*$")
@@ -30,7 +42,7 @@ CATEGORY_LABELS = {
     "general_item": "Allgemein",
 }
 
-_COMMON_FIELDS = {"search", "order_by"}
+_COMMON_FIELDS = {"search", "order_by", "group_by"}
 _CATEGORY_FIELDS = {
     "instrument": {
         "instrument_type_id__in",
@@ -53,6 +65,39 @@ _CATEGORY_SORTS = {
     "clothing": {"number", "type", "size"},
     "sheet_music": {"number", "label", "composer"},
     "general_item": {"number", "label", "storage_location"},
+}
+
+
+_ROOM = func.nullif(
+    func.trim(
+        func.substr(
+            InventoryItem.storage_location,
+            1,
+            func.instr(InventoryItem.storage_location + literal(" /"), " /") - 1,
+        )
+    ),
+    "",
+)
+_OPEN_LOAN = exists().where(Loan.item_id == InventoryItem.id, Loan.end_date.is_(None))
+
+
+def _join_genre(query: Select) -> Select:
+    return query.outerjoin(
+        SheetMusicGenre, SheetMusicGenre.id == SheetMusicDetail.genre_id
+    )
+
+
+def _join_categories(query: Select) -> Select:
+    return query.outerjoin(links, links.c.item_id == InventoryItem.id).outerjoin(
+        GeneralItemCategory, GeneralItemCategory.id == links.c.category_id
+    )
+
+
+_CATEGORY_GROUPS = {
+    "instrument": {"type", "status", "owner"},
+    "clothing": {"type", "size", "status"},
+    "sheet_music": {"genre"},
+    "general_item": {"category", "room", "status"},
 }
 
 
@@ -106,6 +151,38 @@ class ItemFilter(ListFilter):
             "storage_location": [InventoryItem.storage_location],
         }
         default_sort = ["number"]
+        group_fields = {
+            "type": None,  # instrument or clothing type, see group_spec
+            "status": GroupSpec(
+                key=case((_OPEN_LOAN, "verliehen"), else_="verfuegbar"),
+                label=case((_OPEN_LOAN, "Ausgeliehen"), else_="Verfügbar"),
+                empty_label="—",
+            ),
+            "owner": GroupSpec(
+                key=InventoryItem.owner,
+                label=InventoryItem.owner,
+                empty_label="Ohne Eigentümer",
+            ),
+            "size": GroupSpec(
+                key=ClothingDetail.size,
+                label=ClothingDetail.size,
+                empty_label="Ohne Größe",
+            ),
+            "genre": GroupSpec(
+                key=SheetMusicGenre.id,
+                label=SheetMusicGenre.label,
+                empty_label="Ohne Gattung",
+                join=_join_genre,
+            ),
+            "category": GroupSpec(
+                key=GeneralItemCategory.id,
+                label=GeneralItemCategory.label,
+                empty_label="Ohne Kategorie",
+                join=_join_categories,
+                multi=True,
+            ),
+            "room": GroupSpec(key=_ROOM, label=_ROOM, empty_label="Ohne Lagerort"),
+        }
 
     def bind(self, category: str) -> ItemFilter:
         label = CATEGORY_LABELS[category]
@@ -122,6 +199,11 @@ class ItemFilter(ListFilter):
                     status_code=422,
                     detail=f"Sortierung „{name}“ gibt es für {label} nicht",
                 )
+        if self.group_by and self.group_by not in _CATEGORY_GROUPS[category]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Gruppierung „{self.group_by}“ gibt es für {label} nicht",
+            )
         self._category = category
         return self
 
@@ -133,6 +215,19 @@ class ItemFilter(ListFilter):
                 else ClothingType.label
             ]
         return super().sort_columns(key)
+
+    def group_spec(self) -> GroupSpec | None:
+        if self.group_by == "type":
+            if self._category == "instrument":
+                return GroupSpec(
+                    key=InstrumentType.id,
+                    label=InstrumentType.label,
+                    empty_label="Ohne Typ",
+                )
+            return GroupSpec(
+                key=ClothingType.id, label=ClothingType.label, empty_label="Ohne Typ"
+            )
+        return super().group_spec()
 
     def search_clause(self, value: str) -> ColumnElement[bool] | None:
         value = value.strip()

@@ -287,3 +287,113 @@ async def test_facets(client, refs):
     }
     assert (await client.get(f"{URL}/facets?category=general_item")).json() == {}
     assert (await client.get(f"{URL}/facets?category=unsinn")).status_code == 400
+
+
+async def _groups(client, query):
+    resp = await client.get(f"{URL}?{query}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    return body, [(g["label"], g["count"]) for g in body["groups"]]
+
+
+async def test_instruments_group_by_type_status_owner(client, refs):
+    t1 = await _item(
+        client,
+        category="instrument",
+        label="Tuba 1",
+        instrument_type_id=refs["tuba"],
+        owner="MV Hofkirchen",
+    )
+    await _item(
+        client,
+        category="instrument",
+        label="Horn 1",
+        instrument_type_id=refs["horn"],
+        owner="Privat",
+    )
+    await _item(
+        client,
+        category="instrument",
+        label="Tuba 2",
+        instrument_type_id=refs["tuba"],
+        owner="MV Hofkirchen",
+    )
+    await client.post(
+        "/api/v1/loans",
+        json={
+            "item_id": t1["id"],
+            "musician_id": await _musician(client),
+            "start_date": "2026-01-01",
+        },
+    )
+    body, groups = await _groups(client, "category=instrument&group_by=type")
+    assert groups == [("Horn", 1), ("Tuba", 2)]
+    assert [i["label"] for i in body["items"]] == ["Horn 1", "Tuba 1", "Tuba 2"]
+    assert body["items"][0]["group_key"] == str(refs["horn"])
+    _, groups = await _groups(client, "category=instrument&group_by=status")
+    assert groups == [("Ausgeliehen", 1), ("Verfügbar", 2)]
+    _, groups = await _groups(client, "category=instrument&group_by=owner")
+    assert groups == [("MV Hofkirchen", 2), ("Privat", 1)]
+
+
+async def test_clothing_group_by_size_with_empty_group(client, refs):
+    await _item(
+        client, category="clothing", label="Hut", clothing_type_id=refs["hat"], size="M"
+    )
+    await _item(
+        client, category="clothing", label="Jacke", clothing_type_id=refs["jacket"]
+    )
+    _, groups = await _groups(client, "category=clothing&group_by=size")
+    assert groups == [("M", 1), ("Ohne Größe", 1)]
+    _, groups = await _groups(client, "category=clothing&group_by=type")
+    assert groups == [("Hut", 1), ("Jacke", 1)]
+
+
+async def test_sheet_music_group_by_genre(client):
+    genre = (
+        await client.post("/api/v1/sheet-music-genres", json={"label": "Marsch"})
+    ).json()
+    await _item(client, category="sheet_music", label="Radetzky", genre_id=genre["id"])
+    await _item(client, category="sheet_music", label="Bolero")
+    _, groups = await _groups(client, "category=sheet_music&group_by=genre")
+    assert groups == [("Marsch", 1), ("Ohne Gattung", 1)]
+
+
+async def test_general_items_group_by_category_repeats_and_room(client):
+    deko = (
+        await client.post("/api/v1/general-item-categories", json={"label": "Deko"})
+    ).json()
+    fest = (
+        await client.post("/api/v1/general-item-categories", json={"label": "Fest"})
+    ).json()
+    await _item(
+        client,
+        category="general_item",
+        label="Girlande",
+        category_ids=[deko["id"], fest["id"]],
+        storage_location="Sesselarchiv / Kasten 1",
+    )
+    await _item(
+        client, category="general_item", label="Leiter", storage_location="Bauhof"
+    )
+    await _item(client, category="general_item", label="Kiste")
+    body, groups = await _groups(client, "category=general_item&group_by=category")
+    assert groups == [("Deko", 1), ("Fest", 1), ("Ohne Kategorie", 2)]
+    assert [(i["label"], i["group_label"]) for i in body["items"]] == [
+        ("Girlande", "Deko"),
+        ("Girlande", "Fest"),
+        ("Leiter", "Ohne Kategorie"),
+        ("Kiste", "Ohne Kategorie"),
+    ]
+    assert body["total"] == 4 and body["item_total"] == 3
+    _, groups = await _groups(client, "category=general_item&group_by=room")
+    assert groups == [("Bauhof", 1), ("Sesselarchiv", 1), ("Ohne Lagerort", 1)]
+
+
+async def test_group_not_for_category_is_422(client):
+    resp = await client.get(f"{URL}?category=general_item&group_by=type")
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "Gruppierung „type“ gibt es für Allgemein nicht"
+    assert (
+        await client.get(f"{URL}?category=instrument&group_by=unsinn")
+    ).status_code == 422

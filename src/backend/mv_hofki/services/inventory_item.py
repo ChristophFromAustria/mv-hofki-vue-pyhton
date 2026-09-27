@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from mv_hofki.core.config import settings
-from mv_hofki.filters.base import PageParams, paginate
+from mv_hofki.filters.base import ListPage, PageParams, fetch_page
 from mv_hofki.filters.inventory_item import ItemFilter
 from mv_hofki.models.clothing_detail import ClothingDetail
 from mv_hofki.models.clothing_type import ClothingType
@@ -279,17 +279,22 @@ async def get_list(
     category: str,
     flt: ItemFilter,
     page: PageParams,
-) -> tuple[list[dict[str, Any]], int]:
+) -> ListPage:
     if category not in CATEGORY_DETAIL_MAP:
         raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {category}")
     flt.bind(category)
-    query = flt.sort(flt.filter(_base_query(category)))
-    items, total = await paginate(
-        session, query, page, options=[joinedload(InventoryItem.currency)]
+    lp = await fetch_page(
+        session,
+        flt,
+        _base_query(category),
+        page,
+        options=[joinedload(InventoryItem.currency)],
     )
-    await _enrich(session, items)
-    details = await _get_details(session, [i.id for i in items], category)
-    return [_build_read_dict(i, details.get(i.id)) for i in items], total
+    unique_items = list({i.id: i for i in lp.rows}.values())
+    await _enrich(session, unique_items)
+    details = await _get_details(session, [i.id for i in unique_items], category)
+    lp.rows = [_build_read_dict(i, details.get(i.id)) for i in lp.rows]
+    return lp
 
 
 FACETS: dict[str, dict[str, tuple[Any, Any]]] = {

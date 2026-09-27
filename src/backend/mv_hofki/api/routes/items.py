@@ -9,6 +9,7 @@ from fastapi_filter import FilterDepends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
+from mv_hofki.api.routes._listing import page_response
 from mv_hofki.filters.base import PageParams
 from mv_hofki.filters.inventory_item import ItemFilter
 from mv_hofki.schemas.inventory_item import (
@@ -25,7 +26,6 @@ from mv_hofki.schemas.inventory_item import (
     SheetMusicItemRead,
     SheetMusicItemUpdate,
 )
-from mv_hofki.schemas.pagination import PaginatedResponse
 from mv_hofki.services import inventory_item as item_service
 
 router = APIRouter(prefix="/api/v1/items", tags=["items"])
@@ -70,15 +70,8 @@ async def list_items(
     page: PageParams = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await item_service.get_list(
-        db, category=category, flt=flt, page=page
-    )
-    return PaginatedResponse(
-        items=[_to_read(item) for item in items],
-        total=total,
-        limit=page.limit,
-        offset=page.offset,
-    )
+    lp = await item_service.get_list(db, category=category, flt=flt, page=page)
+    return page_response(lp, page, [_to_read(item) for item in lp.rows])
 
 
 @router.get("/facets")
