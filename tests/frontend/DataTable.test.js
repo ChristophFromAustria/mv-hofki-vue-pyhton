@@ -28,3 +28,34 @@ describe("DataTable sorting", () => {
     expect(w.text()).toContain("Keine Einträge für diese Filter.");
   });
 });
+
+describe("DataTable groups and selection", () => {
+  const cols = [{ key: "label", label: "Bezeichnung" }];
+  const grows = [
+    { id: 1, _key: "a:1", group_key: "a", label: "Eins" },
+    { id: 2, _key: "b:2", group_key: "b", label: "Zwei" },
+    { id: 1, _key: "b:1", group_key: "b", label: "Eins" },
+  ];
+  const groups = [
+    { key: "a", label: "Alpha", count: 1 },
+    { key: "b", label: "Beta", count: 2 },
+  ];
+
+  it("renders group rows with rowgroup headers and hides collapsed rows", async () => {
+    const w = mount(DataTable, { props: { columns: cols, rows: grows, groups, collapsedGroups: new Set(["a"]) } });
+    const headers = w.findAll('th[scope="rowgroup"]');
+    expect(headers.map((h) => h.text())).toEqual([expect.stringContaining("Alpha"), expect.stringContaining("Beta")]);
+    expect(w.findAll("tbody tr td").map((td) => td.text())).toEqual(["Zwei", "Eins"]);
+    await headers[1].find("button").trigger("click");
+    expect(w.emitted("toggle-group")).toEqual([["b"]]);
+  });
+
+  it("selection column marks every row of a selected id", async () => {
+    const w = mount(DataTable, { props: { columns: cols, rows: grows, groups, selectable: true, selectedIds: [1] } });
+    const boxes = w.findAll('input[type="checkbox"]');
+    expect(boxes.map((b) => b.element.checked)).toEqual([true, false, true]);
+    expect(boxes[1].attributes("aria-label")).toBe("„Zwei“ auswählen");
+    await boxes[1].trigger("change");
+    expect(w.emitted("toggle-select")[0][0]).toMatchObject({ id: 2 });
+  });
+});

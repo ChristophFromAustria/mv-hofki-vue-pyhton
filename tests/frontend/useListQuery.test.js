@@ -277,4 +277,25 @@ describe("useListQuery", () => {
     expect(list.items.value).toEqual([]);
     expect(list.loading.value).toBe(false);
   });
+
+  it("exposes groups and itemTotal and keys rows by group", async () => {
+    get.mockResolvedValue({
+      items: [{ id: 1, group_key: "a" }, { id: 1, group_key: "b" }],
+      total: 2,
+      item_total: 1,
+      groups: [{ key: "a", label: "A", count: 1 }, { key: "b", label: "B", count: 1 }],
+    });
+    const { list } = await setup();
+    expect(list.items.value.map((r) => r._key)).toEqual(["a:1", "b:1"]);
+    expect(list.itemTotal.value).toBe(1);
+    expect(list.groups.value).toHaveLength(2);
+  });
+
+  it("keys rows by id without grouping", async () => {
+    get.mockResolvedValue({ items: [{ id: 4 }], total: 1 });
+    const { list } = await setup();
+    expect(list.items.value[0]._key).toBe(4);
+    expect(list.groups.value).toBe(null);
+    expect(list.itemTotal.value).toBe(1);
+  });
 });

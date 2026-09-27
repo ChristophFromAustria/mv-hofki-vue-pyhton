@@ -137,6 +137,8 @@ export function useListQuery({
   const loadingMore = ref(false);
   const error = ref("");
   const hasMore = computed(() => items.value.length < total.value);
+  const groups = computed(() => lastResponse.value?.groups ?? null);
+  const itemTotal = computed(() => lastResponse.value?.item_total ?? total.value);
   const activeFilterCount = computed(
     () => Object.keys(filters).filter((k) => k !== "search" && !same(state[k], defaults[k])).length,
   );
@@ -165,7 +167,10 @@ export function useListQuery({
       });
       const data = await get(`${endpoint}?${params}`);
       if (my !== seq) return;
-      const mapped = data.items.map(mapItem);
+      const mapped = data.items.map(mapItem).map((row) => ({
+        ...row,
+        _key: row.group_key != null ? `${row.group_key}:${row.id}` : row.id,
+      }));
       items.value = append ? [...items.value, ...mapped] : mapped;
       total.value = data.total;
       lastResponse.value = data;
@@ -273,6 +278,8 @@ export function useListQuery({
     activeFilterCount,
     items,
     total,
+    groups,
+    itemTotal,
     lastResponse,
     loading,
     loadingMore,

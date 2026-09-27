@@ -2,6 +2,8 @@
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import LoadingSpinner from "./LoadingSpinner.vue";
 import SortSelect from "./SortSelect.vue";
+import GroupHeader from "./GroupHeader.vue";
+import { buildSegments } from "../lib/grouping.js";
 
 const props = defineProps({
   columns: { type: Array, default: () => [] },
@@ -10,10 +12,19 @@ const props = defineProps({
   cardBreakpoint: { type: Number, default: 0 },
   sort: { type: String, default: "" },
   emptyText: { type: String, default: "Keine Einträge" },
+  groups: { type: Array, default: null },
+  collapsedGroups: { type: Set, default: () => new Set() },
+  selectable: { type: Boolean, default: false },
+  selectedIds: { type: Array, default: () => [] },
+  rowLabel: { type: Function, default: (r) => r.label ?? "" },
 });
-const emit = defineEmits(["row-click", "update:sort"]);
+const emit = defineEmits(["row-click", "update:sort", "toggle-group", "toggle-select"]);
 
 const useCards = ref(false);
+
+const segments = computed(() => buildSegments(props.rows, props.groups, props.collapsedGroups));
+const selectedSet = computed(() => new Set(props.selectedIds));
+const colspan = computed(() => props.columns.length + (props.selectable ? 1 : 0));
 
 const sortKeyOf = (s) => s.replace(/^[-+]/, "");
 const sortOptions = computed(() =>
@@ -62,16 +73,38 @@ onUnmounted(() => {
     />
     <LoadingSpinner v-if="loading" />
     <div v-else-if="!rows?.length" class="dt-empty">{{ emptyText }}</div>
-    <div v-for="row in rows" :key="row.id" class="dt-card" @click="$emit('row-click', row)">
-      <div v-for="col in cardColumns(row)" :key="col.key" class="dt-card-row">
-        <span class="dt-card-label">{{ col.label }}</span>
-        <span class="dt-card-value">
-          <slot :name="col.key" :row="row" :value="row[col.key]">
-            {{ row[col.key] }}
-          </slot>
-        </span>
+    <template v-for="seg in segments" :key="seg.key">
+      <GroupHeader
+        v-if="seg.type === 'group'"
+        :label="seg.label"
+        :count="seg.count"
+        :collapsed="seg.collapsed"
+        @toggle="emit('toggle-group', seg.groupKey)"
+      />
+      <div
+        v-else
+        class="dt-card"
+        :class="{ 'dt-card--selectable': selectable }"
+        @click="$emit('row-click', seg.row)"
+      >
+        <div v-if="selectable" class="dt-card-select" @click.stop>
+          <input
+            type="checkbox"
+            :checked="selectedSet.has(seg.row.id)"
+            :aria-label="`„${rowLabel(seg.row)}“ auswählen`"
+            @change="emit('toggle-select', seg.row)"
+          />
+        </div>
+        <div v-for="col in cardColumns(seg.row)" :key="col.key" class="dt-card-row">
+          <span class="dt-card-label">{{ col.label }}</span>
+          <span class="dt-card-value">
+            <slot :name="col.key" :row="seg.row" :value="seg.row[col.key]">
+              {{ seg.row[col.key] }}
+            </slot>
+          </span>
+        </div>
       </div>
-    </div>
+    </template>
   </div>
 
   <!-- Standard table with horizontal scroll -->
@@ -79,6 +112,7 @@ onUnmounted(() => {
     <table>
       <thead>
         <tr>
+          <th v-if="selectable" class="dt-select"><span class="sr-only">Auswahl</span></th>
           <th v-for="col in columns" :key="col.key" :class="col.class" :aria-sort="ariaSort(col)">
             <button v-if="col.sortKey" type="button" class="th-sort" @click="toggleSort(col)">
               {{ col.label
@@ -92,30 +126,45 @@ onUnmounted(() => {
       </thead>
       <tbody>
         <tr v-if="loading">
-          <td :colspan="columns.length" style="padding: 0">
+          <td :colspan="colspan" style="padding: 0">
             <LoadingSpinner />
           </td>
         </tr>
         <tr v-else-if="!rows?.length">
           <td
-            :colspan="columns.length"
+            :colspan="colspan"
             style="text-align: center; padding: 2rem; color: var(--color-muted)"
           >
             {{ emptyText }}
           </td>
         </tr>
-        <tr
-          v-for="row in rows"
-          :key="row.id"
-          style="cursor: pointer"
-          @click="$emit('row-click', row)"
-        >
-          <td v-for="col in columns" :key="col.key" :class="col.class">
-            <slot :name="col.key" :row="row" :value="row[col.key]">
-              {{ row[col.key] }}
-            </slot>
-          </td>
-        </tr>
+        <template v-for="seg in segments" v-else :key="seg.key">
+          <tr v-if="seg.type === 'group'" class="dt-group">
+            <th :colspan="colspan" scope="rowgroup">
+              <GroupHeader
+                :label="seg.label"
+                :count="seg.count"
+                :collapsed="seg.collapsed"
+                @toggle="emit('toggle-group', seg.groupKey)"
+              />
+            </th>
+          </tr>
+          <tr v-else style="cursor: pointer" @click="$emit('row-click', seg.row)">
+            <td v-if="selectable" class="dt-select" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedSet.has(seg.row.id)"
+                :aria-label="`„${rowLabel(seg.row)}“ auswählen`"
+                @change="emit('toggle-select', seg.row)"
+              />
+            </td>
+            <td v-for="col in columns" :key="col.key" :class="col.class">
+              <slot :name="col.key" :row="seg.row" :value="seg.row[col.key]">
+                {{ seg.row[col.key] }}
+              </slot>
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>
@@ -140,11 +189,16 @@ onUnmounted(() => {
 }
 
 .dt-card {
+  position: relative;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
   background: var(--color-bg);
   cursor: pointer;
+}
+
+.dt-card--selectable {
+  padding-right: 3rem;
 }
 
 .dt-card:hover {
@@ -200,5 +254,32 @@ onUnmounted(() => {
 
 .dt-sort {
   align-self: flex-end;
+}
+
+.dt-group th {
+  padding: 0;
+  background: var(--color-bg-soft);
+}
+
+.dt-select {
+  width: 44px;
+  text-align: center;
+}
+
+.dt-select input,
+.dt-card-select input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+
+.dt-card-select {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
 }
 </style>
