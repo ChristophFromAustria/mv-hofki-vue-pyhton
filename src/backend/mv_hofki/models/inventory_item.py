@@ -16,10 +16,17 @@ if TYPE_CHECKING:
 
 class InventoryItem(Base):
     __tablename__ = "inventory_items"
-    __table_args__ = (UniqueConstraint("category", "inventory_nr"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "category", "number_prefix", "inventory_nr", name="uq_inventory_number"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     category: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Numbers run per prefix: the category letter (K, N, A) or, for instruments,
+    # the instrument type's short code at the time the number was assigned.
+    number_prefix: Mapped[str] = mapped_column(String(10), nullable=False)
     inventory_nr: Mapped[int] = mapped_column(Integer, nullable=False)
     label: Mapped[str] = mapped_column(String(200), nullable=False)
     manufacturer: Mapped[str | None] = mapped_column(String(100))

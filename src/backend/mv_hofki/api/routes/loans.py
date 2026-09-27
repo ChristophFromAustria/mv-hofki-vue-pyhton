@@ -20,7 +20,7 @@ def _loan_to_read(loan) -> LoanRead:
         id=item.id,
         category=item.category,
         inventory_nr=item.inventory_nr,
-        display_nr=format_display_nr(item.category, item.inventory_nr),
+        display_nr=format_display_nr(item.number_prefix, item.inventory_nr),
         label=item.label,
         manufacturer=item.manufacturer,
         acquisition_date=item.acquisition_date,

@@ -117,7 +117,7 @@ async def get_list(
                 invoice_nr=inv.invoice_nr,
                 item_id=inv.item_id,
                 item_display_nr=format_display_nr(
-                    inv_item.category, inv_item.inventory_nr
+                    inv_item.number_prefix, inv_item.inventory_nr
                 ),
                 item_label=inv_item.label,
                 item_category=inv_item.category,

@@ -2,31 +2,33 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from mv_hofki.core.config import settings
 from mv_hofki.models.clothing_detail import ClothingDetail
 from mv_hofki.models.instrument_detail import InstrumentDetail
+from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.item_image import ItemImage
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
-from mv_hofki.schemas.inventory_item import ActiveLoanInfo, format_display_nr
+from mv_hofki.schemas.inventory_item import (
+    CATEGORY_PREFIXES,
+    ActiveLoanInfo,
+    format_display_nr,
+)
 
-CATEGORY_PREFIXES = {
-    "instrument": "I",
-    "clothing": "K",
-    "sheet_music": "N",
-    "general_item": "A",
-}
+# "TU-002", "tu 2", "TU2" -> ("TU", 2)
+_DISPLAY_NR_RE = re.compile(r"^\s*([^\W\d_]+)\s*-?\s*0*(\d+)\s*$")
 LOANABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 INVOICEABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 
@@ -135,7 +137,7 @@ def _build_read_dict(item: InventoryItem, detail: Any) -> dict[str, Any]:
         "id": item.id,
         "category": item.category,
         "inventory_nr": item.inventory_nr,
-        "display_nr": format_display_nr(item.category, item.inventory_nr),
+        "display_nr": format_display_nr(item.number_prefix, item.inventory_nr),
         "label": item.label,
         "manufacturer": item.manufacturer,
         "acquisition_date": item.acquisition_date,
@@ -164,6 +166,29 @@ def _build_read_dict(item: InventoryItem, detail: Any) -> dict[str, Any]:
     return d
 
 
+async def instrument_prefix(session: AsyncSession, instrument_type_id: int) -> str:
+    """Number prefix for an instrument: its type's short code."""
+    short = await session.scalar(
+        select(InstrumentType.label_short).where(
+            InstrumentType.id == instrument_type_id
+        )
+    )
+    if short is None:
+        raise HTTPException(status_code=400, detail="Instrumententyp nicht gefunden")
+    return short.strip().upper()
+
+
+async def next_inventory_nr(session: AsyncSession, category: str, prefix: str) -> int:
+    """Next free number in the sequence of ``prefix`` (numbers are not reused)."""
+    max_nr = await session.scalar(
+        select(func.max(InventoryItem.inventory_nr)).where(
+            InventoryItem.category == category,
+            InventoryItem.number_prefix == prefix,
+        )
+    )
+    return (max_nr or 0) + 1
+
+
 async def create(session: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
     category = data["category"]
     if category not in CATEGORY_DETAIL_MAP:
@@ -171,15 +196,16 @@ async def create(session: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
 
     base_fields, detail_fields = _split_fields(data, category)
 
-    # Auto-assign inventory_nr per category
-    result = await session.execute(
-        select(func.max(InventoryItem.inventory_nr)).where(
-            InventoryItem.category == category
-        )
+    if category == "instrument":
+        prefix = await instrument_prefix(session, detail_fields["instrument_type_id"])
+    else:
+        prefix = CATEGORY_PREFIXES[category]
+    item = InventoryItem(
+        **base_fields,
+        category=category,
+        number_prefix=prefix,
+        inventory_nr=await next_inventory_nr(session, category, prefix),
     )
-    max_nr = result.scalar_one_or_none() or 0
-
-    item = InventoryItem(**base_fields, category=category, inventory_nr=max_nr + 1)
     session.add(item)
     await session.flush()
 
@@ -220,16 +246,28 @@ async def get_list(
 
     if search:
         pattern = f"%{search}%"
-        search_filter = or_(
+        conditions: list[ColumnElement[bool]] = [
             InventoryItem.label.ilike(pattern),
             InventoryItem.manufacturer.ilike(pattern),
             InventoryItem.notes.ilike(pattern),
-        )
+        ]
+        if match := _DISPLAY_NR_RE.match(search):
+            conditions.append(
+                and_(
+                    func.upper(InventoryItem.number_prefix) == match[1].upper(),
+                    InventoryItem.inventory_nr == int(match[2]),
+                )
+            )
+        search_filter = or_(*conditions)
         query = query.where(search_filter)
         count_query = count_query.where(search_filter)
 
     total = (await session.execute(count_query)).scalar_one()
-    query = query.order_by(InventoryItem.inventory_nr).limit(limit).offset(offset)
+    query = (
+        query.order_by(InventoryItem.number_prefix, InventoryItem.inventory_nr)
+        .limit(limit)
+        .offset(offset)
+    )
     result = await session.execute(query)
     items = list(result.unique().scalars().all())
     await _enrich(session, items)
@@ -271,6 +309,15 @@ async def update(
         raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
 
     base_fields, detail_fields = _split_fields(data, item.category)
+
+    # A new instrument type with another short code moves the item into that
+    # code's sequence. Renaming a short code does not: printed labels stay valid.
+    new_type_id = detail_fields.get("instrument_type_id")
+    if item.category == "instrument" and new_type_id is not None:
+        prefix = await instrument_prefix(session, new_type_id)
+        if prefix != item.number_prefix:
+            item.inventory_nr = await next_inventory_nr(session, item.category, prefix)
+            item.number_prefix = prefix
 
     # Update base fields
     for key, value in base_fields.items():

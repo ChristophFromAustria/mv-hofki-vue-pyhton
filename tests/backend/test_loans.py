@@ -120,3 +120,7 @@ async def test_create_loan_for_sheet_music_rejected(client, setup_data):
         },
     )
     assert resp.status_code == 400
+
+
+async def test_loan_shows_item_display_number(client, loan):
+    assert loan["item"]["display_nr"] == "TR-001"

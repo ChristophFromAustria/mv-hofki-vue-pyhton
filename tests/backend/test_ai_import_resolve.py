@@ -19,13 +19,13 @@ from mv_hofki.services.ai_import.resolve import (
 )
 
 TYPES = [
-    TypeRef(1, "Trompete"),
-    TypeRef(2, "Flügelhorn"),
-    TypeRef(3, "Klarinette in B"),
-    TypeRef(4, "Klarinette in Es"),
-    TypeRef(5, "Tuba"),
-    TypeRef(6, "Schlagwerk"),
-    TypeRef(7, "Tenorhorn"),
+    TypeRef(1, "Trompete", "TR"),
+    TypeRef(2, "Flügelhorn", "FH"),
+    TypeRef(3, "Klarinette in B", "KL"),
+    TypeRef(4, "Klarinette in Es", "KL"),
+    TypeRef(5, "Tuba", "TU"),
+    TypeRef(6, "Schlagwerk", "SW"),
+    TypeRef(7, "Tenorhorn", "TE"),
 ]
 
 
@@ -38,8 +38,8 @@ def ctx(**kw) -> Context:
         ],
         currencies=[CurrencyRef(1, "Euro", "€"), CurrencyRef(2, "Schilling", "ATS")],
         instruments=[
-            ExistingItem(100, 12, "Trompete", "YTR-4335 A"),
-            ExistingItem(101, 3, "Tuba"),
+            ExistingItem(100, 12, "Trompete", "YTR-4335 A", "TR"),
+            ExistingItem(101, 3, "Tuba", None, "TU"),
         ],
         today=date(2026, 9, 6),
     )
@@ -198,6 +198,26 @@ def test_inventory_number_conflicts():
     assert v["summary"]["blocking"] is True
 
 
+def test_inventory_numbers_are_checked_per_short_code():
+    types = [TypeRef(1, "Trompete", "TR"), TypeRef(5, "Tuba", "TU")]
+    existing = [ExistingItem(100, 12, "Trompete", None, "TR")]
+    v = validate_draft(
+        {
+            "instruments": [
+                row(inventory_nr="12", instrument_type="Tuba"),
+                row(key="b", inventory_nr="TR-12", instrument_type="Trompete"),
+            ]
+        },
+        ctx(instrument_types=types, instruments=existing),
+    )
+    tuba, trompete = v["rows"]
+    assert not [i for i in tuba["issues"] if i["field"] == "inventory_nr"]
+    assert tuba["fields"]["number_prefix"] == "TU"
+    conflict = next(i for i in trompete["issues"] if i["field"] == "inventory_nr")
+    assert "TR-012" in conflict["message"]
+    assert conflict["suggestion"] == {"next_free": 13}
+
+
 def test_missing_number_is_info_and_auto_assigned():
     v = validate_draft({"instruments": [row(inventory_nr=None)]}, ctx())
     assert v["rows"][0]["fields"]["inventory_nr"] is None
@@ -228,7 +248,7 @@ def test_uncertain_type_is_warning():
 def test_duplicate_serial_is_warning():
     v = validate_draft({"instruments": [row(serial_nr="ytr-4335 a")]}, ctx())
     w = issues(v, "serial_nr", "warning")
-    assert w and "Nr. 12" in w[0]["message"]
+    assert w and "Nr. TR-012" in w[0]["message"]
 
 
 def test_acquisition_parsing_and_currency_guess():

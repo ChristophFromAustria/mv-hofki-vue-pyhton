@@ -11,6 +11,8 @@ from mv_hofki.schemas.currency import CurrencyRead
 from mv_hofki.schemas.instrument_type import InstrumentTypeRead
 from mv_hofki.schemas.sheet_music_genre import SheetMusicGenreRead
 
+# Number prefixes for categories without their own short codes. Instruments use
+# the short code of their instrument type instead ("TU", "KL", ...).
 CATEGORY_PREFIXES = {
     "instrument": "I",
     "clothing": "K",
@@ -19,9 +21,8 @@ CATEGORY_PREFIXES = {
 }
 
 
-def format_display_nr(category: str, inventory_nr: int) -> str:
-    prefix = CATEGORY_PREFIXES[category]
-    return f"{prefix}-{inventory_nr:03d}"
+def format_display_nr(number_prefix: str, inventory_nr: int) -> str:
+    return f"{number_prefix}-{inventory_nr:03d}"
 
 
 class ActiveLoanInfo(BaseModel):

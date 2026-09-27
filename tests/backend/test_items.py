@@ -63,7 +63,7 @@ async def test_create_instrument(client, setup_refs):
     assert data["inventory_nr"] == 1
     assert data["serial_nr"] == "YM-12345"
     assert data["instrument_type"]["label"] == "Querflöte"
-    assert data["display_nr"] == "I-001"
+    assert data["display_nr"] == "FL-001"
 
 
 async def test_list_instruments_paginated(client, instrument):
@@ -225,6 +225,125 @@ async def test_create_sheet_music_with_storage_location(client):
     assert resp.status_code == 201
     data = resp.json()
     assert data["storage_location"] == "Regal 2"
+
+
+# ---------------------------------------------------------------------------
+# Instrument numbering per short code
+# ---------------------------------------------------------------------------
+
+
+async def _itype(client, label, short):
+    resp = await client.post(
+        "/api/v1/instrument-types", json={"label": label, "label_short": short}
+    )
+    return resp.json()["id"]
+
+
+async def _instrument(client, type_id, label="Inst"):
+    resp = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "instrument",
+            "label": label,
+            "owner": "Verein",
+            "instrument_type_id": type_id,
+        },
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+async def test_instrument_numbers_run_per_short_code(client):
+    """Each instrument-type short code has its own sequence (TU-001, TR-001)."""
+    tuba = await _itype(client, "Tuba", "TU")
+    trompete = await _itype(client, "Trompete", "TR")
+
+    t1 = await _instrument(client, tuba)
+    r1 = await _instrument(client, trompete)
+    t2 = await _instrument(client, tuba)
+
+    assert (t1["display_nr"], r1["display_nr"], t2["display_nr"]) == (
+        "TU-001",
+        "TR-001",
+        "TU-002",
+    )
+
+
+async def test_types_sharing_a_short_code_share_the_sequence(client):
+    b = await _itype(client, "Klarinette in B", "KL")
+    es = await _itype(client, "Klarinette in Es", "KL")
+
+    first = await _instrument(client, b)
+    second = await _instrument(client, es)
+
+    assert first["display_nr"] == "KL-001"
+    assert second["display_nr"] == "KL-002"
+
+
+async def test_changing_type_to_other_code_renumbers(client):
+    tuba = await _itype(client, "Tuba", "TU")
+    trompete = await _itype(client, "Trompete", "TR")
+    await _instrument(client, trompete)
+    item = await _instrument(client, tuba)
+
+    resp = await client.put(
+        f"/api/v1/items/{item['id']}", json={"instrument_type_id": trompete}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["display_nr"] == "TR-002"
+
+
+async def test_changing_type_within_code_keeps_number(client):
+    b = await _itype(client, "Klarinette in B", "KL")
+    es = await _itype(client, "Klarinette in Es", "KL")
+    item = await _instrument(client, b)
+
+    resp = await client.put(
+        f"/api/v1/items/{item['id']}", json={"instrument_type_id": es}
+    )
+
+    assert resp.json()["display_nr"] == "KL-001"
+
+
+async def test_editing_short_code_keeps_existing_numbers(client):
+    tuba = await _itype(client, "Tuba", "TU")
+    item = await _instrument(client, tuba)
+
+    await client.put(f"/api/v1/instrument-types/{tuba}", json={"label_short": "TB"})
+
+    resp = await client.get(f"/api/v1/items/{item['id']}")
+    assert resp.json()["display_nr"] == "TU-001"
+
+
+async def test_search_matches_display_number(client):
+    tuba = await _itype(client, "Tuba", "TU")
+    trompete = await _itype(client, "Trompete", "TR")
+    await _instrument(client, tuba, "Melton")
+    await _instrument(client, tuba, "Cerveny")
+    await _instrument(client, trompete, "Lechner")
+
+    for term in ("TU-002", "tu 2", "TU2"):
+        resp = await client.get(
+            "/api/v1/items", params={"category": "instrument", "search": term}
+        )
+        labels = [i["label"] for i in resp.json()["items"]]
+        assert labels == ["Cerveny"], term
+
+
+async def test_instrument_list_sorted_by_code_then_number(client):
+    tuba = await _itype(client, "Tuba", "TU")
+    trompete = await _itype(client, "Trompete", "TR")
+    await _instrument(client, tuba)
+    await _instrument(client, trompete)
+    await _instrument(client, tuba)
+
+    resp = await client.get("/api/v1/items?category=instrument")
+    assert [i["display_nr"] for i in resp.json()["items"]] == [
+        "TR-001",
+        "TU-001",
+        "TU-002",
+    ]
 
 
 # ---------------------------------------------------------------------------

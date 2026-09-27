@@ -85,7 +85,7 @@ async def run_import(db: AsyncSession, session: ImportSession) -> dict[str, Any]
     result: dict[str, Any] = {"items": [], "musicians": [], "loans": [], "images": []}
 
     try:
-        used_numbers = set(ctx.used_numbers)
+        used_numbers: dict[str, set[int]] = {}
         new_musicians: dict[str, Musician] = {}
 
         for row in validation["rows"]:
@@ -93,13 +93,16 @@ async def run_import(db: AsyncSession, session: ImportSession) -> dict[str, Any]
                 continue
             fields = row["fields"]
 
+            prefix = fields["number_prefix"]
+            used = used_numbers.setdefault(prefix, ctx.used_numbers(prefix))
             nr = fields.get("inventory_nr")
             if nr is None:
-                nr = (max(used_numbers) if used_numbers else 0) + 1
-            used_numbers.add(nr)
+                nr = (max(used) if used else 0) + 1
+            used.add(nr)
 
             item = InventoryItem(
                 category="instrument",
+                number_prefix=prefix,
                 inventory_nr=nr,
                 acquisition_date=_date(fields.get("acquisition_date")),
                 **{k: fields.get(k) for k in ITEM_FIELDS},
@@ -116,7 +119,7 @@ async def run_import(db: AsyncSession, session: ImportSession) -> dict[str, Any]
                     "row_key": row["key"],
                     "item_id": item.id,
                     "inventory_nr": nr,
-                    "display_nr": format_display_nr("instrument", nr),
+                    "display_nr": format_display_nr(prefix, nr),
                     "label": item.label,
                 }
             )

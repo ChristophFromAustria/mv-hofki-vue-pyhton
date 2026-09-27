@@ -51,7 +51,7 @@ async def test_create_instrument(client, setup_refs):
     assert data["inventory_nr"] == 1
     assert data["serial_nr"] == "YM-12345"
     assert data["instrument_type"]["label"] == "Querflöte"
-    assert data["display_nr"] == "I-001"
+    assert data["display_nr"] == "FL-001"
 
 
 async def test_list_instruments_paginated(client, instrument):

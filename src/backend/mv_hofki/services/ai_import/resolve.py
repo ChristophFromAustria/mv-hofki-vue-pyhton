@@ -30,6 +30,7 @@ from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.musician import Musician
+from mv_hofki.schemas.inventory_item import format_display_nr
 
 DEFAULT_OWNER = "MV Hofkirchen"
 
@@ -42,6 +43,11 @@ DEFAULT_OWNER = "MV Hofkirchen"
 class TypeRef:
     id: int
     label: str
+    label_short: str = ""
+
+    @property
+    def number_prefix(self) -> str:
+        return self.label_short.strip().upper()
 
 
 @dataclass
@@ -64,6 +70,7 @@ class ExistingItem:
     inventory_nr: int
     label: str
     serial_nr: str | None = None
+    number_prefix: str = ""
 
 
 @dataclass
@@ -74,13 +81,13 @@ class Context:
     instruments: list[ExistingItem] = field(default_factory=list)
     today: date = field(default_factory=date.today)
 
-    @property
-    def used_numbers(self) -> set[int]:
-        return {i.inventory_nr for i in self.instruments}
+    def used_numbers(self, prefix: str) -> set[int]:
+        """Numbers already taken in the sequence of one short code."""
+        return {i.inventory_nr for i in self.instruments if i.number_prefix == prefix}
 
-    @property
-    def next_free_number(self) -> int:
-        return (max(self.used_numbers) if self.used_numbers else 0) + 1
+    def next_free_number(self, prefix: str) -> int:
+        used = self.used_numbers(prefix)
+        return (max(used) if used else 0) + 1
 
 
 async def load_context(db: AsyncSession) -> Context:
@@ -95,11 +102,13 @@ async def load_context(db: AsyncSession) -> Context:
         )
     ).all()
     return Context(
-        instrument_types=[TypeRef(t.id, t.label) for t in types],
+        instrument_types=[TypeRef(t.id, t.label, t.label_short) for t in types],
         musicians=[MusicianRef(m.id, m.first_name, m.last_name) for m in musicians],
         currencies=[CurrencyRef(c.id, c.label, c.abbreviation) for c in currencies],
         instruments=[
-            ExistingItem(item.id, item.inventory_nr, item.label, serial)
+            ExistingItem(
+                item.id, item.inventory_nr, item.label, serial, item.number_prefix
+            )
             for item, serial in rows
         ],
     )
@@ -383,10 +392,12 @@ def _issue(field_name: str, level: str, message: str, suggestion: Any = None) ->
 
 
 def validate_row(
-    row: dict[str, Any], ctx: Context, reserved: set[int]
+    row: dict[str, Any], ctx: Context, reserved: set[tuple[str, int]]
 ) -> dict[str, Any]:
-    """Validate one draft row. ``reserved`` collects inventory numbers claimed by
-    earlier rows of the same draft so duplicates inside the draft are caught."""
+    """Validate one draft row. ``reserved`` collects (prefix, number) pairs claimed
+    by earlier rows of the same draft so duplicates inside the draft are caught.
+    Numbers run per instrument-type short code, so they are only checked once the
+    type is known."""
     issues: list[dict[str, Any]] = []
     fields: dict[str, Any] = {"category": "instrument", "owner": DEFAULT_OWNER}
     result: dict[str, Any] = {
@@ -450,6 +461,7 @@ def validate_row(
     if type_ref:
         fields["instrument_type_id"] = type_ref.id
         fields["instrument_type_label"] = type_ref.label
+        fields["number_prefix"] = type_ref.number_prefix
 
     # --- label ------------------------------------------------------------------
     label = (row.get("label") or "").strip() or (
@@ -464,34 +476,45 @@ def validate_row(
 
     # --- inventory number -------------------------------------------------------
     nr = parse_int(row.get("inventory_nr"))
+    prefix = type_ref.number_prefix if type_ref else None
+    display = format_display_nr(prefix, nr) if prefix and nr is not None else nr
+    fields["inventory_nr"] = nr
     if nr is None:
-        fields["inventory_nr"] = None
         issues.append(
             _issue("inventory_nr", "info", "Keine Nummer, wird automatisch vergeben")
         )
-    elif nr in ctx.used_numbers:
-        existing = next(i for i in ctx.instruments if i.inventory_nr == nr)
-        fields["inventory_nr"] = nr
+    elif prefix is None:
+        pass  # checked once the instrument type is chosen
+    elif nr in ctx.used_numbers(prefix):
+        existing = next(
+            i
+            for i in ctx.instruments
+            if i.number_prefix == prefix and i.inventory_nr == nr
+        )
+        reserved_here = {n for p, n in reserved if p == prefix}
         issues.append(
             _issue(
                 "inventory_nr",
                 "error",
-                f"Inventarnummer {nr} ist bereits vergeben ({existing.label})",
-                {"next_free": max(ctx.next_free_number, max(reserved, default=0) + 1)},
+                f"Inventarnummer {display} ist bereits vergeben ({existing.label})",
+                {
+                    "next_free": max(
+                        ctx.next_free_number(prefix),
+                        max(reserved_here, default=0) + 1,
+                    )
+                },
             )
         )
-    elif nr in reserved:
-        fields["inventory_nr"] = nr
+    elif (prefix, nr) in reserved:
         issues.append(
             _issue(
                 "inventory_nr",
                 "error",
-                f"Inventarnummer {nr} kommt im Entwurf doppelt vor",
+                f"Inventarnummer {display} kommt im Entwurf doppelt vor",
             )
         )
     else:
-        fields["inventory_nr"] = nr
-        reserved.add(nr)
+        reserved.add((prefix, nr))
 
     # --- plain text fields -------------------------------------------------------
     for src, dst, limit in (
@@ -534,7 +557,8 @@ def validate_row(
                 _issue(
                     "serial_nr",
                     "warning",
-                    f"Seriennummer existiert bereits bei Nr. {dup.inventory_nr} "
+                    "Seriennummer existiert bereits bei Nr. "
+                    f"{format_display_nr(dup.number_prefix, dup.inventory_nr)} "
                     f"({dup.label})",
                 )
             )
@@ -712,7 +736,7 @@ def validate_row(
 
 def validate_draft(draft: dict[str, Any], ctx: Context) -> dict[str, Any]:
     rows_out: list[dict[str, Any]] = []
-    reserved: set[int] = set()
+    reserved: set[tuple[str, int]] = set()
     for row in draft.get("instruments", []):
         rows_out.append(validate_row(row, ctx, reserved))
 

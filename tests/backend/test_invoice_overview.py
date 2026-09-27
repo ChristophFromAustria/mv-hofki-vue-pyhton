@@ -123,7 +123,7 @@ async def test_list_invoices_with_data(client, setup_invoices):
     second = data["items"][1]
     assert second["title"] == "Reparatur"
     assert second["item_category"] == "instrument"
-    assert second["item_display_nr"] == "I-001"
+    assert second["item_display_nr"] == "FL-001"
     assert second["item_label"] == "Querflöte"
     assert second["amount"] == 150.0
     assert second["currency"]["abbreviation"] == "€"
