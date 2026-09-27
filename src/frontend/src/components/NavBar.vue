@@ -74,6 +74,9 @@ onMounted(() => {
             <RouterLink to="/einstellungen/kleidungstypen" @click="closeMenu">
               Kleidungstypen
             </RouterLink>
+            <RouterLink to="/einstellungen/kategorien" @click="closeMenu">
+              Kategorien (Allgemein)
+            </RouterLink>
             <RouterLink to="/einstellungen/notengenres" @click="closeMenu">Notengenres</RouterLink>
             <RouterLink to="/einstellungen/waehrungen" @click="closeMenu">Währungen</RouterLink>
             <RouterLink to="/einstellungen/zugriff" @click="closeMenu">

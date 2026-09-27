@@ -3,6 +3,7 @@ import { ref, watch, computed } from "vue";
 import { get, post, put } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { itemQuantity, validateQuantity } from "../lib/quantity.js";
+import TagSelect from "./TagSelect.vue";
 
 const props = defineProps({
   open: Boolean,
@@ -18,6 +19,7 @@ const saving = ref(false);
 const errors = ref({});
 const typeOptions = ref([]);
 const genreOptions = ref([]);
+const categoryOptions = ref([]);
 const showCurrencyPicker = ref(false);
 
 const currentYear = new Date().getFullYear();
@@ -48,6 +50,7 @@ function defaultForm() {
     difficulty: "",
     genre_id: null,
     storage_location: "",
+    category_ids: [],
     owner: "MV Hofkirchen",
     acquisition_date: "",
     acquisition_cost: null,
@@ -70,6 +73,9 @@ async function loadTypeOptions() {
   }
   if (props.category === "sheet_music") {
     genreOptions.value = await get("/sheet-music-genres");
+  }
+  if (cat.value.hasCategories) {
+    categoryOptions.value = await get("/general-item-categories");
   }
 }
 
@@ -101,6 +107,7 @@ watch(
         difficulty: item.difficulty || "",
         genre_id: item.genre_id || null,
         storage_location: item.storage_location || "",
+        category_ids: (item.categories || []).map((c) => c.id),
         owner: item.owner || "MV Hofkirchen",
         acquisition_date: item.acquisition_date || "",
         acquisition_cost: item.acquisition_cost,
@@ -119,6 +126,12 @@ function onTypeChange(e) {
   form.value[c.typeIdField] = id || null;
   const selected = typeOptions.value.find((t) => t.id === id);
   form.value.label = selected ? selected.label : "";
+}
+
+async function createCategory(label) {
+  const created = await post("/general-item-categories", { label });
+  categoryOptions.value = [...categoryOptions.value, created];
+  return created;
 }
 
 function pickCurrency(id) {
@@ -180,6 +193,7 @@ function buildPayload() {
   } else if (props.category === "general_item") {
     data.manufacturer = form.value.manufacturer || null;
     data.storage_location = form.value.storage_location || null;
+    data.category_ids = form.value.category_ids;
   }
 
   return data;
@@ -239,6 +253,15 @@ async function save() {
             <label>{{ cat.labelFieldName }} *</label>
             <input v-model="form.label" />
             <span v-if="errors.label" class="form-error">{{ errors.label }}</span>
+          </div>
+
+          <div v-if="cat.hasCategories" class="form-group">
+            <TagSelect
+              v-model="form.category_ids"
+              :options="categoryOptions"
+              label="Kategorien"
+              :create-option="createCategory"
+            />
           </div>
 
           <div class="form-group" :class="{ error: errors.quantity }">

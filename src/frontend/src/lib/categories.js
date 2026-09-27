@@ -52,6 +52,7 @@ export const CATEGORIES = {
     labelField: "text",
     labelFieldName: "Bezeichnung",
     hasStorageLocation: true,
+    hasCategories: true,
   },
 };
 

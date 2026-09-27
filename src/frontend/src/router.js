@@ -117,6 +117,11 @@ const routes = [
     component: () => import("./pages/ClothingTypeListPage.vue"),
   },
   {
+    path: "/einstellungen/kategorien",
+    name: "general-item-categories",
+    component: () => import("./pages/GeneralItemCategoryListPage.vue"),
+  },
+  {
     path: "/einstellungen/notengenres",
     name: "sheet-music-genres",
     component: () => import("./pages/SheetMusicGenreListPage.vue"),

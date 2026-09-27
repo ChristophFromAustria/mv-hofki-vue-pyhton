@@ -6,6 +6,7 @@ import { CATEGORIES } from "../lib/categories.js";
 import { hasMultipleQuantities, quantityCell, quantityLabel } from "../lib/quantity.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
+import CategoryChips from "../components/CategoryChips.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
 
 const props = defineProps({
@@ -75,6 +76,7 @@ const baseColumns = computed(() => {
       return [
         { key: "display_nr", label: "Inv.-Nr." },
         { key: "label", label: "Bezeichnung" },
+        { key: "categories", label: "Kategorien", hideEmptyInCard: true },
         { key: "manufacturer", label: "Hersteller" },
         { key: "owner", label: "Eigentümer" },
         { key: "status_label", label: "Status" },
@@ -97,6 +99,8 @@ function mapItem(i) {
     mapped.type_label = i.clothing_type?.label || "";
   } else if (props.category === "sheet_music") {
     mapped.genre_label = i.genre?.label || "";
+  } else if (props.category === "general_item") {
+    mapped.categories = i.categories?.length ? i.categories : null;
   }
   if (cat.value.hasLoans) {
     mapped.status_label = i.active_loan ? "Ausgeliehen" : "Verfügbar";
@@ -195,7 +199,11 @@ function onModalSave() {
       :loading="loading"
       :card-breakpoint="640"
       @row-click="goTo"
-    />
+    >
+      <template #categories="{ value }">
+        <CategoryChips :categories="value || []" />
+      </template>
+    </DataTable>
 
     <div v-else class="instrument-grid">
       <div v-for="item in items" :key="item.id" class="instrument-card" @click="goTo(item)">
@@ -215,6 +223,7 @@ function onModalSave() {
             <span v-if="item.quantity_label" class="card-quantity">{{ item.quantity_label }}</span>
           </h3>
           <p>{{ item.display_nr }} {{ item.manufacturer ? "· " + item.manufacturer : "" }}</p>
+          <CategoryChips v-if="item.categories?.length" :categories="item.categories" />
         </div>
         <div v-if="cat.hasLoans" class="instrument-card-footer">
           <span :class="item.active_loan ? 'badge badge-green' : 'badge badge-gray'">

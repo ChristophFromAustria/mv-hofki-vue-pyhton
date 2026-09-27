@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { get, post, put, del } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import CategoryChips from "../components/CategoryChips.vue";
 import ImageGallery from "../components/ImageGallery.vue";
 import ScanDocuments from "../components/ScanDocuments.vue";
 import { splitImages } from "../lib/images.js";
@@ -312,6 +313,8 @@ async function onEditSave() {
 
         <!-- General item-specific -->
         <template v-if="category === 'general_item'">
+          <dt>Kategorien</dt>
+          <dd><CategoryChips :categories="item.categories || []" /></dd>
           <dt>Lagerort</dt>
           <dd>{{ item.storage_location || "—" }}</dd>
         </template>
