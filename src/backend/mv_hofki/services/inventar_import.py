@@ -46,6 +46,7 @@ from mv_hofki.models.item_image import ItemImage
 from mv_hofki.models.item_invoice import ItemInvoice
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
+from mv_hofki.models.register import Register, musician_registers
 from mv_hofki.schemas.inventory_item import format_display_nr
 
 CLUB_OWNER = "MV Hofkirchen"
@@ -178,6 +179,8 @@ class PlannedMusician:
     is_extern: bool
     notes: str | None
     refs: list[str]  # "<Ordner>/<lokale ID>"
+    is_active: bool = False
+    registers: list[str] = field(default_factory=list)  # register labels
 
 
 @dataclass
@@ -202,6 +205,7 @@ class PlannedItem:
     notes: str
     sources: list[str]
     photos: list[dict[str, Any]] = field(default_factory=list)
+    scans: list[dict[str, Any]] = field(default_factory=list)  # path, caption
 
     @property
     def display_nr(self) -> str:
@@ -239,6 +243,8 @@ class Plan:
     invoices: list[PlannedInvoice] = field(default_factory=list)
     warnings: list[dict[str, str]] = field(default_factory=list)
     skipped: list[dict[str, str]] = field(default_factory=list)
+    # name matches between the scheduling-app list and the paper records
+    name_matches: list[dict[str, str]] = field(default_factory=list)
 
     def warn(self, where: str, text: str) -> None:
         self.warnings.append({"wo": where, "text": text})
@@ -283,16 +289,261 @@ def _storage_for(item: dict[str, Any], register_name: str | None) -> str | None:
     return None
 
 
+# Short names of the page formats (formate.json) for provenance notes.
+FORMAT_NAMES = {
+    "F01": "Instrumentenarchivierung (Tabellenvordruck)",
+    "F02": "Sammelliste (maschinengeschrieben)",
+    "F03": "Instrumentenarchivierung (alter Vordruck)",
+    "F04": "Instrumenten-Datenblatt",
+    "F05": "Detailblatt (maschinengeschrieben)",
+    "R01": "Rechnung / Angebot / Lieferschein",
+    "L01": "Handschriftliche Liste",
+    "L02": "Register-Inventarliste",
+    "B01": "Zahlungsliste (Online-Banking)",
+    "B02": "Kontobericht Instrumentenkauf",
+    "X01": "Sonstiges",
+}
+
+# Scheduling-app spelling -> spelling in the paper records, where the two differ
+# by more than a typo. Applied as "wahrscheinlich" and listed for confirmation.
+NAME_ALIASES = {
+    ("Johannes", "Kreidl"): ("Hansi", "Kreidl"),
+    ("Fred", "Hofer"): ("Manfred", "Hofer"),
+}
+
+
+def parse_active_list(path: Path) -> tuple[list[str], dict[str, list[str]]]:
+    """The scheduling-app export: a list of names, then blocks "<Register>" +
+    names. Returns (all names, register label -> names)."""
+    lines = path.read_text(encoding="utf-8").split("\n")
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for line in lines:
+        if line.strip():
+            current.append(line.strip())
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+    names = blocks[0]
+    registers: dict[str, list[str]] = {}
+    for block in blocks[1:]:
+        if block[0].lower().startswith("nach register"):
+            continue
+        registers[block[0]] = block[1:]
+    return names, registers
+
+
+def _split_name(full: str) -> tuple[str, str]:
+    first, _, last = full.partition(" ")
+    return first, last
+
+
+def _similar(a: str, b: str) -> float:
+    from difflib import SequenceMatcher
+
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+
+def _merge_active_list(plan: Plan, path: Path, register_labels: set[str]) -> None:
+    """Mark musicians from the scheduling app active, set their registers and
+    add the ones the paper records do not know."""
+    names, registers = parse_active_list(path)
+    member_of: dict[str, list[str]] = {}
+    for label, members in registers.items():
+        if label not in register_labels:
+            plan.warn(f"aktive_musiker/{label}", "Register nicht in der Datenbank")
+            continue
+        for n in members:
+            member_of.setdefault(n, []).append(label)
+    for n in list(member_of):
+        if n not in names:
+            match = max(names, key=lambda x: _similar(x, n))
+            if _similar(match, n) >= 0.8 or match.startswith(n):
+                member_of.setdefault(match, []).extend(member_of[n])
+                plan.warn(
+                    f"aktive_musiker/{n}", f"im Register als „{n}“, Liste „{match}“"
+                )
+
+    by_name = {(m.first_name.lower(), m.last_name.lower()): m for m in plan.musicians}
+    used: set[str] = set()
+    counter = 0
+    for full in names:
+        first, last = _split_name(full)
+        m = by_name.get((first.lower(), last.lower()))
+        how = "gleich"
+        if m is None and (first, last) in NAME_ALIASES:
+            a_first, a_last = NAME_ALIASES[(first, last)]
+            m = by_name.get((a_first.lower(), a_last.lower()))
+            how = "Annahme (Kurzform/Spitzname)"
+        if m is None:
+            candidates = [
+                x
+                for x in plan.musicians
+                if x.key not in used
+                and x.first_name.lower() == first.lower()
+                and (
+                    _similar(x.last_name, last) >= 0.8
+                    or last.lower().startswith(x.last_name.lower() + "-")
+                    or _similar(x.first_name + x.last_name, first + last) >= 0.9
+                )
+            ]
+            if not candidates:
+                candidates = [
+                    x
+                    for x in plan.musicians
+                    if x.key not in used
+                    and x.last_name.lower() == last.lower()
+                    and _similar(x.first_name, first) >= 0.9
+                ]
+            if len(candidates) == 1:
+                m = candidates[0]
+                how = "ähnliche Schreibweise"
+        if m is not None and m.key not in used:
+            used.add(m.key)
+            if (m.first_name, m.last_name) != (first, last):
+                plan.name_matches.append(
+                    {
+                        "termin_app": full,
+                        "unterlagen": f"{m.first_name} {m.last_name}",
+                        "art": how,
+                    }
+                )
+                old = f"{m.first_name} {m.last_name}"
+                m.notes = _join(
+                    [m.notes, f"In den Papierunterlagen als „{old}“ ({how})."], "\n"
+                )
+                m.first_name, m.last_name = first, last
+            m.is_active = True
+            m.registers = member_of.get(full, [])
+            continue
+        counter += 1
+        plan.musicians.append(
+            PlannedMusician(
+                key=f"A{counter:03d}",
+                first_name=first,
+                last_name=last,
+                phone=None,
+                is_extern=False,
+                notes="Aus der Musikerliste der Termin-App; in den "
+                "Inventar-Unterlagen nicht gefunden.",
+                refs=[],
+                is_active=True,
+                registers=member_of.get(full, []),
+            )
+        )
+    for full, regs in member_of.items():
+        if full not in names:
+            continue
+        if not regs:
+            plan.warn(f"aktive_musiker/{full}", "ohne Register")
+
+
+# Registers whose members normally have no club instrument.
+NO_INSTRUMENT_REGISTERS = {
+    "Schlagwerk",
+    "Marketenderinnen",
+    "Kapellmeister / Stabführer",
+}
+
+
+def active_without_instrument(plan: Plan) -> list[PlannedMusician]:
+    """Active musicians in an instrument register with neither an active loan
+    nor a private instrument in the records."""
+    loaned = {x.musician_key for x in plan.loans if x.end is None}
+    owners = {i.owner for i in plan.items}
+    out = []
+    for m in plan.musicians:
+        if not m.is_active or m.key in loaned:
+            continue
+        if f"{m.first_name} {m.last_name}" in owners:
+            continue
+        if not set(m.registers) - NO_INSTRUMENT_REGISTERS:
+            continue
+        out.append(m)
+    return out
+
+
+def _page_index(root: Path) -> dict[str, str]:
+    """page_id -> "Format (gedruckter Titel)" for every transcribed page."""
+    index: dict[str, str] = {}
+    for page in root.glob("*/roh/*.json"):
+        data = _load_json(page)
+        if "page_id" not in data:
+            continue
+        fmt = data.get("format", {}).get("id")
+        name = FORMAT_NAMES.get(fmt, fmt or "?")
+        title = " ".join((data.get("gedruckter_titel") or "").split())
+        if title and title.lower() not in name.lower():
+            name = f"{name}: {title[:60]}"
+        index[data["page_id"]] = name
+    return index
+
+
+def _describe_source(source: str, index: dict[str, str]) -> str:
+    page, _, anchor = source.partition("#")
+    where = ""
+    if anchor:
+        m = re.match(r"^([zb])(\d+)$", anchor)
+        if m:
+            where = f", {'Zeile' if m[1] == 'z' else 'Block'} {m[2]}"
+        elif anchor.isdigit():
+            where = f", Zeile {anchor}"
+        else:
+            where = f", Eintrag {anchor}"
+    return f"{page}{where} – {index.get(page, 'Seite')}"
+
+
+def _booking_notes(root: Path) -> dict[str, list[str]]:
+    """Instrument key -> notes about purchase bookings (applied or suggested)."""
+    path = root / "_gesamt" / "beleg_zuordnung.json"
+    if not path.exists():
+        return {}
+    out: dict[str, list[str]] = {}
+    for z in _load_json(path).get("zuordnungen", []):
+        if not z.get("instrument"):
+            continue
+        amount = z.get("ausgabe") or z.get("einnahme")
+        head = (
+            f"Buchung {z['quelle']} ({z.get('datum')}, „{z.get('text')}“, "
+            f"{z.get('firma') or '–'}, {amount} {z.get('waehrung') or 'ATS'}; "
+            f"Zuordnung {z.get('sicherheit')}, Art {z.get('art')})"
+        )
+        v = z.get("vorschlag") or {}
+        proposal = ", ".join(f"{k} = {val}" for k, val in v.items() if val)
+        if z.get("sicherheit") == "unsicher":
+            text = f"{head}. Korrekturvorschlag (nicht übernommen): {proposal or '–'}"
+        elif z.get("art") == "kauf":
+            text = f"{head}. Übernommen: {proposal or 'bestätigt die Daten'}"
+        else:
+            text = f"{head}. Nur als Quelle vermerkt"
+        if z.get("begruendung"):
+            text += f". Begründung: {z['begruendung']}"
+        if z.get("widerspruch"):
+            text += f". Widerspruch: {z['widerspruch']}"
+        out.setdefault(z["instrument"], []).append(text)
+    return out
+
+
 def build_plan(
-    root: Path, short_codes: dict[str, str], today: date | None = None
+    root: Path,
+    short_codes: dict[str, str],
+    today: date | None = None,
+    active_list: Path | None = None,
+    register_labels: set[str] | None = None,
 ) -> Plan:
     """Build the import plan from the extraction folder ``root``.
 
     ``short_codes`` maps instrument-type labels to their short codes (see
-    :func:`load_short_codes`)."""
+    :func:`load_short_codes`). ``active_list`` is the scheduling-app export of
+    the active musicians grouped by register (``register_labels`` = registers
+    known to the database)."""
     today = today or date.today()
     plan = Plan()
     register = _register_names(root)
+    pages = _page_index(root)
+    bookings = _booking_notes(root)
 
     # --- musicians (cross-folder list) -----------------------------------------
     people = _load_json(root / "_gesamt" / "musiker.json")
@@ -326,6 +577,8 @@ def build_plan(
         if not first and not last:
             plan.warn(p["id"], "Musiker ohne Namen")
     excluded = {e["vorkommen"]: e["grund"] for e in people.get("ausgeschlossen", [])}
+    if active_list is not None:
+        _merge_active_list(plan, active_list, register_labels or set())
 
     # --- instruments ------------------------------------------------------------
     raw_loans: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
@@ -344,7 +597,16 @@ def build_plan(
                 )
                 continue
             planned = _plan_item(
-                plan, folder, key, inst, local_musicians, local_to_global, register
+                plan,
+                folder,
+                key,
+                inst,
+                local_musicians,
+                local_to_global,
+                register,
+                root=root,
+                pages=pages,
+                bookings=bookings.get(key, []),
             )
             if planned is None:
                 continue
@@ -369,8 +631,13 @@ def _plan_item(
     local_musicians: dict[str, dict[str, Any]],
     local_to_global: dict[str, str],
     register: dict[str, str],
+    *,
+    root: Path | None = None,
+    pages: dict[str, str] | None = None,
+    bookings: list[str] | None = None,
 ) -> PlannedItem | None:
-    type_label = map_type(inst.get("typ"))
+    pages = pages or {}
+    type_label = "Schlagwerk" if folder == "Schlagwerk" else map_type(inst.get("typ"))
     if type_label is None:
         plan.skip(key, f"Instrumententyp „{inst.get('typ')}“ nicht zuordenbar")
         return None
@@ -405,6 +672,8 @@ def _plan_item(
     storage = _storage_for(
         inst, register.get(f"{parsed[0]} {parsed[1]}") if parsed else None
     )
+    if inst.get("lagerort_ms"):
+        storage = STORAGE_MS
 
     # purchase
     acq_date, _ = parse_date(inst.get("erworben_am"))
@@ -430,20 +699,41 @@ def _plan_item(
             else None,
         ]
     )
-    for rep in inst.get("reparaturen") or []:
-        notes.append(f"Reparatur {rep.get('datum') or '?'}: {rep.get('text')}")
-    if inst.get("notiz"):
-        notes.append(inst["notiz"])
-    for c in inst.get("konflikte") or []:
-        notes.append(f"Widerspruch: {c}")
     if inst.get("status") and inst["status"] != "sicher":
         plan.warn(key, f"Instrument-Status {inst['status']}")
+        notes.append(f"Datenlage: {inst['status']} (Import aus Papierunterlagen)")
+    if inst.get("notiz"):
+        notes.append(inst["notiz"])
+    repairs = inst.get("reparaturen") or []
+    if repairs:
+        notes.append("\nReparaturen:")
+        notes += [f"- {r.get('datum') or '?'}: {r.get('text')}" for r in repairs]
+    conflicts = inst.get("konflikte") or []
+    if conflicts:
+        notes.append("\nWidersprüche zwischen den Unterlagen:")
+        notes += [f"- {c}" for c in conflicts]
+    if bookings:
+        notes.append("\nKaufbuchungen (Belegliste):")
+        notes += [f"- {b}" for b in bookings]
 
-    sources = [
-        s if "/" in s.split("#")[0] else f"{folder}/{s}"
-        for s in inst.get("quellen", [])
-    ]
-    notes.append("Quelle: " + ", ".join(sources))
+    sources = list(
+        dict.fromkeys(
+            s if "/" in s.split("#")[0] else f"{folder}/{s}"
+            for s in inst.get("quellen", [])
+        )
+    )
+    notes.append("\nHerkunft der Daten (alle Fundstellen in den Altdaten):")
+    notes += [f"- {_describe_source(src, pages)}" for src in sources]
+
+    scans: list[dict[str, Any]] = []
+    if root is not None:
+        for page in dict.fromkeys(src.split("#")[0] for src in sources):
+            folder_part, _, stem = page.rpartition("/")
+            image = root / folder_part / "seiten" / f"{stem}.png"
+            if image.exists():
+                scans.append(
+                    {"path": image, "caption": f"Scan {page} – {pages.get(page, '')}"}
+                )
     return PlannedItem(
         key=key,
         type_label=type_label,
@@ -466,8 +756,9 @@ def _plan_item(
         particularities=_clip(particularities, 500) if particularities else None,
         owner=_clip(owner, 100),
         storage_location=storage,
-        notes=_clip(_join(notes, "\n"), NOTES_MAX),
+        notes=_join(notes, "\n"),
         sources=sources,
+        scans=scans,
     )
 
 
@@ -632,9 +923,7 @@ def _plan_loans(
             if start is None:
                 start = x["end"] or today
                 plan.warn(x["where"], f"Leihbeginn unbekannt, {start} eingetragen")
-                item.notes = _clip(
-                    item.notes + f"\nLeihbeginn unbekannt (Import: {start})", NOTES_MAX
-                )
+                item.notes += f"\nLeihbeginn unbekannt (Import: {start})"
             if x["end"] is not None and x["end"] < start:
                 plan.warn(
                     x["where"],
@@ -643,11 +932,9 @@ def _plan_loans(
                 x["end"] = start
             if x.get("end_unknown"):
                 name = next(m for m in plan.musicians if m.key == x["musician"])
-                item.notes = _clip(
-                    item.notes
-                    + f"\nLeihe an {name.first_name} {name.last_name} ab {start:%Y}: "
-                    "Ende unbekannt",
-                    NOTES_MAX,
+                item.notes += (
+                    f"\nLeihe an {name.first_name} {name.last_name} ab {start:%Y}: "
+                    "Ende unbekannt"
                 )
             if x["status"] == "offen":
                 plan.warn(x["where"], "unsichere Leihe übernommen")
@@ -709,6 +996,18 @@ def _plan_invoices(plan: Plan, root: Path, folder: str, inv: dict[str, Any]) -> 
 # ---------------------------------------------------------------------------
 
 
+def _save_scan(src: Path, dest: Path) -> None:
+    """Store a scanned page as JPEG (the 150-dpi PNGs are ~1 MB each)."""
+    from PIL import Image
+
+    with Image.open(src) as img:
+        img.convert("RGB").save(dest, "JPEG", quality=82, optimize=True)
+
+
+async def load_register_labels(db: AsyncSession) -> set[str]:
+    return set((await db.execute(select(Register.label))).scalars())
+
+
 async def load_short_codes(db: AsyncSession) -> dict[str, str]:
     rows = (
         await db.execute(select(InstrumentType.label, InstrumentType.label_short))
@@ -720,6 +1019,7 @@ async def wipe_inventory(db: AsyncSession) -> dict[str, int]:
     """Delete all items (every category), musicians, loans, invoices and image
     rows. Upload files are the caller's business (move them aside first)."""
     counts = {}
+    await db.execute(delete(musician_registers))
     for model in (
         Loan,
         ItemImage,
@@ -740,6 +1040,7 @@ async def apply_plan(db: AsyncSession, plan: Plan, uploads: Path) -> dict[str, A
         c.abbreviation: c for c in (await db.execute(select(Currency))).scalars()
     }
     cur_ids = {"EUR": currencies["€"].id, "ATS": currencies["ATS"].id}
+    registers = {r.label: r for r in (await db.execute(select(Register))).scalars()}
 
     musicians: dict[str, Musician] = {}
     for pm in plan.musicians:
@@ -748,8 +1049,10 @@ async def apply_plan(db: AsyncSession, plan: Plan, uploads: Path) -> dict[str, A
             last_name=pm.last_name,
             phone=pm.phone,
             is_extern=pm.is_extern,
+            is_active=pm.is_active,
             notes=pm.notes,
         )
+        m.registers = [registers[label] for label in pm.registers]
         db.add(m)
         musicians[pm.key] = m
     await db.flush()
@@ -796,7 +1099,28 @@ async def apply_plan(db: AsyncSession, plan: Plan, uploads: Path) -> dict[str, A
             shutil.copy2(photo["path"], dest)
             written.append(dest)
             db.add(
-                ItemImage(item_id=item.id, filename=name, is_profile=photo is profile)
+                ItemImage(
+                    item_id=item.id,
+                    filename=name,
+                    is_profile=photo is profile,
+                    kind="foto",
+                    caption=photo["motiv"] or None,
+                )
+            )
+        for scan in pi.scans:
+            name = f"{uuid.uuid4().hex}.jpg"
+            dest = uploads / "images" / str(item.id) / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            _save_scan(scan["path"], dest)
+            written.append(dest)
+            db.add(
+                ItemImage(
+                    item_id=item.id,
+                    filename=name,
+                    is_profile=False,
+                    kind="scan",
+                    caption=_clip(scan["caption"], 300),
+                )
             )
         report_items.append(
             {

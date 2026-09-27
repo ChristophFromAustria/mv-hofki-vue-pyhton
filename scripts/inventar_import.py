@@ -32,14 +32,17 @@ from mv_hofki.core.config import settings
 from mv_hofki.db.engine import async_session_factory
 from mv_hofki.services.inventar_import import (
     Plan,
+    active_without_instrument,
     apply_plan,
     build_plan,
+    load_register_labels,
     load_short_codes,
     wipe_inventory,
 )
 
 ROOT = Path(settings.PROJECT_ROOT)
 DEFAULT_SOURCE = ROOT / "samplefiles" / "inventar_scans" / "_extraktion"
+DEFAULT_ACTIVE = ROOT / "samplefiles" / "inventar_scans" / "aktive_musiker"
 UPLOADS = ROOT / "data" / "uploads"
 DB_FILE = ROOT / "data" / "mv_hofki.db"
 
@@ -84,6 +87,38 @@ def _report_md(plan: Plan, applied: bool, result: dict | None) -> str:
                 f"| {nr_of[x.item_key]} | {names[x.musician_key]} "
                 f"| {x.start:%d.%m.%Y} |"
             )
+    active = [m for m in plan.musicians if m.is_active]
+    lines += [
+        "",
+        "## Musiker",
+        "",
+        f"- aktiv laut Termin-App: {len(active)} "
+        f"(davon neu, nicht in den Unterlagen: "
+        f"{sum(1 for m in active if m.key.startswith('A'))})",
+        f"- inaktiv (nur aus den Unterlagen): {len(plan.musicians) - len(active)}",
+        f"- Scans an Instrumenten: {sum(len(i.scans) for i in plan.items)}",
+        "",
+        "### Namensabgleich Termin-App ↔ Unterlagen (bitte prüfen)",
+        "",
+        "| Termin-App | Unterlagen | Art |",
+        "|---|---|---|",
+    ]
+    lines += [
+        f"| {x['termin_app']} | {x['unterlagen']} | {x['art']} |"
+        for x in plan.name_matches
+    ]
+    lines += [
+        "",
+        "### Aktive Musiker ohne erfasstes Instrument",
+        "",
+        "Register, deren Mitglieder normalerweise ein Instrument geliehen haben; "
+        "kein aktives Leih- oder Privatinstrument in den Unterlagen gefunden.",
+        "",
+    ]
+    lines += [
+        f"- {m.first_name} {m.last_name} ({', '.join(m.registers)})"
+        for m in active_without_instrument(plan)
+    ]
     lines += ["", "## Hinweise (Annahmen)", ""]
     lines += [f"- `{w['wo']}`: {w['text']}" for w in plan.warnings]
     lines += ["", "## Nicht übernommen", ""]
@@ -136,6 +171,12 @@ async def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--quelle", type=Path, default=DEFAULT_SOURCE)
     ap.add_argument(
+        "--musiker",
+        type=Path,
+        default=DEFAULT_ACTIVE,
+        help="Musikerliste der Termin-App (Namen, dann nach Register gruppiert)",
+    )
+    ap.add_argument(
         "--ersetzen",
         action="store_true",
         help="alle Instrumente, Musiker, Leihen, Belege und Bilder ersetzen",
@@ -143,7 +184,13 @@ async def main() -> int:
     args = ap.parse_args()
 
     async with async_session_factory() as db:
-        plan = build_plan(args.quelle, await load_short_codes(db), date.today())
+        plan = build_plan(
+            args.quelle,
+            await load_short_codes(db),
+            date.today(),
+            active_list=args.musiker,
+            register_labels=await load_register_labels(db),
+        )
         result = None
         if args.ersetzen:
             backup = (

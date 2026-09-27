@@ -76,5 +76,5 @@ module = ["cv2.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["pymupdf.*"]
+module = ["pymupdf.*", "PIL.*"]
 ignore_missing_imports = true
