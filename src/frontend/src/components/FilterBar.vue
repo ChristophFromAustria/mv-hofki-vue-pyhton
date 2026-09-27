@@ -206,6 +206,14 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
   gap: var(--space-3);
 }
 
+.filter-panel .view-toggle button {
+  min-height: 44px;
+}
+
+.filter-reset {
+  min-height: 44px;
+}
+
 .filter-field,
 .filter-range {
   display: flex;
