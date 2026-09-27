@@ -39,3 +39,13 @@ class GeneralItemCategoryRef(BaseModel):
 
 class GeneralItemCategoryRead(GeneralItemCategoryRef):
     item_count: int = 0
+
+
+class BulkCategoryUpdate(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=500)
+    add_ids: list[int] = []
+    remove_ids: list[int] = []
+
+
+class BulkCategoryResult(BaseModel):
+    updated: int

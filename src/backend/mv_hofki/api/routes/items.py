@@ -12,6 +12,10 @@ from mv_hofki.api.deps import get_db
 from mv_hofki.api.routes._listing import page_response
 from mv_hofki.filters.base import PageParams
 from mv_hofki.filters.inventory_item import ItemFilter
+from mv_hofki.schemas.general_item_category import (
+    BulkCategoryResult,
+    BulkCategoryUpdate,
+)
 from mv_hofki.schemas.inventory_item import (
     ClothingItemCreate,
     ClothingItemRead,
@@ -26,6 +30,7 @@ from mv_hofki.schemas.inventory_item import (
     SheetMusicItemRead,
     SheetMusicItemUpdate,
 )
+from mv_hofki.services import general_item_category as category_service
 from mv_hofki.services import inventory_item as item_service
 
 router = APIRouter(prefix="/api/v1/items", tags=["items"])
@@ -77,6 +82,14 @@ async def list_items(
 @router.get("/facets")
 async def item_facets(category: str = Query(...), db: AsyncSession = Depends(get_db)):
     return await item_service.get_facets(db, category)
+
+
+@router.post("/bulk-categories", response_model=BulkCategoryResult)
+async def bulk_categories(data: BulkCategoryUpdate, db: AsyncSession = Depends(get_db)):
+    updated = await category_service.bulk_update(
+        db, data.item_ids, data.add_ids, data.remove_ids
+    )
+    return BulkCategoryResult(updated=updated)
 
 
 @router.post("", status_code=201)

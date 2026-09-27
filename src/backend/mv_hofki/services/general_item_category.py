@@ -13,6 +13,7 @@ from mv_hofki.models.general_item_category import (
 from mv_hofki.models.general_item_category import (
     general_item_category_links as links,
 )
+from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.schemas.general_item_category import (
     GeneralItemCategoryCreate,
     GeneralItemCategoryUpdate,
@@ -160,3 +161,64 @@ async def delete_links_for_items(
     if item_ids is not None:
         stmt = stmt.where(links.c.item_id.in_(item_ids))
     await session.execute(stmt)
+
+
+async def bulk_update(
+    session: AsyncSession,
+    item_ids: list[int],
+    add_ids: list[int],
+    remove_ids: list[int],
+) -> int:
+    """Add/remove categories on many general items in one transaction."""
+    if not add_ids and not remove_ids:
+        raise HTTPException(status_code=422, detail="Keine Kategorien angegeben")
+    if set(add_ids) & set(remove_ids):
+        raise HTTPException(
+            status_code=422,
+            detail="Kategorie kann nicht gleichzeitig hinzugefügt und entfernt werden",
+        )
+    wanted = sorted(set(item_ids))
+    found = set(
+        (
+            await session.execute(
+                select(InventoryItem.id).where(
+                    InventoryItem.id.in_(wanted),
+                    InventoryItem.category == "general_item",
+                )
+            )
+        ).scalars()
+    )
+    bad = [i for i in wanted if i not in found]
+    if bad:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Nur allgemeine Gegenstände: {', '.join(str(i) for i in bad)}",
+        )
+    add = await check_category_ids(session, add_ids)
+    remove = await check_category_ids(session, remove_ids)
+    if remove:
+        await session.execute(
+            sa_delete(links).where(
+                links.c.item_id.in_(wanted), links.c.category_id.in_(remove)
+            )
+        )
+    if add:
+        existing = set(
+            (
+                await session.execute(
+                    select(links.c.item_id, links.c.category_id).where(
+                        links.c.item_id.in_(wanted), links.c.category_id.in_(add)
+                    )
+                )
+            ).all()
+        )
+        new = [
+            {"item_id": i, "category_id": c}
+            for i in wanted
+            for c in add
+            if (i, c) not in existing
+        ]
+        if new:
+            await session.execute(insert(links), new)
+    await session.commit()
+    return len(wanted)
