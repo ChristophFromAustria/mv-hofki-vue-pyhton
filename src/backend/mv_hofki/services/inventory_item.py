@@ -141,6 +141,7 @@ def _build_read_dict(item: InventoryItem, detail: Any) -> dict[str, Any]:
         "inventory_nr": item.inventory_nr,
         "display_nr": format_display_nr(item.number_prefix, item.inventory_nr),
         "label": item.label,
+        "quantity": item.quantity,
         "manufacturer": item.manufacturer,
         "acquisition_date": item.acquisition_date,
         "acquisition_cost": item.acquisition_cost,

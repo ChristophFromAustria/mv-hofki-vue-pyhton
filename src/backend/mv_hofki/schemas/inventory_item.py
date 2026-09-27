@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from mv_hofki.schemas.clothing_type import ClothingTypeRead
 from mv_hofki.schemas.currency import CurrencyRead
@@ -40,6 +40,7 @@ class ActiveLoanInfo(BaseModel):
 
 class ItemCreateBase(BaseModel):
     label: str
+    quantity: int = Field(1, ge=1)
     manufacturer: str | None = None
     acquisition_date: date | None = None
     acquisition_cost: float | None = None
@@ -91,6 +92,7 @@ class GeneralItemCreate(ItemCreateBase):
 
 class ItemUpdateBase(BaseModel):
     label: str | None = None
+    quantity: int | None = Field(None, ge=1)
     manufacturer: str | None = None
     acquisition_date: date | None = None
     acquisition_cost: float | None = None
@@ -137,6 +139,7 @@ class ItemRead(BaseModel):
     inventory_nr: int
     display_nr: str
     label: str
+    quantity: int = 1
     manufacturer: str | None
     acquisition_date: date | None
     acquisition_cost: float | None

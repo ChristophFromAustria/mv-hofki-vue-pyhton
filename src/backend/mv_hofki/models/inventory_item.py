@@ -38,6 +38,10 @@ class InventoryItem(Base):
     number_prefix: Mapped[str] = mapped_column(String(10), nullable=False)
     inventory_nr: Mapped[int] = mapped_column(Integer, nullable=False)
     label: Mapped[str] = mapped_column(String(200), nullable=False)
+    # number of identical pieces recorded under one inventory number
+    quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
     manufacturer: Mapped[str | None] = mapped_column(String(100))
     acquisition_date: Mapped[date | None] = mapped_column(Date)
     acquisition_cost: Mapped[float | None] = mapped_column(Float)

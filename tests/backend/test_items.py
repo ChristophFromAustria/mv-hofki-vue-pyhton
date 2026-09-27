@@ -430,3 +430,31 @@ async def test_cost_without_currency_rejected(client, setup_refs):
         },
     )
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Quantity
+# ---------------------------------------------------------------------------
+
+
+async def test_quantity_defaults_to_one_and_can_be_set(client):
+    one = await client.post(
+        "/api/v1/items", json={"category": "general_item", "label": "Stehleiter"}
+    )
+    three = await client.post(
+        "/api/v1/items",
+        json={"category": "general_item", "label": "Kühlschrank", "quantity": 3},
+    )
+    assert one.json()["quantity"] == 1
+    assert three.json()["quantity"] == 3
+
+    resp = await client.put(f"/api/v1/items/{three.json()['id']}", json={"quantity": 2})
+    assert resp.json()["quantity"] == 2
+
+
+async def test_quantity_must_be_positive(client):
+    resp = await client.post(
+        "/api/v1/items",
+        json={"category": "general_item", "label": "Tisch", "quantity": 0},
+    )
+    assert resp.status_code == 422
