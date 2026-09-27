@@ -105,6 +105,19 @@ async def test_sort_keys_and_unknown_key(client):
     assert resp.status_code == 422
 
 
+async def test_default_sort_breaks_ties_on_the_other_name(client):
+    await _musician(client, "Zoe", "Maier")
+    await _musician(client, "Anna", "Maier")
+
+    async def names(query):
+        resp = await client.get(f"/api/v1/musicians?{query}")
+        assert resp.status_code == 200, resp.text
+        return [m["first_name"] for m in resp.json()["items"]]
+
+    assert await names("order_by=last_name") == ["Anna", "Zoe"]
+    assert await names("order_by=-last_name") == ["Zoe", "Anna"]
+
+
 async def test_paging_with_equal_sort_values_has_no_gaps(client):
     for i in range(60):
         await _musician(client, f"Vorname{i:02d}", "Maier")

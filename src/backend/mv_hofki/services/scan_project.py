@@ -55,7 +55,11 @@ async def get_list(
         pattern = f"%{search}%"
         query = query.where(ScanProject.name.ilike(pattern))
 
-    query = query.order_by(ScanProject.updated_at.desc()).limit(limit).offset(offset)
+    query = (
+        query.order_by(ScanProject.updated_at.desc(), ScanProject.id)
+        .limit(limit)
+        .offset(offset)
+    )
     rows = (await session.execute(query)).all()
 
     items = []

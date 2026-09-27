@@ -18,8 +18,8 @@ class MusicianFilter(ListFilter):
         model = Musician
         search_model_fields = ["first_name", "last_name", "email", "city"]
         sort_fields = {
-            "last_name": [Musician.last_name],
-            "first_name": [Musician.first_name],
+            "last_name": [Musician.last_name, Musician.first_name],
+            "first_name": [Musician.first_name, Musician.last_name],
         }
         default_sort = ["last_name", "first_name"]
 
