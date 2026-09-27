@@ -124,6 +124,11 @@ describe("TagSelect", () => {
     expect(ev.defaultPrevented).toBe(true);
   });
 
+  it("limits the input to 50 characters", () => {
+    const w = setup();
+    expect(w.find("input").attributes("maxlength")).toBe("50");
+  });
+
   it("closes the list on Escape and wires ARIA", async () => {
     const w = setup();
     const input = w.find("input");

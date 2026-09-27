@@ -154,6 +154,7 @@ function onFocusOut(e) {
         v-model="query"
         type="text"
         role="combobox"
+        maxlength="50"
         autocomplete="off"
         aria-autocomplete="list"
         :aria-expanded="String(expanded)"

@@ -9,6 +9,22 @@
 const BASE = (import.meta.env.VITE_BASE_PATH || "").replace(/\/$/, "");
 const API_PREFIX = `${BASE}/api/v1`;
 
+// Turns FastAPI's "detail" field into a human-readable string. It is either a
+// plain string, or (on a pydantic 422) a list of {loc, msg, type} objects.
+function detailToMessage(text) {
+  let detail = text;
+  try {
+    const json = JSON.parse(text);
+    if (json.detail) detail = json.detail;
+  } catch {
+    // keep raw text
+  }
+  if (Array.isArray(detail)) {
+    return detail.map((entry) => (entry && entry.msg) || JSON.stringify(entry)).join("; ");
+  }
+  return detail;
+}
+
 async function request(method, path, body = null) {
   const url = `${API_PREFIX}${path}`;
   const headers = {
@@ -25,15 +41,7 @@ async function request(method, path, body = null) {
   const response = await fetch(url, options);
   if (!response.ok) {
     const text = await response.text();
-    // Try to extract FastAPI's "detail" field for a human-readable message
-    let detail = text;
-    try {
-      const json = JSON.parse(text);
-      if (json.detail) detail = json.detail;
-    } catch {
-      // keep raw text
-    }
-    throw new Error(detail);
+    throw new Error(detailToMessage(text));
   }
 
   const contentType = response.headers.get("content-type");
@@ -64,14 +72,7 @@ export async function postForm(path, formData) {
   const response = await fetch(`${API_PREFIX}${path}`, { method: "POST", body: formData });
   if (!response.ok) {
     const text = await response.text();
-    let detail = text;
-    try {
-      const json = JSON.parse(text);
-      if (json.detail) detail = json.detail;
-    } catch {
-      // keep raw text
-    }
-    throw new Error(detail);
+    throw new Error(detailToMessage(text));
   }
   return response.json();
 }
