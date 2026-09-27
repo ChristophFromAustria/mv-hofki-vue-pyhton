@@ -12,6 +12,8 @@ class ItemImageRead(BaseModel):
     item_id: int
     filename: str
     is_profile: bool
+    kind: str
+    caption: str | None
     created_at: datetime
     url: str
 

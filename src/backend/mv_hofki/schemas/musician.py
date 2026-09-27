@@ -6,6 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, field_validator
 
+from mv_hofki.schemas.register import RegisterRef
+
 
 class MusicianCreate(BaseModel):
     first_name: str
@@ -16,7 +18,9 @@ class MusicianCreate(BaseModel):
     postal_code: int | None = None
     city: str | None = None
     is_extern: bool = False
+    is_active: bool = True
     notes: str | None = None
+    register_ids: list[int] = []
 
     @field_validator("first_name", "last_name")
     @classmethod
@@ -35,7 +39,9 @@ class MusicianUpdate(BaseModel):
     postal_code: int | None = None
     city: str | None = None
     is_extern: bool | None = None
+    is_active: bool | None = None
     notes: str | None = None
+    register_ids: list[int] | None = None
 
     @field_validator("first_name", "last_name")
     @classmethod
@@ -55,7 +61,9 @@ class MusicianRead(BaseModel):
     postal_code: int | None
     city: str | None
     is_extern: bool
+    is_active: bool
     notes: str | None
+    registers: list[RegisterRef] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}

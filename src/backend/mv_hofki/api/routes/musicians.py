@@ -18,10 +18,17 @@ async def list_musicians(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     search: str | None = None,
+    active: bool | None = None,
+    register_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await musician_service.get_list(
-        db, limit=limit, offset=offset, search=search
+        db,
+        limit=limit,
+        offset=offset,
+        search=search,
+        active=active,
+        register_id=register_id,
     )
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 

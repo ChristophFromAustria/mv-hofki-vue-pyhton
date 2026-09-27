@@ -21,6 +21,8 @@ def _image_to_read(image) -> ItemImageRead:
         item_id=image.item_id,
         filename=image.filename,
         is_profile=image.is_profile,
+        kind=image.kind or "foto",
+        caption=image.caption,
         created_at=image.created_at,
         url=f"/uploads/images/{image.item_id}/{image.filename}",
     )

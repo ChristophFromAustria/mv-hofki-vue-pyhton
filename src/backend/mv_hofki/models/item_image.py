@@ -19,4 +19,9 @@ class ItemImage(Base):
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     is_profile: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "foto" = picture of the instrument, "scan" = scanned paperwork page
+    kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="foto", server_default="foto"
+    )
+    caption: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

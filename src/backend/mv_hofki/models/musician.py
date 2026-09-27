@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, Integer, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mv_hofki.db.base import Base
+from mv_hofki.models.register import Register, musician_registers
 
 
 class Musician(Base):
@@ -22,5 +23,12 @@ class Musician(Base):
     postal_code: Mapped[int | None] = mapped_column(Integer)
     city: Mapped[str | None] = mapped_column(String(100))
     is_extern: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    registers: Mapped[list[Register]] = relationship(
+        secondary=musician_registers, lazy="selectin", order_by=Register.sort_order
+    )

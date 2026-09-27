@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
+from mv_hofki.models.register import musician_registers
 from mv_hofki.schemas.musician import MusicianCreate, MusicianUpdate
+from mv_hofki.services import register as register_service
 
 
 async def get_list(
@@ -17,9 +19,21 @@ async def get_list(
     limit: int = 50,
     offset: int = 0,
     search: str | None = None,
+    active: bool | None = None,
+    register_id: int | None = None,
 ) -> tuple[list[Musician], int]:
     query = select(Musician)
     count_query = select(func.count()).select_from(Musician)
+
+    if active is not None:
+        query = query.where(Musician.is_active.is_(active))
+        count_query = count_query.where(Musician.is_active.is_(active))
+    if register_id is not None:
+        members = select(musician_registers.c.musician_id).where(
+            musician_registers.c.register_id == register_id
+        )
+        query = query.where(Musician.id.in_(members))
+        count_query = count_query.where(Musician.id.in_(members))
 
     if search:
         pattern = f"%{search}%"
@@ -50,7 +64,9 @@ async def get_by_id(session: AsyncSession, musician_id: int) -> Musician:
 
 
 async def create(session: AsyncSession, data: MusicianCreate) -> Musician:
-    musician = Musician(**data.model_dump())
+    fields = data.model_dump(exclude={"register_ids"})
+    musician = Musician(**fields)
+    musician.registers = await register_service.get_many(session, data.register_ids)
     session.add(musician)
     await session.commit()
     await session.refresh(musician)
@@ -61,8 +77,12 @@ async def update(
     session: AsyncSession, musician_id: int, data: MusicianUpdate
 ) -> Musician:
     musician = await get_by_id(session, musician_id)
-    for key, value in data.model_dump(exclude_unset=True).items():
+    fields = data.model_dump(exclude_unset=True)
+    register_ids = fields.pop("register_ids", None)
+    for key, value in fields.items():
         setattr(musician, key, value)
+    if register_ids is not None:
+        musician.registers = await register_service.get_many(session, register_ids)
     await session.commit()
     await session.refresh(musician)
     return musician

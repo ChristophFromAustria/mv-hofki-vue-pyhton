@@ -23,6 +23,7 @@ from mv_hofki.api.routes.items import router as items_router
 from mv_hofki.api.routes.loans import router as loans_router
 from mv_hofki.api.routes.me import router as me_router
 from mv_hofki.api.routes.musicians import router as musicians_router
+from mv_hofki.api.routes.registers import router as registers_router
 from mv_hofki.api.routes.scan_parts import router as scan_parts_router
 from mv_hofki.api.routes.scan_processing import router as scan_processing_router
 from mv_hofki.api.routes.scan_projects import router as scan_projects_router
@@ -94,6 +95,7 @@ app.include_router(currencies_router)
 app.include_router(instrument_types_router)
 app.include_router(clothing_types_router)
 app.include_router(sheet_music_genres_router)
+app.include_router(registers_router)
 app.include_router(items_router)
 app.include_router(item_images_router)
 app.include_router(item_invoices_router)

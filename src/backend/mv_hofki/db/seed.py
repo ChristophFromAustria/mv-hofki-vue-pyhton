@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.models.currency import Currency
 from mv_hofki.models.instrument_type import InstrumentType
+from mv_hofki.models.register import Register
 from mv_hofki.models.sheet_music_genre import SheetMusicGenre
 from mv_hofki.models.symbol_template import SymbolTemplate
 from mv_hofki.services.scanner.library.seed import SYMBOL_TEMPLATES
@@ -54,6 +55,25 @@ CLOTHING_TYPES = [
     {"label": "Strümpfe"},
 ]
 
+# Sections of the band, as grouped in the club's scheduling app.
+REGISTERS = [
+    {"label": "Querflöte & Oboe", "sort_order": 1, "expects_instrument": True},
+    {"label": "Klarinette & Fagott", "sort_order": 2, "expects_instrument": True},
+    {"label": "Saxophon", "sort_order": 3, "expects_instrument": True},
+    {"label": "Trompete / Flügelhorn", "sort_order": 4, "expects_instrument": True},
+    {"label": "Tenorhorn / Euphonium", "sort_order": 5, "expects_instrument": True},
+    {"label": "Horn", "sort_order": 6, "expects_instrument": True},
+    {"label": "Posaune", "sort_order": 7, "expects_instrument": True},
+    {"label": "Tuba", "sort_order": 8, "expects_instrument": True},
+    {"label": "Schlagwerk", "sort_order": 9, "expects_instrument": False},
+    {"label": "Marketenderinnen", "sort_order": 10, "expects_instrument": False},
+    {
+        "label": "Kapellmeister / Stabführer",
+        "sort_order": 11,
+        "expects_instrument": False,
+    },
+]
+
 SHEET_MUSIC_GENRES = [
     {"label": "Marsch"},
     {"label": "Polka"},
@@ -76,6 +96,10 @@ async def seed_data(session: AsyncSession) -> None:
     result = await session.execute(select(ClothingType).limit(1))
     if result.scalar_one_or_none() is None:
         await session.execute(insert(ClothingType), CLOTHING_TYPES)
+
+    result = await session.execute(select(Register).limit(1))
+    if result.scalar_one_or_none() is None:
+        await session.execute(insert(Register), REGISTERS)
 
     result = await session.execute(select(SheetMusicGenre).limit(1))
     if result.scalar_one_or_none() is None:

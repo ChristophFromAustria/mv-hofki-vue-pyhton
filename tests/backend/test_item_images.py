@@ -131,3 +131,13 @@ async def test_reject_non_image(client, item):
         files={"file": ("test.txt", io.BytesIO(b"hello"), "text/plain")},
     )
     assert resp.status_code == 400
+
+
+async def test_uploaded_image_is_a_photo_without_caption(client, item):
+    resp = await client.post(
+        f"/api/v1/items/{item['id']}/images",
+        files={"file": ("test.png", io.BytesIO(_fake_image()), "image/png")},
+    )
+    data = resp.json()
+    assert data["kind"] == "foto"
+    assert data["caption"] is None
