@@ -11,11 +11,13 @@ project's conventions:
 * ``Constants.sort_fields`` defines the public sort keys (one key may sort by
   several columns); ``order_by`` is validated against them. NULLs always sort
   last and the model's ``id`` is always the final key, so paging is stable.
+* ``Constants.group_fields`` defines optional grouping (see ``fetch_page``).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, cast
 
 from fastapi import Query
@@ -58,14 +60,40 @@ class PageParams:
         self.offset = offset
 
 
+@dataclass(frozen=True)
+class GroupSpec:
+    """How a list groups its rows. ``key``/``label``/``order`` are SQL
+    expressions (``order`` defaults to ``label``); ``join`` adds the outer joins
+    they need. With ``multi`` a row repeats once per group, e.g. an item with
+    several categories; rows without one form the ``empty_label`` group."""
+
+    key: Any
+    label: Any
+    empty_label: str
+    order: Any = None
+    join: Callable[[Select], Select] | None = None
+    multi: bool = False
+
+
+@dataclass
+class ListPage:
+    rows: list[Any]
+    total: int
+    item_total: int
+    row_groups: list[tuple[str, str]] | None = None
+    groups: list[dict[str, Any]] | None = None
+
+
 class ListFilter(Filter):
     search: str | None = None
     order_by: list[str] | None = None
+    group_by: str | None = None
 
     class Constants(Filter.Constants):  # type: ignore[misc]
         columns: dict[str, Any] = {}
         sort_fields: dict[str, list[Any]] = {}
         default_sort: list[str] = []
+        group_fields: dict[str, GroupSpec | None] = {}
 
     # Replaces fastapi-filter's validator of the same name, which only accepts
     # attributes of the model as sort keys.
@@ -89,6 +117,20 @@ class ListFilter(Filter):
             seen.add(name)
         return keys or None
 
+    @field_validator("group_by")
+    @classmethod
+    def validate_group_by(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        if value not in cls.Constants.group_fields:
+            raise ValueError(f"„{value}“ ist keine gültige Gruppierung.")
+        return value
+
+    def group_spec(self) -> GroupSpec | None:
+        if not self.group_by:
+            return None
+        return self.Constants.group_fields[self.group_by]
+
     def column(self, field: str) -> Any:
         if field in self.Constants.columns:
             return self.Constants.columns[field]
@@ -106,6 +148,8 @@ class ListFilter(Filter):
 
     def filter(self, query: Select) -> Select:  # type: ignore[override]
         for name, value in self.filtering_fields:
+            if name == "group_by":
+                continue
             if name == self.Constants.search_field_name:
                 clause = self.search_clause(value)
                 if clause is not None:
@@ -147,3 +191,75 @@ async def paginate(
         query.options(*options).limit(page.limit).offset(page.offset)
     )
     return list(result.unique().scalars().all()), total or 0
+
+
+def _key(value: Any) -> str:
+    return "" if value is None else str(value)
+
+
+async def fetch_page(
+    session: AsyncSession,
+    flt: ListFilter,
+    query: Select,
+    page: PageParams,
+    *,
+    options: Sequence[Any] = (),
+) -> ListPage:
+    """Filter, optionally group, sort and page ``query`` (a select of the
+    filter's model). See ``GroupSpec`` for grouping."""
+    filtered = flt.filter(query)
+    distinct = filtered.order_by(None).subquery()
+    item_total = (
+        await session.scalar(select(func.count(func.distinct(distinct.c.id)))) or 0
+    )
+    spec = flt.group_spec()
+    if spec is None:
+        rows, total = await paginate(session, flt.sort(filtered), page, options=options)
+        return ListPage(rows=rows, total=total, item_total=item_total)
+
+    order = spec.order if spec.order is not None else spec.label
+    grouped = spec.join(filtered) if spec.join else filtered
+    grouped = grouped.add_columns(
+        spec.key.label("group_key"),
+        spec.label.label("group_label"),
+        order.label("group_order"),
+    )
+
+    sub = grouped.order_by(None).subquery()
+    total = await session.scalar(select(func.count()).select_from(sub)) or 0
+    count_rows = await session.execute(
+        select(sub.c.group_key, sub.c.group_label, func.count(func.distinct(sub.c.id)))
+        .group_by(sub.c.group_key, sub.c.group_label, sub.c.group_order)
+        .order_by(
+            sub.c.group_order.asc().nulls_last(), sub.c.group_key.asc().nulls_last()
+        )
+    )
+    groups = [
+        {
+            "key": _key(key),
+            "label": spec.empty_label if key is None else str(label),
+            "count": count,
+        }
+        for key, label, count in count_rows.all()
+    ]
+
+    ordered = flt.sort(
+        grouped.order_by(order.asc().nulls_last(), spec.key.asc().nulls_last())
+    )
+    result = await session.execute(
+        ordered.options(*options).limit(page.limit).offset(page.offset)
+    )
+    raw_rows = result.unique().all()
+    return ListPage(
+        rows=[r[0] for r in raw_rows],
+        total=total,
+        item_total=item_total,
+        row_groups=[
+            (
+                _key(r.group_key),
+                spec.empty_label if r.group_key is None else str(r.group_label),
+            )
+            for r in raw_rows
+        ],
+        groups=groups,
+    )
