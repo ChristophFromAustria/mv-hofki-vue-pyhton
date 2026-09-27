@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { get } from "../lib/api.js";
+import { get, post } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { hasMultipleQuantities, quantityCell, quantityLabel } from "../lib/quantity.js";
+import { toggleId, uniqueIds } from "../lib/bulkSelection.js";
 import { useListQuery } from "../composables/useListQuery.js";
 import { useGroupCollapse } from "../composables/useGroupCollapse.js";
 import { buildSegments } from "../lib/grouping.js";
@@ -18,6 +19,8 @@ import SortSelect from "../components/SortSelect.vue";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import CategoryChips from "../components/CategoryChips.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
+import BulkCategoryBar from "../components/BulkCategoryBar.vue";
+import CategoryPickDialog from "../components/CategoryPickDialog.vue";
 
 const props = defineProps({
   category: { type: String, required: true },
@@ -28,6 +31,58 @@ const cat = computed(() => CATEGORIES[props.category]);
 const viewMode = ref(localStorage.getItem(props.category + "-view-mode") || "card");
 const showCreateModal = ref(false);
 const currencies = ref([]);
+
+const selecting = ref(false);
+const selectedIds = ref([]);
+const pickMode = ref(null); // "add" | "remove" | null
+const bulkBusy = ref(false);
+const bulkMessage = ref("");
+const bulkError = ref("");
+
+function startSelecting() {
+  selecting.value = true;
+  selectedIds.value = [];
+  bulkMessage.value = "";
+  bulkError.value = "";
+}
+
+function stopSelecting() {
+  selecting.value = false;
+  selectedIds.value = [];
+  pickMode.value = null;
+}
+
+function toggleSelect(row) {
+  selectedIds.value = toggleId(selectedIds.value, row.id);
+}
+
+function selectAllLoaded() {
+  selectedIds.value = uniqueIds(items.value);
+}
+
+async function applyBulk(ids) {
+  const mode = pickMode.value;
+  pickMode.value = null;
+  bulkBusy.value = true;
+  bulkError.value = "";
+  bulkMessage.value = "Wird gespeichert …";
+  try {
+    const body = {
+      item_ids: selectedIds.value,
+      add_ids: mode === "add" ? ids : [],
+      remove_ids: mode === "remove" ? ids : [],
+    };
+    const { updated } = await post("/items/bulk-categories", body);
+    bulkMessage.value = `${updated} ${updated === 1 ? "Gegenstand" : "Gegenstände"} aktualisiert.`;
+    selectedIds.value = [];
+    await reload();
+  } catch (e) {
+    bulkMessage.value = "";
+    bulkError.value = `Speichern fehlgeschlagen: ${e.message}`;
+  } finally {
+    bulkBusy.value = false;
+  }
+}
 
 watch(viewMode, (v) => localStorage.setItem(props.category + "-view-mode", v));
 
@@ -326,7 +381,8 @@ onMounted(async () => {
 });
 
 function goTo(row) {
-  router.push(cat.value.routeBase + "/" + row.id);
+  if (selecting.value) toggleSelect(row);
+  else router.push(cat.value.routeBase + "/" + row.id);
 }
 
 function onModalSave() {
@@ -342,6 +398,14 @@ function onModalSave() {
         <router-link v-if="cat.key === 'instrument'" to="/import" class="btn btn-secondary">
           KI-Import
         </router-link>
+        <button
+          v-if="cat.hasCategories && !selecting"
+          type="button"
+          class="btn btn-secondary"
+          @click="startSelecting"
+        >
+          Auswählen
+        </button>
         <button class="btn btn-primary" @click="showCreateModal = true">
           {{ cat.labelSingular }} anlegen
         </button>
@@ -389,10 +453,13 @@ function onModalSave() {
           :sort="sort"
           :groups="groups"
           :collapsed-groups="collapsed"
+          :selectable="selecting"
+          :selected-ids="selectedIds"
           :empty-text="filtered ? 'Keine Einträge für diese Filter.' : 'Noch keine Einträge.'"
           @update:sort="setSort"
           @row-click="goTo"
           @toggle-group="toggleGroup"
+          @toggle-select="toggleSelect"
         >
           <template #categories="{ value }">
             <CategoryChips :categories="value || []" />
@@ -430,6 +497,9 @@ function onModalSave() {
               :item="seg.row"
               :has-loans="cat.hasLoans"
               :to="`${cat.routeBase}/${seg.row.id}`"
+              :selecting="selecting"
+              :selected="selectedIds.includes(seg.row.id)"
+              @toggle-select="toggleSelect(seg.row)"
             />
           </template>
         </div>
@@ -451,6 +521,26 @@ function onModalSave() {
         @load-more="loadMore"
       />
     </template>
+
+    <BulkCategoryBar
+      v-if="selecting"
+      :count="selectedIds.length"
+      :busy="bulkBusy"
+      :message="bulkMessage"
+      :error="bulkError"
+      @select-all="selectAllLoaded"
+      @add="pickMode = 'add'"
+      @remove="pickMode = 'remove'"
+      @done="stopSelecting"
+    />
+    <CategoryPickDialog
+      v-if="cat.hasCategories"
+      :open="pickMode !== null"
+      :mode="pickMode || 'add'"
+      :categories="typeOptions"
+      @confirm="applyBulk"
+      @cancel="pickMode = null"
+    />
 
     <ItemFormModal
       :open="showCreateModal"
