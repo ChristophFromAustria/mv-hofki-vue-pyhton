@@ -240,3 +240,13 @@ def test_unknown_start_of_current_loan_uses_import_date(tmp_path):
     )
     assert plan.loans[0].start == date(2026, 9, 27)
     assert "Leihbeginn unbekannt" in plan.items[0].notes
+
+
+def test_items_marked_not_to_import_are_skipped_with_their_loans(tmp_path):
+    plan = _loan_folder(
+        tmp_path,
+        [{"musiker": "M1", "von": "2001", "bis": None, "status": "sicher"}],
+        {"import": False, "import_grund": "verkauft"},
+    )
+    assert plan.items == [] and plan.loans == []
+    assert {"wo": "Tuba/TU 1", "text": "verkauft"} in plan.skipped

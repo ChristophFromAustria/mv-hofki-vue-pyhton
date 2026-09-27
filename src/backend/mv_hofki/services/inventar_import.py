@@ -338,6 +338,11 @@ def build_plan(
             if inst.get("dublette_von"):
                 plan.skip(key, f"Dublette von {inst['dublette_von']}")
                 continue
+            if inst.get("import") is False:
+                plan.skip(
+                    key, inst.get("import_grund") or "als nicht importieren markiert"
+                )
+                continue
             planned = _plan_item(
                 plan, folder, key, inst, local_musicians, local_to_global, register
             )
