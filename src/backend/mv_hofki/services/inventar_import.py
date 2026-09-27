@@ -35,9 +35,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.models.clothing_detail import ClothingDetail
+from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.models.currency import Currency
 from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
@@ -47,7 +49,7 @@ from mv_hofki.models.item_invoice import ItemInvoice
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
 from mv_hofki.models.register import Register, musician_registers
-from mv_hofki.schemas.inventory_item import format_display_nr
+from mv_hofki.schemas.inventory_item import CATEGORY_PREFIXES, format_display_nr
 
 CLUB_OWNER = "MV Hofkirchen"
 UNCLEAR_OWNER = "Eigentum unklar"
@@ -206,6 +208,9 @@ class PlannedItem:
     sources: list[str]
     photos: list[dict[str, Any]] = field(default_factory=list)
     scans: list[dict[str, Any]] = field(default_factory=list)  # path, caption
+    category: str = "instrument"  # | "general_item" | "clothing"
+    quantity: int = 1
+    clothing_type: str | None = None  # label, created when missing
 
     @property
     def display_nr(self) -> str:
@@ -301,6 +306,7 @@ FORMAT_NAMES = {
     "L02": "Register-Inventarliste",
     "B01": "Zahlungsliste (Online-Banking)",
     "B02": "Kontobericht Instrumentenkauf",
+    "L03": "Equipment-/Raumliste (Word)",
     "X01": "Sonstiges",
 }
 
@@ -486,7 +492,10 @@ def _describe_source(source: str, index: dict[str, str]) -> str:
     where = ""
     if anchor:
         m = re.match(r"^([zb])(\d+)$", anchor)
-        if m:
+        room = re.match(r"^standort(\d+)/z(\d+)$", anchor)
+        if room:
+            where = f", Standort {room[1]}, Zeile {room[2]}"
+        elif m:
             where = f", {'Zeile' if m[1] == 'z' else 'Block'} {m[2]}"
         elif anchor.isdigit():
             where = f", Zeile {anchor}"
@@ -582,7 +591,13 @@ def build_plan(
 
     # --- instruments ------------------------------------------------------------
     raw_loans: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
-    for zf in sorted(root.glob("*/zusammenfuehrung.json")):
+    # Room lists come last so that their instruments get numbers after the
+    # instruments of the register folders (existing numbers stay stable).
+    folders = sorted(
+        root.glob("*/zusammenfuehrung.json"),
+        key=lambda zf: (zf.parent.name == "Allgemeines_Inventar", zf.parent.name),
+    )
+    for zf in folders:
         folder = zf.parent.name
         data = _load_json(zf)
         local_musicians = {m["id"]: m for m in data.get("musiker", [])}
@@ -616,6 +631,15 @@ def build_plan(
                     raw_loans.append((key, loan, inst))
         for inv in data.get("rechnungen", []):
             _plan_invoices(plan, root, folder, inv)
+        for obj in data.get("objekte", []):
+            planned = _plan_object(plan, folder, obj, pages, short_codes)
+            if planned is not None:
+                plan.items.append(planned)
+        for left in data.get("nicht_uebernommen", []):
+            plan.skip(
+                left.get("quelle", folder),
+                f"{left.get('wie_geschrieben')}: {left.get('grund')}",
+            )
 
     _assign_numbers(plan, short_codes)
     _attach_photos(plan, root)
@@ -762,12 +786,80 @@ def _plan_item(
     )
 
 
+def _plan_object(
+    plan: Plan,
+    folder: str,
+    obj: dict[str, Any],
+    pages: dict[str, str],
+    short_codes: dict[str, str],
+) -> PlannedItem | None:
+    """An entry of a room/equipment list (general item, clothing, instrument)."""
+    key = f"{folder}/{obj['id']}"
+    category = obj.get("kategorie") or "general_item"
+    type_label = ""
+    if category == "instrument":
+        type_label = obj.get("instrumententyp") or ""
+        if type_label not in short_codes:
+            mapped = map_type(type_label)
+            if mapped is None:
+                plan.warn(
+                    key, f"Instrumententyp „{type_label}“ unbekannt, als Allgemeines"
+                )
+                category = "general_item"
+            else:
+                type_label = mapped
+    clothing_type = obj.get("kleidungstyp") if category == "clothing" else None
+    if category == "clothing" and not clothing_type:
+        plan.warn(key, "Kleidung ohne Kleidungstyp, als Allgemeines")
+        category = "general_item"
+    notes: list[str | None] = [obj.get("notiz")]
+    if obj.get("zustand"):
+        notes.append(f"Vermerk in der Liste: {obj['zustand']}")
+    if obj.get("wie_geschrieben"):
+        notes.append(f"In der Liste: „{obj['wie_geschrieben']}“")
+    source = obj.get("quelle")
+    sources = [source] if source else []
+    notes.append("\nHerkunft der Daten:")
+    notes += [f"- {_describe_source(src, pages)}" for src in sources]
+    quantity = obj.get("menge") or 1
+    if not isinstance(quantity, int) or quantity < 1:
+        plan.warn(key, f"Menge „{quantity}“ ungültig, 1 angenommen")
+        quantity = 1
+    return PlannedItem(
+        key=key,
+        type_label=type_label,
+        prefix="",
+        inventory_nr=None,
+        paper_nr=None,
+        label=_clip(obj.get("bezeichnung") or obj.get("wie_geschrieben") or "?", 200),
+        manufacturer=None,
+        serial_nr=None,
+        construction_year=None,
+        acquisition_date=None,
+        acquisition_cost=None,
+        currency=None,
+        distributor=None,
+        container=None,
+        particularities=None,
+        owner=_clip(obj.get("eigentuemer") or CLUB_OWNER, 100),
+        storage_location=_clip(obj["lagerort"], 200) if obj.get("lagerort") else None,
+        notes=_join(notes, "\n"),
+        sources=sources,
+        category=category,
+        quantity=quantity,
+        clothing_type=clothing_type,
+    )
+
+
 def _assign_numbers(plan: Plan, short_codes: dict[str, str]) -> None:
     """Give every item a (prefix, number). Paper numbers are kept when their
     prefix matches the type's short code; the rest get the next free number."""
     taken: dict[str, set[int]] = {}
     for item in plan.items:
-        item.prefix = short_codes[item.type_label]
+        if item.category != "instrument":
+            item.prefix = CATEGORY_PREFIXES[item.category]
+        else:
+            item.prefix = short_codes[item.type_label]
         if item.inventory_nr is not None:
             paper_prefix = (item.paper_nr or "").split(" ")[0]
             if paper_prefix != item.prefix:
@@ -1033,13 +1125,53 @@ async def wipe_inventory(db: AsyncSession) -> dict[str, int]:
     return counts
 
 
+async def restrict_to_folder(db: AsyncSession, plan: Plan, folder: str) -> Plan:
+    """Plan for adding one folder to an existing inventory: only that folder's
+    items (no musicians, loans or invoices), numbered after the numbers already
+    in the database. Items whose source is already cited in an existing item's
+    notes count as imported and are skipped, so the step can be repeated."""
+    out = Plan(warnings=plan.warnings, skipped=plan.skipped)
+    existing_notes = [
+        n for n in (await db.execute(select(InventoryItem.notes))).scalars() if n
+    ]
+    next_nr: dict[tuple[str, str], int] = {}
+    for item in plan.items:
+        if not item.key.startswith(f"{folder}/"):
+            continue
+        marker = (
+            "- " + _describe_source(item.sources[0], {}).split(" – ")[0] + " – "
+            if item.sources
+            else None
+        )
+        if marker and any(marker in n for n in existing_notes):
+            out.skip(item.key, "bereits importiert (Quelle in vorhandener Notiz)")
+            continue
+        slot = (item.category, item.prefix)
+        if slot not in next_nr:
+            current = await db.scalar(
+                select(func.max(InventoryItem.inventory_nr)).where(
+                    InventoryItem.category == item.category,
+                    InventoryItem.number_prefix == item.prefix,
+                )
+            )
+            next_nr[slot] = (current or 0) + 1
+        item.inventory_nr = next_nr[slot]
+        next_nr[slot] += 1
+        out.items.append(item)
+    return out
+
+
 async def apply_plan(db: AsyncSession, plan: Plan, uploads: Path) -> dict[str, Any]:
     """Write the plan. The caller commits (or rolls back)."""
     types = {t.label: t for t in (await db.execute(select(InstrumentType))).scalars()}
     currencies = {
         c.abbreviation: c for c in (await db.execute(select(Currency))).scalars()
     }
-    cur_ids = {"EUR": currencies["€"].id, "ATS": currencies["ATS"].id}
+    cur_ids = {
+        code: currencies[abbr].id
+        for code, abbr in (("EUR", "€"), ("ATS", "ATS"))
+        if abbr in currencies
+    }
     registers = {r.label: r for r in (await db.execute(select(Register))).scalars()}
 
     musicians: dict[str, Musician] = {}
@@ -1060,12 +1192,16 @@ async def apply_plan(db: AsyncSession, plan: Plan, uploads: Path) -> dict[str, A
     items: dict[str, InventoryItem] = {}
     written: list[Path] = []
     report_items = []
+    clothing_types = {
+        t.label: t for t in (await db.execute(select(ClothingType))).scalars()
+    }
     for pi in plan.items:
         item = InventoryItem(
-            category="instrument",
+            category=pi.category,
             number_prefix=pi.prefix,
             inventory_nr=pi.inventory_nr,
             label=pi.label,
+            quantity=pi.quantity,
             manufacturer=pi.manufacturer,
             acquisition_date=pi.acquisition_date,
             acquisition_cost=pi.acquisition_cost,
@@ -1076,17 +1212,26 @@ async def apply_plan(db: AsyncSession, plan: Plan, uploads: Path) -> dict[str, A
         )
         db.add(item)
         await db.flush()
-        db.add(
-            InstrumentDetail(
-                item_id=item.id,
-                instrument_type_id=types[pi.type_label].id,
-                serial_nr=pi.serial_nr,
-                construction_year=pi.construction_year,
-                distributor=pi.distributor,
-                container=pi.container,
-                particularities=pi.particularities,
+        if pi.category == "instrument":
+            db.add(
+                InstrumentDetail(
+                    item_id=item.id,
+                    instrument_type_id=types[pi.type_label].id,
+                    serial_nr=pi.serial_nr,
+                    construction_year=pi.construction_year,
+                    distributor=pi.distributor,
+                    container=pi.container,
+                    particularities=pi.particularities,
+                )
             )
-        )
+        elif pi.category == "clothing":
+            ctype = clothing_types.get(pi.clothing_type or "")
+            if ctype is None:
+                ctype = ClothingType(label=pi.clothing_type)
+                db.add(ctype)
+                await db.flush()
+                clothing_types[ctype.label] = ctype
+            db.add(ClothingDetail(item_id=item.id, clothing_type_id=ctype.id))
         items[pi.key] = item
         profile = next(
             (p for p in pi.photos if "gesamt" in p["motiv"].lower()),

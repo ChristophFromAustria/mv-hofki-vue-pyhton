@@ -40,7 +40,7 @@ SRC = ROOT / "_extraktion"
 ORDER = [
     "Klarinette", "Bassklarinette", "Querfloete", "Saxophon", "Oboe", "Fagott",
     "Fluegelhorn", "Trompete", "Tenorhorn", "Zugposaune", "Tuba", "Waldhorn",
-    "Schlagwerk",
+    "Schlagwerk", "Allgemeines_Inventar",
 ]  # fmt: skip
 
 # Possible married names: same first name, different surname, same register.
@@ -80,7 +80,7 @@ def unclear_md(plan, pages) -> str:
     for zf in sorted(SRC.glob("*/zusammenfuehrung.json")):
         folder = zf.parent.name
         d = json.loads(zf.read_text())
-        for inst in d["instrumente"]:
+        for inst in d.get("instrumente", []):
             if inst.get("import") is not False or inst.get("dublette_von"):
                 continue
             desc = ", ".join(

@@ -32,11 +32,13 @@ from mv_hofki.core.config import settings
 from mv_hofki.db.engine import async_session_factory
 from mv_hofki.services.inventar_import import (
     Plan,
+    PlannedItem,
     active_without_instrument,
     apply_plan,
     build_plan,
     load_register_labels,
     load_short_codes,
+    restrict_to_folder,
     wipe_inventory,
 )
 
@@ -47,8 +49,16 @@ UPLOADS = ROOT / "data" / "uploads"
 DB_FILE = ROOT / "data" / "mv_hofki.db"
 
 
+def _kind(item: PlannedItem) -> str:
+    if item.category == "clothing":
+        return f"Kleidung: {item.clothing_type}"
+    if item.category == "general_item":
+        return "Allgemeines"
+    return item.type_label
+
+
 def _report_md(plan: Plan, applied: bool, result: dict | None) -> str:
-    by_type = Counter(i.type_label for i in plan.items)
+    by_type = Counter(_kind(i) for i in plan.items)
     names = {m.key: f"{m.last_name} {m.first_name}".strip() for m in plan.musicians}
     nr_of = {i.key: i.display_nr for i in plan.items}
     lines = [
@@ -64,14 +74,16 @@ def _report_md(plan: Plan, applied: bool, result: dict | None) -> str:
         f"- Fotos: {sum(len(i.photos) for i in plan.items)}",
         f"- Hinweise: {len(plan.warnings)}, nicht übernommen: {len(plan.skipped)}",
         "",
-        "## Instrumente",
+        "## Inventar",
         "",
-        "| Nr. | Papier | Typ | Bezeichnung | Seriennr. | Eigentümer | Lager | Fotos |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Nr. | Papier | Typ | Bezeichnung | Menge | Seriennr. | Eigentümer | Lager "
+        "| Fotos |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for i in sorted(plan.items, key=lambda x: (x.prefix, x.inventory_nr or 0)):
         lines.append(
-            f"| {i.display_nr} | {i.paper_nr or ''} | {i.type_label} | {i.label} | "
+            f"| {i.display_nr} | {i.paper_nr or ''} | {_kind(i)} | {i.label} | "
+            f"{i.quantity} | "
             f"{i.serial_nr or ''} | {i.owner} | {i.storage_location or ''} | "
             f"{len(i.photos)} |"
         )
@@ -135,7 +147,8 @@ def _report_json(plan: Plan, result: dict | None) -> dict:
                 "id": ids.get(i.key),
                 "display_nr": i.display_nr,
                 "paper_nr": i.paper_nr,
-                "type": i.type_label,
+                "type": _kind(i),
+                "quantity": i.quantity,
                 "label": i.label,
                 "owner": i.owner,
                 "storage_location": i.storage_location,
@@ -181,7 +194,20 @@ async def main() -> int:
         action="store_true",
         help="alle Instrumente, Musiker, Leihen, Belege und Bilder ersetzen",
     )
+    ap.add_argument(
+        "--ergaenzen",
+        metavar="ORDNER",
+        help="nur die Objekte dieses Ordners zusätzlich anlegen (nichts löschen), "
+        "z. B. Allgemeines_Inventar",
+    )
+    ap.add_argument(
+        "--ausfuehren",
+        action="store_true",
+        help="mit --ergaenzen: wirklich schreiben (sonst Probelauf)",
+    )
     args = ap.parse_args()
+    if args.ersetzen and args.ergaenzen:
+        ap.error("--ersetzen und --ergaenzen schließen sich aus")
 
     async with async_session_factory() as db:
         plan = build_plan(
@@ -192,6 +218,23 @@ async def main() -> int:
             register_labels=await load_register_labels(db),
         )
         result = None
+        if args.ergaenzen:
+            plan = await restrict_to_folder(db, plan, args.ergaenzen)
+            if args.ausfuehren:
+                backup = (
+                    ROOT / "data" / "backups"
+                    / f"mv_hofki_{datetime.now():%Y-%m-%d_%H%M%S}.db"
+                )  # fmt: skip
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(DB_FILE, backup)
+                print(f"Sicherung: {backup}")
+                try:
+                    result = await apply_plan(db, plan, UPLOADS)
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    print("Fehler – Datenbank unverändert.", file=sys.stderr)
+                    raise
         if args.ersetzen:
             backup = (
                 ROOT
@@ -226,21 +269,24 @@ async def main() -> int:
                 raise
             print(f"Alte Upload-Dateien: {aside}")
 
-    (args.quelle / "IMPORT_BERICHT.md").write_text(
-        _report_md(plan, args.ersetzen, result), encoding="utf-8"
-    )
-    (args.quelle / "import_bericht.json").write_text(
+    applied = bool(args.ersetzen or (args.ergaenzen and args.ausfuehren))
+    suffix = f"_{args.ergaenzen}" if args.ergaenzen else ""
+    if args.ergaenzen and not applied:
+        suffix += "_probelauf"  # never overwrite the report of a real run
+    report = args.quelle / f"IMPORT_BERICHT{suffix}.md"
+    report.write_text(_report_md(plan, applied, result), encoding="utf-8")
+    (args.quelle / f"import_bericht{suffix}.json").write_text(
         json.dumps(_report_json(plan, result), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     print(
-        f"{'Importiert' if args.ersetzen else 'Probelauf'}: "
-        f"{len(plan.items)} Instrumente, {len(plan.musicians)} Musiker, "
+        f"{'Importiert' if applied else 'Probelauf'}: "
+        f"{len(plan.items)} Inventarstücke, {len(plan.musicians)} Musiker, "
         f"{len(plan.loans)} Leihen, {len(plan.invoices)} Belege, "
         f"{sum(len(i.photos) for i in plan.items)} Fotos; "
         f"{len(plan.warnings)} Hinweise, {len(plan.skipped)} nicht übernommen."
     )
-    print(f"Bericht: {args.quelle / 'IMPORT_BERICHT.md'}")
+    print(f"Bericht: {report}")
     return 0
 
 

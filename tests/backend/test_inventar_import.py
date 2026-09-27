@@ -250,3 +250,120 @@ def test_items_marked_not_to_import_are_skipped_with_their_loans(tmp_path):
     )
     assert plan.items == [] and plan.loans == []
     assert {"wo": "Tuba/TU 1", "text": "verkauft"} in plan.skipped
+
+
+def test_room_list_objects_get_category_prefix_quantity_and_owner(tmp_path):
+    _people(tmp_path, [])
+    _write(
+        tmp_path,
+        "Allgemeines_Inventar",
+        {
+            "musiker": [],
+            "leihen": [],
+            "objekte": [
+                {
+                    "id": "AI-001",
+                    "kategorie": "general_item",
+                    "bezeichnung": "Kühlschrank",
+                    "menge": 3,
+                    "eigentuemer": "MV Hofkirchen",
+                    "lagerort": "Stüberl/Küche",
+                    "quelle": "Allgemeines_Inventar/equipment#standort12/z2",
+                },
+                {
+                    "id": "AI-002",
+                    "kategorie": "clothing",
+                    "bezeichnung": "Mantel (braun)",
+                    "menge": 1,
+                    "kleidungstyp": "Mantel",
+                    "eigentuemer": "MV Hofkirchen",
+                },
+                {
+                    "id": "AI-003",
+                    "kategorie": "general_item",
+                    "bezeichnung": "Stehleiter",
+                    "eigentuemer": "Landesmusikschule",
+                },
+                {
+                    "id": "AI-004",
+                    "kategorie": "instrument",
+                    "bezeichnung": "Helikon",
+                    "instrumententyp": "Tuba",
+                },
+            ],
+            "nicht_uebernommen": [
+                {
+                    "quelle": "x#standort2/z4",
+                    "wie_geschrieben": "Volle Getränkekisten",
+                    "grund": "Verbrauchsmaterial",
+                },
+            ],
+        },
+    )
+
+    plan = build_plan(tmp_path, CODES, date(2026, 9, 27))
+
+    by_key = {i.key: i for i in plan.items}
+    fridge = by_key["Allgemeines_Inventar/AI-001"]
+    assert (fridge.display_nr, fridge.quantity, fridge.storage_location) == (
+        "A-001",
+        3,
+        "Stüberl/Küche",
+    )
+    coat = by_key["Allgemeines_Inventar/AI-002"]
+    assert (coat.category, coat.display_nr, coat.clothing_type) == (
+        "clothing",
+        "K-001",
+        "Mantel",
+    )
+    assert by_key["Allgemeines_Inventar/AI-003"].owner == "Landesmusikschule"
+    assert by_key["Allgemeines_Inventar/AI-004"].display_nr == "TU-001"
+    assert any("Getränkekisten" in s["text"] for s in plan.skipped)
+
+
+async def test_adding_a_folder_numbers_after_existing_and_is_repeatable(
+    tmp_path, db_session
+):
+    from mv_hofki.models.inventory_item import InventoryItem
+    from mv_hofki.services.inventar_import import apply_plan, restrict_to_folder
+
+    db_session.add(
+        InventoryItem(
+            category="general_item",
+            number_prefix="A",
+            inventory_nr=5,
+            label="Alt",
+            owner="MV Hofkirchen",
+        )
+    )
+    await db_session.commit()
+    _people(tmp_path, [])
+    _write(
+        tmp_path,
+        "Allgemeines_Inventar",
+        {
+            "musiker": [],
+            "leihen": [],
+            "objekte": [
+                {
+                    "id": "AI-001",
+                    "kategorie": "general_item",
+                    "bezeichnung": "Stehleiter",
+                    "quelle": "Allgemeines_Inventar/equipment#standort4/z4",
+                },
+            ],
+        },
+    )
+
+    plan = await restrict_to_folder(
+        db_session, build_plan(tmp_path, CODES), "Allgemeines_Inventar"
+    )
+    assert [i.display_nr for i in plan.items] == ["A-006"]
+    await apply_plan(db_session, plan, tmp_path / "uploads")
+    await db_session.commit()
+
+    again = await restrict_to_folder(
+        db_session, build_plan(tmp_path, CODES), "Allgemeines_Inventar"
+    )
+    assert again.items == []
+    assert any("bereits importiert" in s["text"] for s in again.skipped)
