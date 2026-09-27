@@ -27,6 +27,8 @@ from mv_hofki.schemas.inventory_item import (
     format_display_nr,
 )
 
+UPLOADS_ROOT = Path(settings.PROJECT_ROOT) / "data" / "uploads"
+
 # "TU-002", "tu 2", "TU2" -> ("TU", 2)
 _DISPLAY_NR_RE = re.compile(r"^\s*([^\W\d_]+)\s*-?\s*0*(\d+)\s*$")
 LOANABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
@@ -354,8 +356,7 @@ async def delete(session: AsyncSession, item_id: int) -> None:
     await session.commit()
 
     # Clean up upload directories
-    uploads_root = Path(settings.PROJECT_ROOT) / "data" / "uploads"
     for subdir in ("images", "invoices"):
-        item_dir = uploads_root / subdir / str(item_id)
+        item_dir = UPLOADS_ROOT / subdir / str(item_id)
         if item_dir.exists():
             shutil.rmtree(item_dir)

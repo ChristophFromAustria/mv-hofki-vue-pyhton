@@ -17,6 +17,24 @@ TestSessionFactory = async_sessionmaker(
 
 
 @pytest.fixture(autouse=True)
+def isolated_uploads(tmp_path, monkeypatch):
+    """Point every upload folder at tmp_path. Test databases start their ids at
+    1, so writing to data/uploads would overwrite or delete (item delete removes
+    data/uploads/images/<id>) the files of real inventory items."""
+    from mv_hofki.services import inventory_item, item_image, item_invoice
+    from mv_hofki.services.ai_import import archive, session
+
+    uploads = tmp_path / "uploads"
+    monkeypatch.setattr(inventory_item, "UPLOADS_ROOT", uploads)
+    monkeypatch.setattr(item_image, "UPLOAD_DIR", uploads / "images")
+    monkeypatch.setattr(item_invoice, "UPLOAD_DIR", uploads / "invoices")
+    monkeypatch.setattr(session, "UPLOADS_ROOT", uploads)
+    monkeypatch.setattr(session, "IMPORTS_ROOT", uploads / "imports")
+    monkeypatch.setattr(archive, "ARCHIVE_ROOT", uploads / "imports" / "archive")
+    return uploads
+
+
+@pytest.fixture(autouse=True)
 async def setup_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
