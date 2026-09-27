@@ -66,7 +66,7 @@ Außerdem werden Auswahlfelder, die heute still bei 200 Einträgen abschneiden, 
 
 `fastapi-filter[sqlalchemy]>=3,<4` kommt in `pyproject.toml`. Getestet ist 3.0.0 mit FastAPI 0.141, Pydantic 2.13 und SQLAlchemy 2.0.
 
-### `mv_hofki/api/listing.py` (neu)
+### `mv_hofki/filters/base.py` (neu)
 
 - **`ListFilter(fastapi_filter.contrib.sqlalchemy.Filter)`:** gemeinsame Basis mit diesen Konventionen:
   - **`Constants.columns: dict[str, ColumnElement]`:** ordnet einen öffentlichen Feldnamen einer Spalte zu, auch in verknüpften Tabellen. Ohne Eintrag gilt die Spalte gleichen Namens am `Constants.model`.
@@ -108,7 +108,7 @@ Alle Antworten haben die Form `{items, total, limit, offset}` (`PaginatedRespons
 - `InvoiceFilter`.
 - `category` wird zu `item_category`; `date_from` und `date_to` werden zu `date_issued__gte` und `date_issued__lte`.
 - `totals_by_currency` wird über alle gefilterten Rechnungen berechnet, nicht nur über die Seite.
-- Die Antwort bekommt zusätzlich `limit` und `offset`.
+- Die Antwort bekommt zusätzlich `limit` und `offset`, jede Rechnung zusätzlich `invoice_issuer`.
 
 **`GET /api/v1/loans`:**
 - `LoanFilter`.
@@ -126,8 +126,9 @@ Alle Antworten haben die Form `{items, total, limit, offset}` (`PaginatedRespons
 
 ```
 useListQuery({ endpoint, filters, defaultSort, pageSize = 50, baseParams, mapItem })
-→ { state, sort, items, total, loading, loadingMore, error, hasMore,
-    loadMore, reload, resetFilters, activeFilterCount }
+→ { state, sort, setSort, setFilter, defaults, activeFilterCount,
+    items, total, lastResponse, loading, loadingMore, error, hasMore,
+    loadMore, reload, resetFilters }
 ```
 
 **Parameter:**
@@ -151,7 +152,7 @@ useListQuery({ endpoint, filters, defaultSort, pageSize = 50, baseParams, mapIte
   - Es zeigt „50 von 157“, „Wird geladen …“ oder eine Schaltfläche „Weitere laden“. Die Schaltfläche ist ein Rückfall für Tastatur und falls der Observer fehlt.
   - Bei einem Fehler zeigt es den Text und „Erneut versuchen“.
 - **`FilterBar.vue`:** bekommt `defs` (Filterfelder) und `v-model` (Zustand).
-  - Feldtypen: `select`, `multiselect` (Checkbox-Liste in einem Aufklapp-Menü), `segmented` (Umschalter wie heute Aktiv/Inaktiv/Alle), `text`, `range` (von–bis), `daterange`.
+  - Feldtypen: `select`, `multiselect` (Checkbox-Liste in einem Aufklapp-Menü), `segmented` (Umschalter wie heute Aktiv/Inaktiv/Alle), `toggle` (eine Checkbox, z.B. „Ohne Kategorie“), `text`, `range` (von–bis), `daterange`.
   - Aktive Filter erscheinen als Chips mit Entfernen-Button, dazu „Filter zurücksetzen“.
   - Bis 640 px klappt die Leiste hinter eine Schaltfläche „Filter (n)“. Die Suche bleibt immer sichtbar.
 - **`SortSelect.vue`:** Auswahl des Sortierschlüssels plus Umschalter für die Richtung. Gedacht für Kartenansichten.
@@ -161,7 +162,7 @@ useListQuery({ endpoint, filters, defaultSort, pageSize = 50, baseParams, mapIte
   - In der Kartenansicht rendert `DataTable` ein `SortSelect`, wenn Spalten sortierbar sind.
 - **`RemotePicker.vue`:** Auswahl eines Eintrags per Suche mit Vorschlägen (Combobox-Muster wie `TagSelect`).
   - Die Vorschläge kommen von `fetchOptions(text)` und werden 250 ms verzögert geholt, höchstens 20.
-  - Props: `modelValue` (id oder null), `fetchOptions`, `label`, `placeholder`.
+  - Props: `modelValue` (id oder null), `fetchOptions`, `label`, `placeholder`, `selectedLabel` (Anzeigetext, wenn der Wert von außen gesetzt ist, z.B. aus der URL).
   - Emits: `update:modelValue`, `select(option)`.
   - Die gewählte Option erscheint als Text im Feld; ✕ leert die Auswahl.
 
