@@ -86,8 +86,9 @@ def render_pdf_bytes(
             page_width_pt = page.rect.width or 1
             zoom = max_width / page_width_pt
             pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
-            img: np.ndarray = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
-                pix.height, pix.width, pix.n
+            img: np.ndarray = np.reshape(
+                np.frombuffer(pix.samples, dtype=np.uint8),
+                (pix.height, pix.width, pix.n),
             )
             if pix.n == 3:
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)

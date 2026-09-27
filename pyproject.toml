@@ -74,3 +74,7 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = ["cv2.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pymupdf.*"]
+ignore_missing_imports = true
