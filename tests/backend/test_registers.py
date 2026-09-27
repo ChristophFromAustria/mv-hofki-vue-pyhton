@@ -87,10 +87,15 @@ async def test_musician_list_filters_active_and_register(client):
     def names(resp):
         return sorted(m["first_name"] for m in resp.json()["items"])
 
-    assert names(await client.get("/api/v1/musicians?active=true")) == ["Anna", "Bert"]
-    assert names(await client.get("/api/v1/musicians?active=false")) == ["Carl"]
+    assert names(await client.get("/api/v1/musicians?is_active=true")) == [
+        "Anna",
+        "Bert",
+    ]
+    assert names(await client.get("/api/v1/musicians?is_active=false")) == ["Carl"]
     assert names(await client.get("/api/v1/musicians")) == ["Anna", "Bert", "Carl"]
-    resp = await client.get(f"/api/v1/musicians?register_id={tuba['id']}&active=true")
+    resp = await client.get(
+        f"/api/v1/musicians?register_id__in={tuba['id']}&is_active=true"
+    )
     assert names(resp) == ["Anna"]
 
 

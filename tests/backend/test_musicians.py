@@ -55,3 +55,62 @@ async def test_update_musician(client, musician):
 async def test_delete_musician(client, musician):
     resp = await client.delete(f"/api/v1/musicians/{musician['id']}")
     assert resp.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# List filters, sorting and paging
+# ---------------------------------------------------------------------------
+
+
+async def _musician(client, first, last, **extra):
+    resp = await client.post(
+        "/api/v1/musicians", json={"first_name": first, "last_name": last, **extra}
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def test_filters_active_extern_and_registers(client):
+    flute = (await client.post("/api/v1/registers", json={"label": "Querflöte"})).json()
+    tuba = (await client.post("/api/v1/registers", json={"label": "Tuba"})).json()
+    a = await _musician(client, "Anna", "Maier", register_ids=[flute["id"]])
+    b = await _musician(
+        client, "Berta", "Huber", is_extern=True, register_ids=[tuba["id"]]
+    )
+    await _musician(client, "Carl", "Aigner", is_active=False)
+
+    async def names(query):
+        resp = await client.get(f"/api/v1/musicians?{query}")
+        assert resp.status_code == 200, resp.text
+        return [m["first_name"] for m in resp.json()["items"]]
+
+    assert await names("is_active=true") == ["Berta", "Anna"]
+    assert await names("") == ["Carl", "Berta", "Anna"]
+    assert await names("is_extern=true") == ["Berta"]
+    assert await names(f"register_id__in={flute['id']},{tuba['id']}") == [
+        "Berta",
+        "Anna",
+    ]
+    assert await names(f"register_id__in={flute['id']}&is_active=true") == ["Anna"]
+    assert a["id"] and b["id"]
+
+
+async def test_sort_keys_and_unknown_key(client):
+    await _musician(client, "Anna", "Maier")
+    await _musician(client, "Zoe", "Maier")
+    await _musician(client, "Carl", "Aigner")
+    resp = await client.get("/api/v1/musicians?order_by=-first_name")
+    assert [m["first_name"] for m in resp.json()["items"]] == ["Zoe", "Carl", "Anna"]
+    resp = await client.get("/api/v1/musicians?order_by=city")
+    assert resp.status_code == 422
+
+
+async def test_paging_with_equal_sort_values_has_no_gaps(client):
+    for i in range(60):
+        await _musician(client, f"Vorname{i:02d}", "Maier")
+    first = (await client.get("/api/v1/musicians?limit=50&offset=0")).json()
+    second = (await client.get("/api/v1/musicians?limit=50&offset=50")).json()
+    ids = [m["id"] for m in first["items"] + second["items"]]
+    assert first["total"] == 60
+    assert len(ids) == 60
+    assert len(set(ids)) == 60

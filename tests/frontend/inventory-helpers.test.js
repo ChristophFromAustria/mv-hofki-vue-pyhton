@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  buildMusicianQuery,
-  parseActiveFilter,
-  activeFilterQueryValue,
-  parseRegisterFilter,
-  registerLabels,
-} from "../../src/frontend/src/lib/musicians.js";
+import { registerLabels } from "../../src/frontend/src/lib/musicians.js";
 import {
   splitImages,
   scanTitle,
@@ -18,48 +12,6 @@ import {
 } from "../../src/frontend/src/lib/registers.js";
 
 describe("musician list query", () => {
-  it("includes active and register filters", () => {
-    const q = new URLSearchParams(
-      buildMusicianQuery({
-        active: "true",
-        registerId: "3",
-        search: " Tuba ",
-        limit: 50,
-        offset: 0,
-      }),
-    );
-    expect(q.get("active")).toBe("true");
-    expect(q.get("register_id")).toBe("3");
-    expect(q.get("search")).toBe("Tuba");
-    expect(q.get("limit")).toBe("50");
-    expect(q.get("offset")).toBe("0");
-  });
-
-  it("omits active for 'all' and empty register/search", () => {
-    const q = new URLSearchParams(
-      buildMusicianQuery({ active: "", registerId: "", search: "  " }),
-    );
-    expect(q.has("active")).toBe(false);
-    expect(q.has("register_id")).toBe(false);
-    expect(q.has("search")).toBe(false);
-  });
-
-  it("parses route query values defensively", () => {
-    expect(parseActiveFilter(undefined)).toBe("true");
-    expect(parseActiveFilter("false")).toBe("false");
-    expect(parseActiveFilter("alle")).toBe("");
-    expect(parseActiveFilter("bogus")).toBe("true");
-    expect(parseRegisterFilter("7")).toBe("7");
-    expect(parseRegisterFilter("x")).toBe("");
-    expect(parseRegisterFilter(undefined)).toBe("");
-  });
-
-  it("serialises the status filter for the URL", () => {
-    expect(activeFilterQueryValue("true")).toBeUndefined();
-    expect(activeFilterQueryValue("false")).toBe("false");
-    expect(activeFilterQueryValue("")).toBe("alle");
-  });
-
   it("formats register labels", () => {
     expect(
       registerLabels({ registers: [{ label: "Tuba" }, { label: "Horn" }] }),

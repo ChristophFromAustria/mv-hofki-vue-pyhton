@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { RouterLink } from "vue-router";
-import { get, put, post, postForm, API_PREFIX, BASE } from "../lib/api.js";
+import { get, getAll, put, post, postForm, API_PREFIX, BASE } from "../lib/api.js";
 import { sessionStatus, pageStatus } from "../lib/importStatus.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
@@ -65,10 +65,10 @@ async function loadReferenceData() {
   try {
     const [types, musicianData] = await Promise.all([
       get("/instrument-types"),
-      get("/musicians?limit=200"),
+      getAll("/musicians"),
     ]);
     instrumentTypes.value = types;
-    musicians.value = musicianData.items || musicianData;
+    musicians.value = musicianData;
   } catch {
     // The editor still works with the model's text; selects are just empty.
   }

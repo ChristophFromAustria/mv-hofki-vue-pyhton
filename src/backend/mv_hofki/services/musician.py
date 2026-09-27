@@ -3,57 +3,22 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.filters.base import PageParams, paginate
+from mv_hofki.filters.musician import MusicianFilter
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
-from mv_hofki.models.register import musician_registers
 from mv_hofki.schemas.musician import MusicianCreate, MusicianUpdate
 from mv_hofki.services import register as register_service
 
 
 async def get_list(
-    session: AsyncSession,
-    *,
-    limit: int = 50,
-    offset: int = 0,
-    search: str | None = None,
-    active: bool | None = None,
-    register_id: int | None = None,
+    session: AsyncSession, flt: MusicianFilter, page: PageParams
 ) -> tuple[list[Musician], int]:
-    query = select(Musician)
-    count_query = select(func.count()).select_from(Musician)
-
-    if active is not None:
-        query = query.where(Musician.is_active.is_(active))
-        count_query = count_query.where(Musician.is_active.is_(active))
-    if register_id is not None:
-        members = select(musician_registers.c.musician_id).where(
-            musician_registers.c.register_id == register_id
-        )
-        query = query.where(Musician.id.in_(members))
-        count_query = count_query.where(Musician.id.in_(members))
-
-    if search:
-        pattern = f"%{search}%"
-        search_filter = or_(
-            Musician.first_name.ilike(pattern),
-            Musician.last_name.ilike(pattern),
-            Musician.email.ilike(pattern),
-            Musician.city.ilike(pattern),
-        )
-        query = query.where(search_filter)
-        count_query = count_query.where(search_filter)
-
-    total = (await session.execute(count_query)).scalar_one()
-    query = (
-        query.order_by(Musician.last_name, Musician.first_name)
-        .limit(limit)
-        .offset(offset)
-    )
-    result = await session.execute(query)
-    return list(result.scalars().all()), total
+    query = flt.sort(flt.filter(select(Musician)))
+    return await paginate(session, query, page)
 
 
 async def get_by_id(session: AsyncSession, musician_id: int) -> Musician:
