@@ -178,3 +178,13 @@ async function remove() {
     />
   </div>
 </template>
+
+<style scoped>
+td.col-num,
+th.col-num {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+</style>
