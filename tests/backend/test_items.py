@@ -458,3 +458,134 @@ async def test_quantity_must_be_positive(client):
         json={"category": "general_item", "label": "Tisch", "quantity": 0},
     )
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Categories of general items
+# ---------------------------------------------------------------------------
+
+CATS = "/api/v1/general-item-categories"
+
+
+async def _cat(client, label):
+    resp = await client.post(CATS, json={"label": label})
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+async def _general(client, **extra):
+    resp = await client.post(
+        "/api/v1/items",
+        json={"category": "general_item", "label": "Stehtisch", **extra},
+    )
+    return resp
+
+
+async def test_general_item_without_categories_has_empty_list(client):
+    resp = await _general(client)
+    assert resp.status_code == 201
+    assert resp.json()["categories"] == []
+
+
+async def test_create_general_item_with_categories_sorted_and_deduped(client):
+    gastro = await _cat(client, "Gastro")
+    deko = await _cat(client, "deko")
+    resp = await _general(client, category_ids=[gastro, deko, gastro])
+    assert resp.status_code == 201
+    assert resp.json()["categories"] == [
+        {"id": deko, "label": "deko"},
+        {"id": gastro, "label": "Gastro"},
+    ]
+
+
+async def test_unknown_category_rejected_and_no_item_created(client):
+    resp = await _general(client, category_ids=[999])
+    assert resp.status_code == 422
+    assert "Unbekannte Kategorie" in resp.json()["detail"]
+    listing = await client.get("/api/v1/items?category=general_item")
+    assert listing.json()["total"] == 0
+
+
+async def test_update_replaces_keeps_or_clears_categories(client):
+    gastro = await _cat(client, "Gastro")
+    deko = await _cat(client, "Deko")
+    item = (await _general(client, category_ids=[gastro])).json()
+    url = f"/api/v1/items/{item['id']}"
+
+    resp = await client.put(url, json={"category_ids": [deko]})
+    assert [c["label"] for c in resp.json()["categories"]] == ["Deko"]
+
+    resp = await client.put(url, json={"notes": "wackelt"})
+    assert [c["label"] for c in resp.json()["categories"]] == ["Deko"]
+
+    resp = await client.put(url, json={"category_ids": []})
+    assert resp.json()["categories"] == []
+
+
+async def test_update_with_unknown_category_rejected_and_unchanged(client):
+    gastro = await _cat(client, "Gastro")
+    item = (await _general(client, category_ids=[gastro])).json()
+    resp = await client.put(
+        f"/api/v1/items/{item['id']}", json={"category_ids": [gastro, 999]}
+    )
+    assert resp.status_code == 422
+    detail = (await client.get(f"/api/v1/items/{item['id']}")).json()
+    assert [c["label"] for c in detail["categories"]] == ["Gastro"]
+
+
+async def test_category_ids_rejected_for_other_item_kinds(client, setup_refs):
+    gastro = await _cat(client, "Gastro")
+    resp = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "instrument",
+            "label": "Flöte",
+            **setup_refs,
+            "category_ids": [gastro],
+        },
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "Kategorien gibt es nur für allgemeine Gegenstände"
+
+
+async def test_list_contains_categories(client):
+    gastro = await _cat(client, "Gastro")
+    await _general(client, category_ids=[gastro])
+    await _general(client)
+    items = (await client.get("/api/v1/items?category=general_item")).json()["items"]
+    assert [i["categories"] for i in items] == [
+        [{"id": gastro, "label": "Gastro"}],
+        [],
+    ]
+
+
+async def test_item_count_and_delete_item_removes_links(client):
+    gastro = await _cat(client, "Gastro")
+    item = (await _general(client, category_ids=[gastro])).json()
+    assert (await client.get(f"{CATS}/{gastro}")).json()["item_count"] == 1
+    assert (await client.delete(f"/api/v1/items/{item['id']}")).status_code == 204
+    assert (await client.get(f"{CATS}/{gastro}")).json()["item_count"] == 0
+
+
+async def test_delete_category_removes_it_from_items(client):
+    gastro = await _cat(client, "Gastro")
+    item = (await _general(client, category_ids=[gastro])).json()
+    assert (await client.delete(f"{CATS}/{gastro}")).status_code == 204
+    detail = (await client.get(f"/api/v1/items/{item['id']}")).json()
+    assert detail["categories"] == []
+
+
+async def test_wipe_inventory_removes_category_links(client, db_session):
+    from sqlalchemy import func, select
+
+    from mv_hofki.models.general_item_category import general_item_category_links
+    from mv_hofki.services.inventar_import import wipe_inventory
+
+    gastro = await _cat(client, "Gastro")
+    await _general(client, category_ids=[gastro])
+    await wipe_inventory(db_session)
+    await db_session.commit()
+    count = await db_session.scalar(
+        select(func.count()).select_from(general_item_category_links)
+    )
+    assert count == 0

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.models.general_item_category import (
@@ -99,3 +99,64 @@ async def delete(session: AsyncSession, category_id: int) -> None:
     await session.execute(sa_delete(links).where(links.c.category_id == category_id))
     await session.delete(obj)
     await session.commit()
+
+
+async def check_category_ids(session: AsyncSession, ids: list[int]) -> list[int]:
+    """Deduplicated, sorted ids; 422 if any id is unknown."""
+    wanted = sorted(set(ids))
+    if not wanted:
+        return []
+    found = set(
+        (
+            await session.execute(
+                select(GeneralItemCategory.id).where(GeneralItemCategory.id.in_(wanted))
+            )
+        ).scalars()
+    )
+    missing = [i for i in wanted if i not in found]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unbekannte Kategorie: {', '.join(str(i) for i in missing)}",
+        )
+    return wanted
+
+
+async def set_item_categories(
+    session: AsyncSession, item_id: int, ids: list[int]
+) -> None:
+    """Replace an item's categories. ``ids`` must come from check_category_ids."""
+    await session.execute(sa_delete(links).where(links.c.item_id == item_id))
+    if ids:
+        await session.execute(
+            insert(links), [{"item_id": item_id, "category_id": i} for i in ids]
+        )
+
+
+async def categories_for_items(
+    session: AsyncSession, item_ids: list[int]
+) -> dict[int, list[dict]]:
+    """{item_id: [{id, label}, ...]} sorted by label, one query for all items."""
+    if not item_ids:
+        return {}
+    result = await session.execute(
+        select(links.c.item_id, GeneralItemCategory.id, GeneralItemCategory.label)
+        .join(GeneralItemCategory, GeneralItemCategory.id == links.c.category_id)
+        .where(links.c.item_id.in_(item_ids))
+    )
+    out: dict[int, list[dict]] = {}
+    for item_id, cat_id, label in result.all():
+        out.setdefault(item_id, []).append({"id": cat_id, "label": label})
+    for cats in out.values():
+        cats.sort(key=lambda c: _sort_key(c["label"]))
+    return out
+
+
+async def delete_links_for_items(
+    session: AsyncSession, item_ids: list[int] | None
+) -> None:
+    """Remove the category links of the given items (all links if None)."""
+    stmt = sa_delete(links)
+    if item_ids is not None:
+        stmt = stmt.where(links.c.item_id.in_(item_ids))
+    await session.execute(stmt)

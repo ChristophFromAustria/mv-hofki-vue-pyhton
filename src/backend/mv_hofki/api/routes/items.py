@@ -88,6 +88,12 @@ async def create_item(body: dict[str, Any], db: AsyncSession = Depends(get_db)):
     if not category or category not in _CREATE_SCHEMAS:
         raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {category}")
 
+    if "category_ids" in body and category != "general_item":
+        raise HTTPException(
+            status_code=422,
+            detail="Kategorien gibt es nur für allgemeine Gegenstände",
+        )
+
     # Validate with category-specific schema
     schema_cls = _CREATE_SCHEMAS[category]
     try:
@@ -114,9 +120,18 @@ async def get_item(item_id: int, db: AsyncSession = Depends(get_db)):
 async def update_item(
     item_id: int, body: dict[str, Any], db: AsyncSession = Depends(get_db)
 ):
+    from fastapi import HTTPException
+
     # First fetch item to know its category
     current = await item_service.get_by_id(db, item_id)
     category = current["category"]
+
+    if "category_ids" in body and category != "general_item":
+        raise HTTPException(
+            status_code=422,
+            detail="Kategorien gibt es nur für allgemeine Gegenstände",
+        )
+
     schema_cls = _UPDATE_SCHEMAS.get(category)
     if schema_cls:
         validated = schema_cls(**body)

@@ -26,6 +26,7 @@ from mv_hofki.schemas.inventory_item import (
     ActiveLoanInfo,
     format_display_nr,
 )
+from mv_hofki.services import general_item_category as category_service
 
 UPLOADS_ROOT = Path(settings.PROJECT_ROOT) / "data" / "uploads"
 
@@ -116,9 +117,14 @@ async def _enrich(session: AsyncSession, items: list[InventoryItem]) -> None:
     for img in img_result.scalars():
         img_map[img.item_id] = f"/uploads/images/{img.item_id}/{img.filename}"
 
+    general_ids = [i.id for i in items if i.category == "general_item"]
+    cat_map = await category_service.categories_for_items(session, general_ids)
+
     for item in items:
         item.active_loan = loan_map.get(item.id)  # type: ignore[attr-defined]
         item.profile_image_url = img_map.get(item.id)  # type: ignore[attr-defined]
+        if item.category == "general_item":
+            item.categories = cat_map.get(item.id, [])  # type: ignore[attr-defined]
 
 
 async def _get_detail(session: AsyncSession, item_id: int, category: str) -> Any:
@@ -155,6 +161,8 @@ def _build_read_dict(item: InventoryItem, detail: Any) -> dict[str, Any]:
         "active_loan": getattr(item, "active_loan", None),
         "profile_image_url": getattr(item, "profile_image_url", None),
     }
+    if item.category == "general_item":
+        d["categories"] = getattr(item, "categories", [])
     if detail:
         _, detail_field_names = CATEGORY_DETAIL_MAP[item.category]
         for field_name in detail_field_names:
@@ -197,6 +205,10 @@ async def create(session: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
     if category not in CATEGORY_DETAIL_MAP:
         raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {category}")
 
+    category_ids = data.pop("category_ids", None)
+    if category_ids:
+        category_ids = await category_service.check_category_ids(session, category_ids)
+
     base_fields, detail_fields = _split_fields(data, category)
 
     if category == "instrument":
@@ -217,6 +229,9 @@ async def create(session: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
     if detail_model is not None:
         detail = detail_model(item_id=item.id, **detail_fields)
         session.add(detail)
+
+    if category_ids:
+        await category_service.set_item_categories(session, item.id, category_ids)
     await session.commit()
 
     await session.refresh(item)
@@ -311,6 +326,10 @@ async def update(
     if not item:
         raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
 
+    category_ids = data.pop("category_ids", None)
+    if category_ids is not None:
+        category_ids = await category_service.check_category_ids(session, category_ids)
+
     base_fields, detail_fields = _split_fields(data, item.category)
 
     # A new instrument type with another short code moves the item into that
@@ -338,6 +357,9 @@ async def update(
                 for key, value in detail_fields.items():
                     setattr(detail, key, value)
 
+    if category_ids is not None:
+        await category_service.set_item_categories(session, item.id, category_ids)
+
     await session.commit()
     await session.refresh(item)
     detail = await _get_detail(session, item.id, item.category)
@@ -353,6 +375,7 @@ async def delete(session: AsyncSession, item_id: int) -> None:
     if not item:
         raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
 
+    await category_service.delete_links_for_items(session, [item_id])
     await session.delete(item)
     await session.commit()
 

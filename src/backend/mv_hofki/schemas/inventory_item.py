@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from mv_hofki.schemas.clothing_type import ClothingTypeRead
 from mv_hofki.schemas.currency import CurrencyRead
+from mv_hofki.schemas.general_item_category import GeneralItemCategoryRef
 from mv_hofki.schemas.instrument_type import InstrumentTypeRead
 from mv_hofki.schemas.sheet_music_genre import SheetMusicGenreRead
 
@@ -83,6 +84,7 @@ class SheetMusicItemCreate(ItemCreateBase):
 
 class GeneralItemCreate(ItemCreateBase):
     category: str = "general_item"
+    category_ids: list[int] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +127,7 @@ class SheetMusicItemUpdate(ItemUpdateBase):
 
 
 class GeneralItemUpdate(ItemUpdateBase):
-    pass
+    category_ids: list[int] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -182,4 +184,4 @@ class SheetMusicItemRead(ItemRead):
 
 
 class GeneralItemRead(ItemRead):
-    pass
+    categories: list[GeneralItemCategoryRef] = []

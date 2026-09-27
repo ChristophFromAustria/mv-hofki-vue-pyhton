@@ -50,6 +50,7 @@ from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
 from mv_hofki.models.register import Register, musician_registers
 from mv_hofki.schemas.inventory_item import CATEGORY_PREFIXES, format_display_nr
+from mv_hofki.services.general_item_category import delete_links_for_items
 
 CLUB_OWNER = "MV Hofkirchen"
 UNCLEAR_OWNER = "Eigentum unklar"
@@ -1112,6 +1113,7 @@ async def wipe_inventory(db: AsyncSession) -> dict[str, int]:
     rows. Upload files are the caller's business (move them aside first)."""
     counts = {}
     await db.execute(delete(musician_registers))
+    await delete_links_for_items(db, None)
     for model in (
         Loan,
         ItemImage,
