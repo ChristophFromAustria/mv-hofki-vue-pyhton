@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 
 const props = defineProps({
   images: { type: Array, default: () => [] },
@@ -13,6 +13,15 @@ const currentIndex = ref(0);
 const showModal = ref(false);
 
 const current = computed(() => props.images[currentIndex.value]);
+
+// Keep the index valid when images are added or removed.
+watch(
+  () => props.images.length,
+  (len) => {
+    if (currentIndex.value >= len) currentIndex.value = Math.max(0, len - 1);
+    if (!len) showModal.value = false;
+  },
+);
 
 function prev() {
   if (currentIndex.value > 0) currentIndex.value--;
@@ -67,11 +76,21 @@ function onFileSelected(e) {
     <!-- Gallery with images -->
     <template v-else>
       <div class="gallery-main" @click="openModal">
-        <button v-if="images.length > 1" class="gallery-nav gallery-nav-left" @click.stop="prev">
+        <button
+          v-if="images.length > 1"
+          class="gallery-nav gallery-nav-left"
+          aria-label="Vorheriges Bild"
+          @click.stop="prev"
+        >
           &#8249;
         </button>
         <img :src="current.url" :alt="`Bild ${currentIndex + 1}`" class="gallery-img" />
-        <button v-if="images.length > 1" class="gallery-nav gallery-nav-right" @click.stop="next">
+        <button
+          v-if="images.length > 1"
+          class="gallery-nav gallery-nav-right"
+          aria-label="Nächstes Bild"
+          @click.stop="next"
+        >
           &#8250;
         </button>
         <div class="gallery-counter">{{ currentIndex + 1 }} / {{ images.length }}</div>
@@ -112,12 +131,24 @@ function onFileSelected(e) {
     <!-- Modal -->
     <div v-if="showModal" class="overlay" @click="showModal = false">
       <div class="gallery-modal" @click.stop>
-        <button class="gallery-modal-close" @click="showModal = false">&times;</button>
-        <button v-if="images.length > 1" class="gallery-modal-nav left" @click="prev">
+        <button class="gallery-modal-close" aria-label="Schließen" @click="showModal = false">
+          &times;
+        </button>
+        <button
+          v-if="images.length > 1"
+          class="gallery-modal-nav left"
+          aria-label="Vorheriges Bild"
+          @click="prev"
+        >
           &#8249;
         </button>
         <img :src="current.url" :alt="`Bild ${currentIndex + 1}`" />
-        <button v-if="images.length > 1" class="gallery-modal-nav right" @click="next">
+        <button
+          v-if="images.length > 1"
+          class="gallery-modal-nav right"
+          aria-label="Nächstes Bild"
+          @click="next"
+        >
           &#8250;
         </button>
       </div>

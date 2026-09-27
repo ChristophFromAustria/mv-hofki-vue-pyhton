@@ -3,6 +3,7 @@ import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { get, del } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
+import { registerLabels } from "../lib/musicians.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 
 const route = useRoute();
@@ -10,27 +11,46 @@ const router = useRouter();
 const musician = ref(null);
 const loans = ref([]);
 const showDelete = ref(false);
+const loadError = ref("");
+const deleteError = ref("");
 
 onMounted(async () => {
-  musician.value = await get(`/musicians/${route.params.id}`);
-  loans.value = await get(`/loans?musician_id=${route.params.id}`);
+  try {
+    const [m, l] = await Promise.all([
+      get(`/musicians/${route.params.id}`),
+      get(`/loans?musician_id=${route.params.id}`),
+    ]);
+    musician.value = m;
+    loans.value = l;
+  } catch (e) {
+    loadError.value = e.message;
+  }
 });
 
 async function remove() {
+  deleteError.value = "";
   try {
     await del(`/musicians/${route.params.id}`);
     router.push("/musiker");
   } catch (e) {
-    alert("Fehler: " + e.message);
+    deleteError.value = "Löschen fehlgeschlagen: " + e.message;
     showDelete.value = false;
   }
 }
 </script>
 
 <template>
-  <div v-if="musician">
+  <div v-if="loadError" class="alert alert-danger" role="alert">
+    Musiker konnte nicht geladen werden: {{ loadError }}
+  </div>
+  <div v-else-if="musician">
     <div class="page-header">
-      <h1>{{ musician.first_name }} {{ musician.last_name }}</h1>
+      <h1>
+        {{ musician.first_name }} {{ musician.last_name }}
+        <span v-if="musician.is_active === false" class="badge badge-gray title-badge">
+          inaktiv
+        </span>
+      </h1>
       <div class="cluster">
         <router-link :to="`/musiker/${musician.id}/bearbeiten`" class="btn">
           Bearbeiten
@@ -38,6 +58,30 @@ async function remove() {
         <button class="btn-danger" @click="showDelete = true">Löschen</button>
       </div>
     </div>
+
+    <div v-if="deleteError" class="alert alert-danger page-alert" role="alert">
+      {{ deleteError }}
+    </div>
+
+    <section class="page-section">
+      <div class="section-header">
+        <h2>Mitgliedschaft</h2>
+      </div>
+      <dl class="detail-grid">
+        <dt>Status</dt>
+        <dd>
+          <span :class="musician.is_active === false ? 'badge badge-gray' : 'badge badge-green'">
+            {{ musician.is_active === false ? "Inaktiv" : "Aktiv" }}
+          </span>
+        </dd>
+        <dt>Register</dt>
+        <dd>{{ registerLabels(musician) }}</dd>
+        <dt>Extern</dt>
+        <dd>{{ musician.is_extern ? "Ja" : "Nein" }}</dd>
+        <dt>Notizen</dt>
+        <dd class="text-pre-line">{{ musician.notes || "—" }}</dd>
+      </dl>
+    </section>
 
     <section class="page-section">
       <div class="section-header">
@@ -58,10 +102,6 @@ async function remove() {
         <dd>
           {{ [musician.postal_code, musician.city].filter(Boolean).join(" ") || "—" }}
         </dd>
-        <dt>Extern</dt>
-        <dd>{{ musician.is_extern ? "Ja" : "Nein" }}</dd>
-        <dt>Notizen</dt>
-        <dd>{{ musician.notes || "—" }}</dd>
       </dl>
     </section>
 
@@ -112,3 +152,14 @@ async function remove() {
     />
   </div>
 </template>
+
+<style scoped>
+.title-badge {
+  vertical-align: middle;
+  margin-left: var(--space-2);
+}
+
+.page-alert {
+  margin-bottom: var(--space-4);
+}
+</style>

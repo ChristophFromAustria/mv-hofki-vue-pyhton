@@ -107,6 +107,11 @@ const routes = [
     component: () => import("./pages/InstrumentTypeListPage.vue"),
   },
   {
+    path: "/einstellungen/register",
+    name: "registers",
+    component: () => import("./pages/RegisterListPage.vue"),
+  },
+  {
     path: "/einstellungen/kleidungstypen",
     name: "clothing-types",
     component: () => import("./pages/ClothingTypeListPage.vue"),

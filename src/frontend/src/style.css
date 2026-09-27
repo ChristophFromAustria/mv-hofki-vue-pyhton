@@ -289,6 +289,48 @@ input[type="range"] {
   accent-color: var(--color-primary);
 }
 
+/* Checkbox options and groups — whole row is the touch target */
+.checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.checkbox-option input[type="checkbox"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.checkbox-group {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  margin: 0 0 var(--space-4);
+  min-width: 0;
+}
+
+.checkbox-group legend {
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0 var(--space-1);
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0 var(--space-4);
+}
+
+/* Multi-line free text (notes) keeps its line breaks */
+.text-pre-line {
+  white-space: pre-line;
+}
+
 /* Tables */
 table {
   width: 100%;

@@ -5,6 +5,8 @@ import { get, post, put, del } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import ImageGallery from "../components/ImageGallery.vue";
+import ScanDocuments from "../components/ScanDocuments.vue";
+import { splitImages } from "../lib/images.js";
 import InvoiceModal from "../components/InvoiceModal.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
 
@@ -37,6 +39,9 @@ const returnDate = ref("");
 const showInvoiceModal = ref(false);
 const selectedInvoice = ref(null);
 
+const imageGroups = computed(() => splitImages(images.value));
+const imageError = ref("");
+
 const activeLoan = computed(() => loans.value.find((l) => !l.end_date));
 const defaultCurrencyId = computed(() => {
   if (item.value?.currency_id) return item.value.currency_id;
@@ -66,13 +71,23 @@ async function uploadImage(file) {
 }
 
 async function setProfile(imageId) {
-  await put(`/items/${props.id}/images/${imageId}/profile`);
-  await reload();
+  imageError.value = "";
+  try {
+    await put(`/items/${props.id}/images/${imageId}/profile`);
+    await reload();
+  } catch (e) {
+    imageError.value = "Profilbild konnte nicht gesetzt werden: " + e.message;
+  }
 }
 
 async function deleteImage(imageId) {
-  await del(`/items/${props.id}/images/${imageId}`);
-  await reload();
+  imageError.value = "";
+  try {
+    await del(`/items/${props.id}/images/${imageId}`);
+    await reload();
+  } catch (e) {
+    imageError.value = "Bild konnte nicht gelöscht werden: " + e.message;
+  }
 }
 
 onMounted(async () => {
@@ -213,15 +228,33 @@ async function onEditSave() {
       </div>
     </div>
 
-    <section class="page-section">
+    <section class="page-section" aria-labelledby="photos-heading">
+      <div v-if="imageGroups.scans.length" class="section-header">
+        <h2 id="photos-heading">Fotos</h2>
+      </div>
+      <h2 v-else id="photos-heading" class="sr-only">Fotos</h2>
+      <div v-if="imageError" class="alert alert-danger image-alert" role="alert">
+        {{ imageError }}
+      </div>
       <ImageGallery
-        :images="images"
+        :images="imageGroups.photos"
         :can-upload="true"
         :can-manage="true"
         @upload="uploadImage"
         @set-profile="setProfile"
         @delete="deleteImage"
       />
+    </section>
+
+    <section v-if="imageGroups.scans.length" class="page-section" aria-labelledby="scans-heading">
+      <div class="section-header">
+        <h2 id="scans-heading">Unterlagen (Scans)</h2>
+        <span class="text-muted"
+          >{{ imageGroups.scans.length }}
+          {{ imageGroups.scans.length === 1 ? "Seite" : "Seiten" }}</span
+        >
+      </div>
+      <ScanDocuments :scans="imageGroups.scans" :can-manage="true" @delete="deleteImage" />
     </section>
 
     <section class="page-section">
@@ -247,7 +280,7 @@ async function onEditSave() {
           <dt>Behältnis</dt>
           <dd>{{ item.container || "—" }}</dd>
           <dt>Besonderheiten</dt>
-          <dd>{{ item.particularities || "—" }}</dd>
+          <dd class="text-pre-line">{{ item.particularities || "—" }}</dd>
         </template>
 
         <!-- Clothing-specific -->
@@ -296,7 +329,7 @@ async function onEditSave() {
           }}
         </dd>
         <dt>Notizen</dt>
-        <dd>{{ item.notes || "—" }}</dd>
+        <dd class="text-pre-line">{{ item.notes || "—" }}</dd>
       </dl>
     </section>
 
@@ -475,3 +508,9 @@ async function onEditSave() {
     />
   </div>
 </template>
+
+<style scoped>
+.image-alert {
+  margin-bottom: var(--space-3);
+}
+</style>

@@ -368,7 +368,7 @@ async function save() {
           </div>
           <div class="form-group">
             <label>Notizen</label>
-            <textarea v-model="form.notes" rows="3" />
+            <textarea v-model="form.notes" rows="5" />
           </div>
         </div>
 

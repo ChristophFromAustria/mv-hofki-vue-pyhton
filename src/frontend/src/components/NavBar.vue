@@ -70,6 +70,7 @@ onMounted(() => {
             <RouterLink to="/einstellungen/instrumententypen" @click="closeMenu">
               Instrumententypen
             </RouterLink>
+            <RouterLink to="/einstellungen/register" @click="closeMenu">Register</RouterLink>
             <RouterLink to="/einstellungen/kleidungstypen" @click="closeMenu">
               Kleidungstypen
             </RouterLink>
