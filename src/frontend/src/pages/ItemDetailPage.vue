@@ -7,6 +7,11 @@ import ConfirmDialog from "../components/ConfirmDialog.vue";
 import CategoryChips from "../components/CategoryChips.vue";
 import ImageGallery from "../components/ImageGallery.vue";
 import ScanDocuments from "../components/ScanDocuments.vue";
+import CollapsibleSection from "../components/CollapsibleSection.vue";
+import InlineField from "../components/InlineField.vue";
+import { useInlineEdit } from "../composables/useInlineEdit.js";
+import { itemFieldDefs, renumberPrefix } from "../lib/itemFields.js";
+import { formatDate, formatMoney } from "../lib/format.js";
 import { splitImages } from "../lib/images.js";
 import { quantityDetail } from "../lib/quantity.js";
 import InvoiceModal from "../components/InvoiceModal.vue";
@@ -26,6 +31,9 @@ const loans = ref([]);
 const images = ref([]);
 const currencies = ref([]);
 const invoices = ref([]);
+const types = ref([]);
+const genres = ref([]);
+const categories = ref([]);
 const showDelete = ref(false);
 const showEditModal = ref(false);
 
@@ -51,6 +59,83 @@ const defaultCurrencyId = computed(() => {
   const euro = currencies.value.find((c) => c.abbreviation === "€");
   return euro?.id || currencies.value[0]?.id || null;
 });
+
+// Master-data fields, per category, for the collapsible "Stammdaten" section.
+const fields = computed(() =>
+  itemFieldDefs(props.category, {
+    types: types.value,
+    genres: genres.value,
+    categories: categories.value,
+    currencies: currencies.value,
+  }),
+);
+
+const inline = useInlineEdit(async (patch) => {
+  item.value = await put(`/items/${props.id}`, patch);
+});
+const pendingRenumber = ref(null); // { key, patch, from, to }
+
+function saveField(field, value) {
+  const patch = field.toPatch(value, item.value);
+  if (field.key === "type") {
+    const next = renumberPrefix(item.value, value, types.value);
+    if (next) {
+      pendingRenumber.value = {
+        key: field.key,
+        patch,
+        from: item.value.display_nr,
+        to: `${next}-…`,
+      };
+      return;
+    }
+  }
+  inline.commit(field.key, patch);
+}
+
+function confirmRenumber() {
+  const p = pendingRenumber.value;
+  pendingRenumber.value = null;
+  inline.commit(p.key, p.patch);
+}
+
+async function createCategory(label) {
+  const created = await post("/general-item-categories", { label });
+  categories.value = [...categories.value, created];
+  return created;
+}
+
+// Short info shown next to each section title while it is collapsed.
+const photoSummary = computed(() => {
+  const n = imageGroups.value.photos.length;
+  return n ? `${n} ${n === 1 ? "Foto" : "Fotos"}` : "Keine Fotos";
+});
+const scanSummary = computed(() => {
+  const n = imageGroups.value.scans.length;
+  return `${n} ${n === 1 ? "Seite" : "Seiten"}`;
+});
+const masterSummary = computed(() =>
+  [item.value?.display_nr, item.value?.manufacturer].filter(Boolean).join(" · "),
+);
+const loanSummary = computed(() =>
+  activeLoan.value
+    ? `an ${activeLoan.value.musician.first_name} ${activeLoan.value.musician.last_name} seit ${formatDate(activeLoan.value.start_date)}`
+    : "verfügbar",
+);
+const invoiceSummary = computed(() => {
+  if (!invoices.value.length) return "keine";
+  const sums = {};
+  for (const inv of invoices.value) {
+    const abbr = inv.currency?.abbreviation || "";
+    sums[abbr] = (sums[abbr] || 0) + Number(inv.amount || 0);
+  }
+  const totals = Object.entries(sums)
+    .map(([abbr, sum]) => formatMoney(sum, abbr))
+    .join(" · ");
+  return `${invoices.value.length} · ${totals}`;
+});
+const historySummary = computed(
+  () => `${loans.value.length} ${loans.value.length === 1 ? "Eintrag" : "Einträge"}`,
+);
 
 async function reload() {
   item.value = await get(`/items/${props.id}`);
@@ -95,6 +180,15 @@ async function deleteImage(imageId) {
 
 onMounted(async () => {
   currencies.value = await get("/currencies");
+  if (props.category === "instrument") {
+    types.value = await get("/instrument-types").catch(() => []);
+  } else if (props.category === "clothing") {
+    types.value = await get("/clothing-types").catch(() => []);
+  } else if (props.category === "sheet_music") {
+    genres.value = await get("/sheet-music-genres").catch(() => []);
+  } else if (props.category === "general_item") {
+    categories.value = await get("/general-item-categories").catch(() => []);
+  }
   await reload();
 });
 
@@ -223,11 +317,7 @@ async function onEditSave() {
       </div>
     </div>
 
-    <section class="page-section" aria-labelledby="photos-heading">
-      <div v-if="imageGroups.scans.length" class="section-header">
-        <h2 id="photos-heading">Fotos</h2>
-      </div>
-      <h2 v-else id="photos-heading" class="sr-only">Fotos</h2>
+    <CollapsibleSection :scope="category" section="photos" title="Fotos" :summary="photoSummary">
       <div v-if="imageError" class="alert alert-danger image-alert" role="alert">
         {{ imageError }}
       </div>
@@ -239,105 +329,64 @@ async function onEditSave() {
         @set-profile="setProfile"
         @delete="deleteImage"
       />
-    </section>
+    </CollapsibleSection>
 
-    <section v-if="imageGroups.scans.length" class="page-section" aria-labelledby="scans-heading">
-      <div class="section-header">
-        <h2 id="scans-heading">Unterlagen (Scans)</h2>
-        <span class="text-muted"
-          >{{ imageGroups.scans.length }}
-          {{ imageGroups.scans.length === 1 ? "Seite" : "Seiten" }}</span
-        >
-      </div>
+    <CollapsibleSection
+      v-if="imageGroups.scans.length"
+      :scope="category"
+      section="scans"
+      title="Unterlagen (Scans)"
+      :summary="scanSummary"
+    >
       <ScanDocuments :scans="imageGroups.scans" :can-manage="true" @delete="deleteImage" />
-    </section>
+    </CollapsibleSection>
 
-    <section class="page-section">
-      <div class="section-header">
-        <h2>Stammdaten</h2>
-      </div>
+    <CollapsibleSection
+      :scope="category"
+      section="master"
+      title="Stammdaten"
+      :summary="masterSummary"
+    >
       <dl class="detail-grid">
         <dt>Inventarnummer</dt>
         <dd>{{ item.display_nr }}</dd>
-        <dt>Bezeichnung</dt>
-        <dd>{{ item.label }}</dd>
-        <dt>Menge</dt>
-        <dd>{{ quantityDetail(item) }}</dd>
-
-        <!-- Instrument-specific -->
-        <template v-if="category === 'instrument'">
-          <dt>Seriennummer</dt>
-          <dd>{{ item.serial_nr || "—" }}</dd>
-          <dt>Hersteller</dt>
-          <dd>{{ item.manufacturer || "—" }}</dd>
-          <dt>Baujahr</dt>
-          <dd>{{ item.construction_year || "—" }}</dd>
-          <dt>Händler</dt>
-          <dd>{{ item.distributor || "—" }}</dd>
-          <dt>Behältnis</dt>
-          <dd>{{ item.container || "—" }}</dd>
-          <dt>Besonderheiten</dt>
-          <dd class="text-pre-line">{{ item.particularities || "—" }}</dd>
-        </template>
-
-        <!-- Clothing-specific -->
-        <template v-if="category === 'clothing'">
-          <dt>Typ</dt>
-          <dd>{{ item.clothing_type?.label || "—" }}</dd>
-          <dt>Größe</dt>
-          <dd>{{ item.size || "—" }}</dd>
-          <dt>Geschlecht</dt>
-          <dd>{{ item.gender || "—" }}</dd>
-        </template>
-
-        <!-- Sheet music-specific -->
-        <template v-if="category === 'sheet_music'">
-          <dt>Komponist</dt>
-          <dd>{{ item.composer || "—" }}</dd>
-          <dt>Arrangeur</dt>
-          <dd>{{ item.arranger || "—" }}</dd>
-          <dt>Schwierigkeitsgrad</dt>
-          <dd>{{ item.difficulty || "—" }}</dd>
-          <dt>Gattung</dt>
-          <dd>{{ item.genre?.label || "—" }}</dd>
-          <dt>Lagerort</dt>
-          <dd>{{ item.storage_location || "—" }}</dd>
-        </template>
-
-        <!-- General item-specific -->
-        <template v-if="category === 'general_item'">
-          <dt>Kategorien</dt>
-          <dd><CategoryChips :categories="item.categories || []" /></dd>
-          <dt>Lagerort</dt>
-          <dd>{{ item.storage_location || "—" }}</dd>
-        </template>
-
-        <!-- Common fields -->
-        <dt>Hersteller</dt>
-        <dd>{{ item.manufacturer || "—" }}</dd>
-        <dt>Eigentümer</dt>
-        <dd>{{ item.owner }}</dd>
-        <dt>Anschaffungsdatum</dt>
-        <dd>{{ item.acquisition_date || "—" }}</dd>
-        <dt>Anschaffungskosten</dt>
-        <dd>
-          {{
-            item.acquisition_cost != null
-              ? `${item.acquisition_cost} ${item.currency?.abbreviation || ""}`
-              : "—"
-          }}
-        </dd>
-        <dt>Notizen</dt>
-        <dd class="text-pre-line">{{ item.notes || "—" }}</dd>
+        <InlineField
+          v-for="f in fields"
+          :key="f.key"
+          :field-key="f.key"
+          :label="f.label"
+          :type="f.type"
+          :value="f.value(item)"
+          :options="f.options || []"
+          :required="!!f.required"
+          :min="f.min ?? null"
+          :max="f.max ?? null"
+          :currencies="currencies"
+          :create-option="f.type === 'tags' ? createCategory : null"
+          :editing="inline.editingKey.value === f.key"
+          :saving="inline.savingKey.value === f.key"
+          :saved="inline.savedKey.value === f.key"
+          :error="inline.editingKey.value === f.key ? inline.error.value : ''"
+          @start="inline.start(f.key)"
+          @cancel="inline.cancel()"
+          @save="(v) => saveField(f, v)"
+        >
+          <template v-if="f.key === 'quantity'" #display>{{ quantityDetail(item) }}</template>
+          <template v-else-if="f.key === 'categories'" #display>
+            <CategoryChips :categories="item.categories || []" />
+          </template>
+        </InlineField>
       </dl>
-    </section>
+    </CollapsibleSection>
 
     <!-- Loan management section -->
-    <section v-if="cat.hasLoans" class="page-section">
-      <div class="section-header">
-        <h2>Ausleihe</h2>
-      </div>
-
+    <CollapsibleSection
+      v-if="cat.hasLoans"
+      :scope="category"
+      section="loan"
+      title="Ausleihe"
+      :summary="loanSummary"
+    >
       <!-- Currently loaned out -->
       <div v-if="activeLoan">
         <p class="section-lead">
@@ -390,14 +439,19 @@ async function onEditSave() {
           <button type="submit" class="btn-primary" :disabled="loanSaving">Ausleihen</button>
         </form>
       </div>
-    </section>
+    </CollapsibleSection>
 
     <!-- Invoices section -->
-    <section v-if="cat.hasInvoices" class="page-section">
-      <div class="section-header">
-        <h2>Rechnungen</h2>
+    <CollapsibleSection
+      v-if="cat.hasInvoices"
+      :scope="category"
+      section="invoices"
+      title="Rechnungen"
+      :summary="invoiceSummary"
+    >
+      <template #actions>
         <button class="btn-sm" @click="newInvoice">Neue Rechnung</button>
-      </div>
+      </template>
 
       <p v-if="!invoices.length" class="empty-note">Keine Rechnungen vorhanden.</p>
 
@@ -431,13 +485,16 @@ async function onEditSave() {
           </tbody>
         </table>
       </div>
-    </section>
+    </CollapsibleSection>
 
     <!-- Loan history -->
-    <section v-if="cat.hasLoans && loans.length" class="page-section">
-      <div class="section-header">
-        <h2>Leihhistorie</h2>
-      </div>
+    <CollapsibleSection
+      v-if="cat.hasLoans && loans.length"
+      :scope="category"
+      section="history"
+      title="Leihhistorie"
+      :summary="historySummary"
+    >
       <div class="table-scroll">
         <table>
           <thead>
@@ -466,7 +523,7 @@ async function onEditSave() {
           </tbody>
         </table>
       </div>
-    </section>
+    </CollapsibleSection>
 
     <ConfirmDialog
       :open="showDelete"
@@ -482,6 +539,19 @@ async function onEditSave() {
       "
       @confirm="remove"
       @cancel="showDelete = false"
+    />
+
+    <ConfirmDialog
+      :open="!!pendingRenumber"
+      title="Neue Inventarnummer"
+      :message="
+        pendingRenumber
+          ? `Die Inventarnummer wird neu vergeben: ${pendingRenumber.from} → ${pendingRenumber.to}`
+          : ''
+      "
+      confirm-label="Typ ändern"
+      @confirm="confirmRenumber"
+      @cancel="pendingRenumber = null"
     />
 
     <InvoiceModal
