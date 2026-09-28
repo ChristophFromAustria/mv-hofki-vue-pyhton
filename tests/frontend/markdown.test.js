@@ -40,4 +40,15 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown(undefined)).toBe("");
     expect(renderMarkdown("")).toBe("");
   });
+
+  it("never loads an external image — image syntax renders as text, not <img>", () => {
+    const out = renderMarkdown("![Alt](https://example.com/x.png)");
+    expect(out).not.toContain("<img");
+  });
+
+  it("blocks a javascript: href — markdown-it's own link validation rejects it, falling back to literal text with no <a> at all", () => {
+    const out = renderMarkdown("[x](javascript:alert(1))");
+    expect(out).not.toContain('href="javascript:');
+    expect(out).not.toContain("<a ");
+  });
 });

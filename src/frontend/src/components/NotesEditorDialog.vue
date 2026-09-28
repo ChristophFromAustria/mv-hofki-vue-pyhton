@@ -14,10 +14,12 @@ const emit = defineEmits(["save", "cancel"]);
 
 const dialog = ref(null);
 const textarea = ref(null);
+const keepEditingBtn = ref(null);
 const draft = ref("");
 const original = ref("");
 const tab = ref("edit"); // edit | preview
 const showDiscardConfirm = ref(false);
+const discardTitleId = `notes-discard-${Math.random().toString(36).slice(2, 7)}`;
 
 const isDirty = computed(() => draft.value !== original.value);
 const length = computed(() => draft.value.length);
@@ -56,6 +58,38 @@ watch(
   },
   { immediate: true },
 );
+
+// Focus follows the UI back to whatever the person can now act on: the
+// "Weiter bearbeiten" button when the discard prompt appears, the textarea
+// when editing resumes (via "Weiter bearbeiten" or the Vorschau→Bearbeiten tab).
+watch(showDiscardConfirm, async (shown) => {
+  if (!shown) return;
+  await nextTick();
+  keepEditingBtn.value?.focus();
+});
+
+watch(tab, async (value) => {
+  if (value !== "edit") return;
+  await nextTick();
+  textarea.value?.focus();
+});
+
+// A dialog can close itself natively without our @cancel.prevent running —
+// e.g. a second Escape press with no fresh user activation bypasses it. If
+// that happens with unsaved text, reopen and show the discard prompt instead
+// of silently losing the draft; otherwise just tell the parent to clear
+// editingKey. `props.open` is still true here only for that unrequested
+// close — our own close() call (triggered by open turning false) always
+// runs after the prop has already flipped.
+function onNativeClose() {
+  if (!props.open) return;
+  if (isDirty.value) {
+    showDiscardConfirm.value = true;
+    nextTick(() => dialog.value?.showModal());
+  } else {
+    emit("cancel");
+  }
+}
 
 function selectionOf(ta) {
   return { start: ta.selectionStart, end: ta.selectionEnd };
@@ -150,7 +184,7 @@ const toolbarButtons = [
     glyph: "1.",
     action: () => applyLinePrefix((n) => `${n}. `),
   },
-  { key: "link", label: "Link", hint: "Link ([Text](https://))", glyph: "🔗", action: applyLink },
+  { key: "link", label: "Link", hint: "Link ([Text](https://))", svg: true, action: applyLink },
 ];
 
 function trySave() {
@@ -160,6 +194,7 @@ function trySave() {
 }
 
 function onKeydown(e) {
+  if (showDiscardConfirm.value) return;
   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
     e.preventDefault();
     trySave();
@@ -180,13 +215,24 @@ function discard() {
   emit("cancel");
 }
 
-function keepEditing() {
+async function keepEditing() {
   showDiscardConfirm.value = false;
+  // The edit UI (including the textarea) was unmounted while the discard
+  // prompt was shown — the `tab` watcher above won't fire since `tab` itself
+  // never changed, so refocus explicitly once it's back.
+  await nextTick();
+  textarea.value?.focus();
 }
 </script>
 
 <template>
-  <dialog ref="dialog" class="notes-dialog" @cancel.prevent="requestClose" @keydown="onKeydown">
+  <dialog
+    ref="dialog"
+    class="notes-dialog"
+    @cancel.prevent="requestClose"
+    @close="onNativeClose"
+    @keydown="onKeydown"
+  >
     <div class="notes-dialog-inner">
       <h2>{{ title }}</h2>
 
@@ -202,7 +248,20 @@ function keepEditing() {
             :disabled="tab === 'preview'"
             @click="btn.action"
           >
-            {{ btn.glyph }}
+            <svg
+              v-if="btn.svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" />
+              <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.36-1.36" />
+            </svg>
+            <template v-else>{{ btn.glyph }}</template>
           </button>
         </div>
 
@@ -210,7 +269,7 @@ function keepEditing() {
           <button
             type="button"
             :class="{ active: tab === 'edit' }"
-            aria-label="Bearbeiten"
+            :aria-pressed="tab === 'edit'"
             @click="tab = 'edit'"
           >
             Bearbeiten
@@ -218,7 +277,7 @@ function keepEditing() {
           <button
             type="button"
             :class="{ active: tab === 'preview' }"
-            aria-label="Vorschau"
+            :aria-pressed="tab === 'preview'"
             @click="tab = 'preview'"
           >
             Vorschau
@@ -264,11 +323,18 @@ function keepEditing() {
         </div>
       </template>
 
-      <div v-else class="notes-discard-confirm">
-        <p>Änderungen verwerfen?</p>
+      <div
+        v-else
+        class="notes-discard-confirm"
+        role="alertdialog"
+        :aria-labelledby="discardTitleId"
+      >
+        <p :id="discardTitleId">Änderungen verwerfen?</p>
         <div class="notes-actions">
           <button type="button" class="btn-danger" @click="discard">Verwerfen</button>
-          <button type="button" class="btn-primary" @click="keepEditing">Weiter bearbeiten</button>
+          <button ref="keepEditingBtn" type="button" class="btn-primary" @click="keepEditing">
+            Weiter bearbeiten
+          </button>
         </div>
       </div>
     </div>

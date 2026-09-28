@@ -8,6 +8,10 @@ const md = new MarkdownIt({
   typographer: false,
 });
 
+// Notes are internal free text, not a document format — never fetch an
+// external image just because someone pasted "![x](url)".
+md.disable("image");
+
 // Force every link (markdown syntax or auto-linkified) to open in a new tab
 // without granting it access to window.opener.
 const defaultLinkOpen =

@@ -173,7 +173,7 @@ async function save() {
 
       <div class="form-group">
         <label for="m-notes">Notizen</label>
-        <textarea id="m-notes" v-model="form.notes" rows="5"></textarea>
+        <textarea id="m-notes" v-model="form.notes" rows="5" maxlength="10000"></textarea>
       </div>
 
       <div v-if="saveError" class="alert alert-danger" role="alert">{{ saveError }}</div>
