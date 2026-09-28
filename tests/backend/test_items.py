@@ -306,6 +306,23 @@ async def test_changing_type_within_code_keeps_number(client):
     assert resp.json()["display_nr"] == "KL-001"
 
 
+async def test_changing_type_refreshes_instrument_type_relationship(client):
+    """PUT instrument_type_id to another type: response reflects the new type,
+    not a stale relationship cached from an earlier load in this session."""
+    tuba = await _itype(client, "Tuba", "TU")
+    trompete = await _itype(client, "Trompete", "TR")
+    item = await _instrument(client, tuba)
+    # Load the item once so its detail/instrument_type relationship is cached.
+    await client.get(f"/api/v1/items/{item['id']}")
+
+    resp = await client.put(
+        f"/api/v1/items/{item['id']}", json={"instrument_type_id": trompete}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["instrument_type"]["label"] == "Trompete"
+
+
 async def test_editing_short_code_keeps_existing_numbers(client):
     tuba = await _itype(client, "Tuba", "TU")
     item = await _instrument(client, tuba)
@@ -629,6 +646,35 @@ async def test_required_field_message(client):
     item_id = await _general_item(client)
     resp = await client.put(f"/api/v1/items/{item_id}", json={"owner": ""})
     assert "Pflichtfeld" in resp.json()["detail"][0]["msg"]
+
+
+async def test_clearing_instrument_type_id_is_422(client):
+    tuba = await _itype(client, "Tuba", "TU")
+    item = await _instrument(client, tuba)
+    resp = await client.put(
+        f"/api/v1/items/{item['id']}", json={"instrument_type_id": None}
+    )
+    assert resp.status_code == 422, resp.text
+    detail = (await client.get(f"/api/v1/items/{item['id']}")).json()
+    assert detail["instrument_type_id"] == tuba
+
+
+async def test_clearing_clothing_type_id_is_422(client):
+    ctype = (await client.post("/api/v1/clothing-types", json={"label": "Hut"})).json()
+    resp = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "clothing",
+            "label": "Vereinshut",
+            "owner": "MV Hofkirchen",
+            "clothing_type_id": ctype["id"],
+        },
+    )
+    item_id = resp.json()["id"]
+    resp = await client.put(f"/api/v1/items/{item_id}", json={"clothing_type_id": None})
+    assert resp.status_code == 422, resp.text
+    detail = (await client.get(f"/api/v1/items/{item_id}")).json()
+    assert detail["clothing_type_id"] == ctype["id"]
 
 
 async def test_single_field_updates_still_work(client):

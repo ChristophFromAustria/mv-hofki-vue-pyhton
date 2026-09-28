@@ -135,6 +135,11 @@ async def _get_detail(session: AsyncSession, item_id: int, category: str) -> Any
     query: Any = select(detail_model).where(detail_model.item_id == item_id)  # type: ignore[attr-defined]
     if category in _DETAIL_JOINEDLOAD:
         query = _DETAIL_JOINEDLOAD[category](query)
+    # populate_existing: force already identity-mapped rows (e.g. the detail
+    # object we just mutated in update()/create(), or one loaded earlier in
+    # this session) to refresh from this query's result, so a changed FK's
+    # relationship (e.g. instrument_type) isn't served stale.
+    query = query.execution_options(populate_existing=True)
     result = await session.execute(query)
     return result.unique().scalar_one_or_none()
 

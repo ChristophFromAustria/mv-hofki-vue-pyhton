@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import ClassVar
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -103,9 +104,13 @@ class ItemUpdateBase(BaseModel):
     notes: str | None = None
     storage_location: str | None = None
 
+    # Subclasses with a required FK to a type (instrument, clothing) list its
+    # field name here so clearing it is rejected the same way as label/owner.
+    _required_fk_fields: ClassVar[tuple[str, ...]] = ()
+
     @model_validator(mode="after")
     def required_fields_not_cleared(self):
-        for name in ("label", "owner", "quantity"):
+        for name in ("label", "owner", "quantity", *self._required_fk_fields):
             if name in self.model_fields_set:
                 value = getattr(self, name)
                 if value is None or (isinstance(value, str) and not value.strip()):
@@ -121,11 +126,15 @@ class InstrumentItemUpdate(ItemUpdateBase):
     container: str | None = None
     particularities: str | None = None
 
+    _required_fk_fields: ClassVar[tuple[str, ...]] = ("instrument_type_id",)
+
 
 class ClothingItemUpdate(ItemUpdateBase):
     clothing_type_id: int | None = None
     size: str | None = None
     gender: str | None = None
+
+    _required_fk_fields: ClassVar[tuple[str, ...]] = ("clothing_type_id",)
 
 
 class SheetMusicItemUpdate(ItemUpdateBase):
