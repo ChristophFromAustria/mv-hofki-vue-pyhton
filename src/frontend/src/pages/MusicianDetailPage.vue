@@ -1,27 +1,51 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { get, getAll, del } from "../lib/api.js";
+import { get, getAll, put, del } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { registerLabels } from "../lib/musicians.js";
+import { sortRegisters } from "../lib/registers.js";
+import { musicianFieldDefs } from "../lib/musicianFields.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import CollapsibleSection from "../components/CollapsibleSection.vue";
+import InlineField from "../components/InlineField.vue";
+import { useInlineEdit } from "../composables/useInlineEdit.js";
 
 const route = useRoute();
 const router = useRouter();
 const musician = ref(null);
 const loans = ref([]);
+const registers = ref([]);
 const showDelete = ref(false);
 const loadError = ref("");
 const deleteError = ref("");
 
+const defs = computed(() => musicianFieldDefs(registers.value));
+
+const inline = useInlineEdit(async (patch) => {
+  musician.value = await put(`/musicians/${route.params.id}`, patch);
+});
+
+const membershipSummary = computed(() => {
+  const status = musician.value?.is_active === false ? "Inaktiv" : "Aktiv";
+  const regs = registerLabels(musician.value);
+  return regs !== "—" ? `${status} · ${regs}` : status;
+});
+const contactSummary = computed(() => musician.value?.phone || musician.value?.email || "—");
+const historySummary = computed(
+  () => `${loans.value.length} ${loans.value.length === 1 ? "Eintrag" : "Einträge"}`,
+);
+
 onMounted(async () => {
   try {
-    const [m, l] = await Promise.all([
+    const [m, l, r] = await Promise.all([
       get(`/musicians/${route.params.id}`),
       getAll(`/loans?musician_id=${route.params.id}`),
+      get("/registers").catch(() => []),
     ]);
     musician.value = m;
     loans.value = l;
+    registers.value = sortRegisters(r);
   } catch (e) {
     loadError.value = e.message;
   }
@@ -63,52 +87,80 @@ async function remove() {
       {{ deleteError }}
     </div>
 
-    <section class="page-section">
-      <div class="section-header">
-        <h2>Mitgliedschaft</h2>
-      </div>
+    <CollapsibleSection
+      scope="musician"
+      section="membership"
+      title="Mitgliedschaft"
+      :summary="membershipSummary"
+    >
       <dl class="detail-grid">
-        <dt>Status</dt>
-        <dd>
-          <span :class="musician.is_active === false ? 'badge badge-gray' : 'badge badge-green'">
-            {{ musician.is_active === false ? "Inaktiv" : "Aktiv" }}
-          </span>
-        </dd>
-        <dt>Register</dt>
-        <dd>{{ registerLabels(musician) }}</dd>
-        <dt>Extern</dt>
-        <dd>{{ musician.is_extern ? "Ja" : "Nein" }}</dd>
-        <dt>Notizen</dt>
-        <dd class="text-pre-line">{{ musician.notes || "—" }}</dd>
+        <InlineField
+          v-for="f in defs.membership"
+          :key="f.key"
+          :field-key="f.key"
+          :label="f.label"
+          :type="f.type"
+          :value="f.value(musician)"
+          :options="f.options || []"
+          :required="!!f.required"
+          :min="f.min ?? null"
+          :max="f.max ?? null"
+          :editing="inline.editingKey.value === f.key"
+          :saving="inline.savingKey.value === f.key"
+          :saved="inline.savedKey.value === f.key"
+          :error="inline.editingKey.value === f.key ? inline.error.value : ''"
+          @start="inline.start(f.key)"
+          @cancel="inline.cancel()"
+          @save="(v) => inline.commit(f.key, f.toPatch(v))"
+        >
+          <template v-if="f.key === 'is_active'" #display>
+            <span :class="musician.is_active === false ? 'badge badge-gray' : 'badge badge-green'">
+              {{ musician.is_active === false ? "Inaktiv" : "Aktiv" }}
+            </span>
+          </template>
+          <template v-else-if="f.key === 'registers'" #display>
+            {{ registerLabels(musician) }}
+          </template>
+        </InlineField>
       </dl>
-    </section>
+    </CollapsibleSection>
 
-    <section class="page-section">
-      <div class="section-header">
-        <h2>Kontakt</h2>
-      </div>
+    <CollapsibleSection
+      scope="musician"
+      section="contact"
+      title="Kontakt"
+      :summary="contactSummary"
+    >
       <dl class="detail-grid">
-        <dt>Vorname</dt>
-        <dd>{{ musician.first_name }}</dd>
-        <dt>Nachname</dt>
-        <dd>{{ musician.last_name }}</dd>
-        <dt>Telefon</dt>
-        <dd>{{ musician.phone || "—" }}</dd>
-        <dt>E-Mail</dt>
-        <dd>{{ musician.email || "—" }}</dd>
-        <dt>Adresse</dt>
-        <dd>{{ musician.street_address || "—" }}</dd>
-        <dt>PLZ / Ort</dt>
-        <dd>
-          {{ [musician.postal_code, musician.city].filter(Boolean).join(" ") || "—" }}
-        </dd>
+        <InlineField
+          v-for="f in defs.contact"
+          :key="f.key"
+          :field-key="f.key"
+          :label="f.label"
+          :type="f.type"
+          :value="f.value(musician)"
+          :options="f.options || []"
+          :required="!!f.required"
+          :min="f.min ?? null"
+          :max="f.max ?? null"
+          :editing="inline.editingKey.value === f.key"
+          :saving="inline.savingKey.value === f.key"
+          :saved="inline.savedKey.value === f.key"
+          :error="inline.editingKey.value === f.key ? inline.error.value : ''"
+          @start="inline.start(f.key)"
+          @cancel="inline.cancel()"
+          @save="(v) => inline.commit(f.key, f.toPatch(v))"
+        />
       </dl>
-    </section>
+    </CollapsibleSection>
 
-    <section v-if="loans.length" class="page-section">
-      <div class="section-header">
-        <h2>Leihhistorie</h2>
-      </div>
+    <CollapsibleSection
+      v-if="loans.length"
+      scope="musician"
+      section="history"
+      title="Leihhistorie"
+      :summary="historySummary"
+    >
       <div class="table-scroll">
         <table>
           <thead>
@@ -141,7 +193,7 @@ async function remove() {
           </tbody>
         </table>
       </div>
-    </section>
+    </CollapsibleSection>
 
     <ConfirmDialog
       :open="showDelete"
