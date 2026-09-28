@@ -35,3 +35,6 @@ data/uploads/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Local sample data (scans, inventory material)
+samplefiles/
