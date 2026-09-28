@@ -592,6 +592,9 @@ function onModalSave() {
 
 .item-grid-group {
   grid-column: 1 / -1;
+}
+
+.item-grid-group :deep(.group-header) {
   border-radius: var(--radius-sm);
 }
 
