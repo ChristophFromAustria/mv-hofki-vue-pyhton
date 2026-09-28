@@ -9,6 +9,7 @@ import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import FilterBar from "../components/FilterBar.vue";
 import GroupSelect from "../components/GroupSelect.vue";
+import GroupToggleAll from "../components/GroupToggleAll.vue";
 import InfiniteLoader from "../components/InfiniteLoader.vue";
 import RemotePicker from "../components/RemotePicker.vue";
 
@@ -58,7 +59,13 @@ const {
 });
 
 const collapseKey = computed(() => `loans:${state.group_by || "none"}`);
-const { collapsed, toggle: toggleGroup } = useGroupCollapse(collapseKey);
+const {
+  collapsed,
+  toggle: toggleGroup,
+  expandAll,
+  collapseAll,
+  allExpanded,
+} = useGroupCollapse(collapseKey, groups);
 
 const filterDefs = computed(() => [
   {
@@ -239,6 +246,12 @@ async function returnWithDate(id) {
         :options="GROUP_OPTIONS"
         :model-value="state.group_by"
         @update:model-value="setFilter('group_by', $event)"
+      />
+      <GroupToggleAll
+        v-if="groups"
+        :all-expanded="allExpanded"
+        @expand-all="expandAll"
+        @collapse-all="collapseAll"
       />
     </div>
 

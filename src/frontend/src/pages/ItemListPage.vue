@@ -12,6 +12,7 @@ import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import FilterBar from "../components/FilterBar.vue";
 import GroupSelect from "../components/GroupSelect.vue";
+import GroupToggleAll from "../components/GroupToggleAll.vue";
 import GroupHeader from "../components/GroupHeader.vue";
 import ItemCard from "../components/ItemCard.vue";
 import InfiniteLoader from "../components/InfiniteLoader.vue";
@@ -193,7 +194,13 @@ const {
 } = list;
 
 const collapseKey = computed(() => `${props.category}:${state.group_by || "none"}`);
-const { collapsed, toggle: toggleGroup } = useGroupCollapse(collapseKey);
+const {
+  collapsed,
+  toggle: toggleGroup,
+  expandAll,
+  collapseAll,
+  allExpanded,
+} = useGroupCollapse(collapseKey, groups);
 const cardSegments = computed(() => buildSegments(items.value, groups.value, collapsed.value));
 
 const toOptions = (values) => (values || []).map((v) => ({ value: v, label: v }));
@@ -418,6 +425,12 @@ function onModalSave() {
         :options="GROUP_OPTIONS[category]"
         :model-value="state.group_by"
         @update:model-value="setFilter('group_by', $event)"
+      />
+      <GroupToggleAll
+        v-if="groups"
+        :all-expanded="allExpanded"
+        @expand-all="expandAll"
+        @collapse-all="collapseAll"
       />
       <div class="view-toggle">
         <button :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">Liste</button>
