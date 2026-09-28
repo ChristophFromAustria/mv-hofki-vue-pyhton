@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import MarkdownText from "./MarkdownText.vue";
 
 const props = defineProps({
@@ -37,9 +37,39 @@ const canSave = computed(() => !props.saving && !overLimit.value);
 // lands in the same tick as a delayed re-open (see CategoryPickDialog for
 // the same pattern) — only the DOM calls (showModal/focus/close) need to
 // wait for the dialog element to exist / re-render.
+// On phones the dialog is fullscreen. The on-screen keyboard only shrinks the
+// *visual* viewport (100dvh stays the same on iOS), so the browser would scroll
+// the page and push the header/toolbar out of view. Pin the dialog to the
+// visible area instead and follow it while the keyboard moves.
+const viewportStyle = ref({});
+let trackedViewport = null;
+
+function updateViewport() {
+  const vv = window.visualViewport;
+  const isPhone = window.matchMedia?.("(max-width: 640px)").matches;
+  viewportStyle.value = vv && isPhone ? { height: `${vv.height}px`, top: `${vv.offsetTop}px` } : {};
+}
+
+function trackViewport(on) {
+  const vv = window.visualViewport;
+  if (on && vv && !trackedViewport) {
+    trackedViewport = vv;
+    vv.addEventListener("resize", updateViewport);
+    vv.addEventListener("scroll", updateViewport);
+  } else if (!on && trackedViewport) {
+    trackedViewport.removeEventListener("resize", updateViewport);
+    trackedViewport.removeEventListener("scroll", updateViewport);
+    trackedViewport = null;
+  }
+  if (on) updateViewport();
+}
+
+onBeforeUnmount(() => trackViewport(false));
+
 watch(
   () => props.open,
   (open) => {
+    trackViewport(open);
     if (open) {
       draft.value = props.value ?? "";
       original.value = draft.value;
@@ -229,6 +259,7 @@ async function keepEditing() {
   <dialog
     ref="dialog"
     class="notes-dialog"
+    :style="viewportStyle"
     @cancel.prevent="requestClose"
     @close="onNativeClose"
     @keydown="onKeydown"
@@ -469,14 +500,23 @@ async function keepEditing() {
 }
 
 @media (max-width: 640px) {
+  /* Fullscreen; height/top follow the visual viewport (see viewportStyle). */
   .notes-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: auto;
     width: 100vw;
     height: 100dvh;
     max-width: 100vw;
-    max-height: 100dvh;
-    inset: 0;
+    max-height: none;
     margin: 0;
     border-radius: 0;
+  }
+
+  .notes-dialog-inner {
+    padding: var(--space-3);
   }
 }
 </style>

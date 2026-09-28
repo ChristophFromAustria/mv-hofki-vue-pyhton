@@ -195,3 +195,59 @@ describe("NotesEditorDialog", () => {
     expect(w.emitted("save")).toEqual([[null]]);
   });
 });
+
+describe("NotesEditorDialog on phones with the on-screen keyboard", () => {
+  function fakeViewport(height, offsetTop = 0) {
+    const listeners = {};
+    return {
+      height,
+      offsetTop,
+      addEventListener: (type, fn) => ((listeners[type] ||= []).push(fn)),
+      removeEventListener: (type, fn) =>
+        (listeners[type] = (listeners[type] || []).filter((f) => f !== fn)),
+      fire(type) {
+        (listeners[type] || []).forEach((fn) => fn());
+      },
+      count: (type) => (listeners[type] || []).length,
+    };
+  }
+
+  function setPhone(isPhone) {
+    window.matchMedia = (q) => ({ matches: isPhone && q.includes("max-width"), media: q });
+  }
+
+  it("sizes the dialog to the visible viewport and follows it while the keyboard opens", async () => {
+    setPhone(true);
+    const vv = fakeViewport(800);
+    window.visualViewport = vv;
+    const w = mountDialog({ open: true });
+    await nextTick();
+    const el = w.find("dialog").element;
+    expect(el.style.height).toBe("800px");
+    expect(el.style.top).toBe("0px");
+
+    vv.height = 420;
+    vv.offsetTop = 30;
+    vv.fire("resize");
+    await nextTick();
+    expect(el.style.height).toBe("420px");
+    expect(el.style.top).toBe("30px");
+
+    await w.setProps({ open: false });
+    await nextTick();
+    expect(vv.count("resize")).toBe(0);
+    expect(vv.count("scroll")).toBe(0);
+    w.unmount();
+  });
+
+  it("leaves desktop sizing to CSS", async () => {
+    setPhone(false);
+    window.visualViewport = fakeViewport(800);
+    const w = mountDialog({ open: true });
+    await nextTick();
+    const el = w.find("dialog").element;
+    expect(el.style.height).toBe("");
+    expect(el.style.top).toBe("");
+    w.unmount();
+  });
+});
