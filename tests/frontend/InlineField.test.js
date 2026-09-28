@@ -37,9 +37,23 @@ describe("InlineField display", () => {
     );
   });
 
-  it("shows saving and saved states", () => {
-    expect(mountField({ saving: true }).text()).toContain("Speichert …");
-    expect(mountField({ saved: true }).find('[role="status"]').text()).toBe("Gespeichert");
+  it("shows saving and saved states via a persistent [role=status] announcement", () => {
+    const idle = mountField({});
+    expect(idle.find('[role="status"]').text()).toBe("");
+
+    const saving = mountField({ saving: true });
+    expect(saving.find('[role="status"]').text()).toBe("Speichert …");
+
+    const saved = mountField({ saved: true });
+    expect(saved.find('[role="status"]').text()).toBe("Gespeichert");
+  });
+
+  it("textarea display gets the text-pre-line class for multi-line values", () => {
+    const w = mountField({ type: "textarea", value: "Zeile 1\nZeile 2" });
+    expect(w.find(".inline-value").classes()).toContain("text-pre-line");
+    expect(mountField({ type: "text" }).find(".inline-value").classes()).not.toContain(
+      "text-pre-line",
+    );
   });
 });
 
@@ -54,6 +68,20 @@ describe("InlineField editing", () => {
     expect(w.emitted("save")).toEqual([["S-2"]]);
     await input.trigger("keydown", { key: "Escape" });
     expect(w.emitted("cancel")).toHaveLength(1);
+  });
+
+  it("Enter on the Abbrechen button does not save (buttons handle Enter natively)", async () => {
+    const w = mountField({ editing: true });
+    await nextTick();
+    await w.find(".inline-cancel").trigger("keydown", { key: "Enter" });
+    expect(w.emitted("save")).toBeUndefined();
+  });
+
+  it("Enter on the Speichern button still saves, exactly once", async () => {
+    const w = mountField({ editing: true });
+    await nextTick();
+    await w.find(".inline-save").trigger("click");
+    expect(w.emitted("save")).toHaveLength(1);
   });
 
   it("does not steal focus on initial mount, only returns it after a real editing end", async () => {
@@ -170,6 +198,38 @@ describe("InlineField editing", () => {
     await money.find("select").setValue("3");
     await money.find(".inline-save").trigger("click");
     expect(money.emitted("save")).toEqual([[{ amount: 12.5, currency_id: 3 }]]);
+  });
+
+  it("money: preselects defaultCurrencyId when the value has none yet", async () => {
+    const cur = [{ id: 3, abbreviation: "€" }];
+    const w = mountField({
+      type: "money",
+      value: { amount: null, currency_id: null },
+      currencies: cur,
+      defaultCurrencyId: 3,
+      editing: true,
+    });
+    await nextTick();
+    expect(w.find("select").element.value).toBe("3");
+    await w.find('input[type="number"]').setValue("5");
+    await w.find(".inline-save").trigger("click");
+    expect(w.emitted("save")).toEqual([[{ amount: 5, currency_id: 3 }]]);
+  });
+
+  it("money: does not override an existing currency_id with defaultCurrencyId", async () => {
+    const cur = [
+      { id: 1, abbreviation: "$" },
+      { id: 3, abbreviation: "€" },
+    ];
+    const w = mountField({
+      type: "money",
+      value: { amount: 10, currency_id: 1 },
+      currencies: cur,
+      defaultCurrencyId: 3,
+      editing: true,
+    });
+    await nextTick();
+    expect(w.find("select").element.value).toBe("1");
   });
 
   it("shows a server error and keeps the typed value", async () => {

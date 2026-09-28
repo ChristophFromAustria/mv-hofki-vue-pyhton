@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { useRouter } from "vue-router";
 import { get, getAll, post, put, del } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
@@ -98,6 +98,15 @@ function confirmRenumber() {
   inline.commit(p.key, p.patch);
 }
 
+// Cancelling the renumber dialog leaves the type field's editor open behind
+// it (see saveField/pendingRenumber above) — move focus back into its select
+// rather than dropping it back to the document body.
+async function cancelRenumber() {
+  pendingRenumber.value = null;
+  await nextTick();
+  document.querySelector(".inline-editor select")?.focus();
+}
+
 async function createCategory(label) {
   const created = await post("/general-item-categories", { label });
   categories.value = [...categories.value, created];
@@ -192,10 +201,16 @@ onMounted(async () => {
   await reload();
 });
 
-// Reload when navigating between items of the same category
+// Reload when navigating between items of the same category. Drop any
+// in-progress inline edit / pending renumber first — they belong to the item
+// we're leaving, and would otherwise show or act on the wrong item's data.
 watch(
   () => props.id,
-  () => reload(),
+  () => {
+    inline.cancel();
+    pendingRenumber.value = null;
+    reload();
+  },
 );
 
 async function remove() {
@@ -362,6 +377,7 @@ async function onEditSave() {
           :min="f.min ?? null"
           :max="f.max ?? null"
           :currencies="currencies"
+          :default-currency-id="f.type === 'money' ? defaultCurrencyId : null"
           :create-option="f.type === 'tags' ? createCategory : null"
           :editing="inline.editingKey.value === f.key"
           :saving="inline.savingKey.value === f.key"
@@ -551,7 +567,7 @@ async function onEditSave() {
       "
       confirm-label="Typ ändern"
       @confirm="confirmRenumber"
-      @cancel="pendingRenumber = null"
+      @cancel="cancelRenumber"
     />
 
     <InvoiceModal

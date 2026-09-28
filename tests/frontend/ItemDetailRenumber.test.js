@@ -53,8 +53,9 @@ beforeEach(() => {
 
   get.mockImplementation(async (path) => {
     if (path === "/items/1") return baseItem();
-    if (path === "/items/1/images") return [];
-    if (path === "/items/1/invoices") return [];
+    if (path === "/items/2") return { ...baseItem(), id: 2, display_nr: "TU-002" };
+    if (path === "/items/1/images" || path === "/items/2/images") return [];
+    if (path === "/items/1/invoices" || path === "/items/2/invoices") return [];
     if (path === "/currencies") return [];
     if (path === "/instrument-types") return TYPES;
     throw new Error("unexpected get " + path);
@@ -107,6 +108,8 @@ describe("ItemDetailPage: Typwechsel mit anderem Kürzel", () => {
     expect(put).not.toHaveBeenCalled();
     expect(renumberDialog(w)).toBeFalsy();
     expect(w.find(".inline-editor").exists()).toBe(true);
+    await flushPromises();
+    expect(document.activeElement).toBe(w.find(".inline-editor select").element);
 
     w.unmount();
   });
@@ -125,6 +128,25 @@ describe("ItemDetailPage: Typwechsel mit anderem Kürzel", () => {
     await flushPromises();
 
     expect(put).toHaveBeenCalledWith("/items/1", { instrument_type_id: 2, label: "Horn" });
+
+    w.unmount();
+  });
+});
+
+describe("ItemDetailPage: navigating away while editing", () => {
+  it("cancels an open inline edit and any pending renumber when the item id changes", async () => {
+    const w = await mountPage();
+
+    await openTypeEditor(w);
+    await chooseTypeAndSave(w, 2);
+    expect(renumberDialog(w)).toBeTruthy();
+
+    await w.setProps({ id: 2 });
+    await flushPromises();
+
+    expect(renumberDialog(w)).toBeFalsy();
+    expect(w.find(".inline-editor").exists()).toBe(false);
+    expect(get).toHaveBeenCalledWith("/items/2");
 
     w.unmount();
   });

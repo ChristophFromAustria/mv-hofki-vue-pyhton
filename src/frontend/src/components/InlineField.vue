@@ -15,6 +15,7 @@ const props = defineProps({
   placeholder: { type: String, default: "" },
   createOption: { type: Function, default: null },
   currencies: { type: Array, default: () => [] },
+  defaultCurrencyId: { type: Number, default: null },
   editing: Boolean,
   saving: Boolean,
   saved: Boolean,
@@ -52,7 +53,11 @@ const display = computed(() => {
 
 function initialDraft() {
   const v = props.value;
-  if (props.type === "money") return { amount: v?.amount ?? "", currency_id: v?.currency_id ?? "" };
+  if (props.type === "money")
+    return {
+      amount: v?.amount ?? "",
+      currency_id: v?.currency_id ?? props.defaultCurrencyId ?? "",
+    };
   if (props.type === "multiselect" || props.type === "tags") return [...(v || [])];
   if (props.type === "bool") return !!v;
   return v ?? "";
@@ -125,6 +130,10 @@ function submit() {
 }
 
 function onKeydown(e) {
+  // Let buttons (Speichern/Abbrechen) handle Enter natively — this handler is
+  // only for the editor's inputs, so it must not also submit on top of the
+  // button's own native click-on-Enter behaviour.
+  if (e.target instanceof HTMLButtonElement) return;
   if (e.key === "Escape") {
     e.preventDefault();
     emit("cancel");
@@ -152,7 +161,7 @@ const shownError = computed(() => localError.value || props.error);
   </dt>
   <dd class="inline-field" :class="{ 'is-editing': editing }">
     <template v-if="!editing">
-      <span class="inline-value">
+      <span class="inline-value" :class="{ 'text-pre-line': type === 'textarea' }">
         <slot name="display" :value="value">{{ display }}</slot>
       </span>
       <button
@@ -165,8 +174,13 @@ const shownError = computed(() => localError.value || props.error);
       >
         <span aria-hidden="true">✎</span>
       </button>
-      <span v-if="saving" class="inline-status">Speichert …</span>
-      <span v-else-if="saved" class="inline-status inline-saved" role="status">Gespeichert</span>
+      <span
+        class="inline-status"
+        :class="{ 'inline-saved': saved }"
+        role="status"
+        aria-live="polite"
+        >{{ saving ? "Speichert …" : saved ? "Gespeichert" : "" }}</span
+      >
     </template>
 
     <div v-else ref="editor" class="inline-editor" @keydown="onKeydown">
@@ -262,6 +276,13 @@ const shownError = computed(() => localError.value || props.error);
 </template>
 
 <style scoped>
+/* .detail-grid (style.css) is a two-column grid with align-items: stretch,
+   so a plain-text dt otherwise sits at the top of its (taller, 44px-min)
+   dd row instead of next to the value. */
+dt {
+  align-self: center;
+}
+
 .inline-field {
   display: flex;
   flex-wrap: wrap;

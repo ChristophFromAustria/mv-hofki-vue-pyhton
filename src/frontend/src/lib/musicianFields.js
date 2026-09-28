@@ -6,7 +6,7 @@ export function musicianFieldDefs(registers = []) {
     membership: [
       {
         key: "is_active",
-        label: "Aktiv",
+        label: "Status",
         type: "bool",
         value: (m) => m.is_active !== false,
         toPatch: (v) => ({ is_active: v }),

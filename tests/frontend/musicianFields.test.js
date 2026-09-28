@@ -22,6 +22,6 @@ describe("musicianFieldDefs", () => {
     const plz = d.contact.find((f) => f.key === "postal_code");
     expect(plz.type).toBe("number");
     expect(d.contact.find((f) => f.key === "first_name").required).toBe(true);
-    expect(d.membership.find((f) => f.key === "is_active").label).toBe("Aktiv");
+    expect(d.membership.find((f) => f.key === "is_active").label).toBe("Status");
   });
 });
