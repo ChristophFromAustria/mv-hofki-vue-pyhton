@@ -48,7 +48,7 @@ class ItemCreateBase(BaseModel):
     acquisition_cost: float | None = None
     currency_id: int | None = None
     owner: str = "MV Hofkirchen"
-    notes: str | None = None
+    notes: str | None = Field(None, max_length=10_000)
     storage_location: str | None = None
 
     @model_validator(mode="after")
@@ -65,7 +65,7 @@ class InstrumentItemCreate(ItemCreateBase):
     construction_year: int | None = None
     distributor: str | None = None
     container: str | None = None
-    particularities: str | None = None
+    particularities: str | None = Field(None, max_length=500)
 
 
 class ClothingItemCreate(ItemCreateBase):
@@ -101,7 +101,7 @@ class ItemUpdateBase(BaseModel):
     acquisition_cost: float | None = None
     currency_id: int | None = None
     owner: str | None = None
-    notes: str | None = None
+    notes: str | None = Field(None, max_length=10_000)
     storage_location: str | None = None
 
     # Subclasses with a required FK to a type (instrument, clothing) list its
@@ -124,7 +124,7 @@ class InstrumentItemUpdate(ItemUpdateBase):
     construction_year: int | None = None
     distributor: str | None = None
     container: str | None = None
-    particularities: str | None = None
+    particularities: str | None = Field(None, max_length=500)
 
     _required_fk_fields: ClassVar[tuple[str, ...]] = ("instrument_type_id",)
 

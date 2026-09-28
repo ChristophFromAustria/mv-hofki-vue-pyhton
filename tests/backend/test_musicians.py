@@ -173,3 +173,36 @@ async def test_without_grouping_no_group_fields(client):
     assert body["groups"] is None
     assert body["item_total"] == body["total"] == 1
     assert body["items"][0]["group_key"] is None
+
+
+# ---------------------------------------------------------------------------
+# Notes length limit
+# ---------------------------------------------------------------------------
+
+
+async def test_notes_max_length_on_create(client):
+    ok = await client.post(
+        "/api/v1/musicians",
+        json={"first_name": "Anna", "last_name": "Huber", "notes": "x" * 10_000},
+    )
+    assert ok.status_code == 201, ok.text
+    assert len(ok.json()["notes"]) == 10_000
+
+    too_long = await client.post(
+        "/api/v1/musicians",
+        json={"first_name": "Anna", "last_name": "Huber", "notes": "x" * 10_001},
+    )
+    assert too_long.status_code == 422
+
+
+async def test_notes_max_length_on_update(client, musician):
+    ok = await client.put(
+        f"/api/v1/musicians/{musician['id']}", json={"notes": "x" * 10_000}
+    )
+    assert ok.status_code == 200, ok.text
+    assert len(ok.json()["notes"]) == 10_000
+
+    too_long = await client.put(
+        f"/api/v1/musicians/{musician['id']}", json={"notes": "x" * 10_001}
+    )
+    assert too_long.status_code == 422

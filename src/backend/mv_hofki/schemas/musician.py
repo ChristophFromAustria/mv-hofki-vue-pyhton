@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from mv_hofki.schemas.pagination import Grouped
 from mv_hofki.schemas.register import RegisterRef
@@ -20,7 +20,7 @@ class MusicianCreate(BaseModel):
     city: str | None = None
     is_extern: bool = False
     is_active: bool = True
-    notes: str | None = None
+    notes: str | None = Field(None, max_length=10_000)
     register_ids: list[int] = []
 
     @field_validator("first_name", "last_name")
@@ -41,7 +41,7 @@ class MusicianUpdate(BaseModel):
     city: str | None = None
     is_extern: bool | None = None
     is_active: bool | None = None
-    notes: str | None = None
+    notes: str | None = Field(None, max_length=10_000)
     register_ids: list[int] | None = None
 
     @field_validator("first_name", "last_name")

@@ -685,3 +685,86 @@ async def test_single_field_updates_still_work(client):
     assert resp.status_code == 200 and resp.json()["notes"] is None
     resp = await client.put(f"/api/v1/items/{item_id}", json={"quantity": 3})
     assert resp.json()["quantity"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Notes / particularities length limits
+# ---------------------------------------------------------------------------
+
+
+async def test_notes_max_length_on_create(client, setup_refs):
+    ok = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "instrument",
+            "label": "Flöte",
+            "owner": "Musikverein",
+            "notes": "x" * 10_000,
+            **setup_refs,
+        },
+    )
+    assert ok.status_code == 201, ok.text
+    assert len(ok.json()["notes"]) == 10_000
+
+    too_long = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "instrument",
+            "label": "Flöte",
+            "owner": "Musikverein",
+            "notes": "x" * 10_001,
+            **setup_refs,
+        },
+    )
+    assert too_long.status_code == 422
+
+
+async def test_notes_max_length_on_update(client, instrument):
+    ok = await client.put(
+        f"/api/v1/items/{instrument['id']}", json={"notes": "x" * 10_000}
+    )
+    assert ok.status_code == 200, ok.text
+    assert len(ok.json()["notes"]) == 10_000
+
+    too_long = await client.put(
+        f"/api/v1/items/{instrument['id']}", json={"notes": "x" * 10_001}
+    )
+    assert too_long.status_code == 422
+
+
+async def test_particularities_max_length_on_create_and_update(client, setup_refs):
+    ok = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "instrument",
+            "label": "Flöte",
+            "owner": "Musikverein",
+            "particularities": "x" * 500,
+            **setup_refs,
+        },
+    )
+    assert ok.status_code == 201, ok.text
+    item_id = ok.json()["id"]
+    assert len(ok.json()["particularities"]) == 500
+
+    too_long = await client.post(
+        "/api/v1/items",
+        json={
+            "category": "instrument",
+            "label": "Flöte",
+            "owner": "Musikverein",
+            "particularities": "x" * 501,
+            **setup_refs,
+        },
+    )
+    assert too_long.status_code == 422
+
+    update_ok = await client.put(
+        f"/api/v1/items/{item_id}", json={"particularities": "y" * 500}
+    )
+    assert update_ok.status_code == 200, update_ok.text
+
+    update_too_long = await client.put(
+        f"/api/v1/items/{item_id}", json={"particularities": "y" * 501}
+    )
+    assert update_too_long.status_code == 422
