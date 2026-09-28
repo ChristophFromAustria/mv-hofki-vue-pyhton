@@ -130,14 +130,16 @@ function submit() {
 }
 
 function onKeydown(e) {
+  if (e.key === "Escape") {
+    e.preventDefault();
+    emit("cancel");
+    return;
+  }
   // Let buttons (Speichern/Abbrechen) handle Enter natively — this handler is
   // only for the editor's inputs, so it must not also submit on top of the
   // button's own native click-on-Enter behaviour.
   if (e.target instanceof HTMLButtonElement) return;
-  if (e.key === "Escape") {
-    e.preventDefault();
-    emit("cancel");
-  } else if (e.key === "Enter") {
+  if (e.key === "Enter") {
     if (props.type === "textarea" && !(e.ctrlKey || e.metaKey)) return;
     if (props.type === "tags" || props.type === "multiselect") return;
     e.preventDefault();

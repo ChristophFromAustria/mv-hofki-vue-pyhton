@@ -84,6 +84,18 @@ describe("InlineField editing", () => {
     expect(w.emitted("save")).toHaveLength(1);
   });
 
+  it("Escape cancels even when focus is on the Speichern or Abbrechen button", async () => {
+    const w = mountField({ editing: true });
+    await nextTick();
+    await w.find(".inline-save").trigger("keydown", { key: "Escape" });
+    expect(w.emitted("cancel")).toHaveLength(1);
+
+    const w2 = mountField({ editing: true });
+    await nextTick();
+    await w2.find(".inline-cancel").trigger("keydown", { key: "Escape" });
+    expect(w2.emitted("cancel")).toHaveLength(1);
+  });
+
   it("does not steal focus on initial mount, only returns it after a real editing end", async () => {
     const w = mountField({ editing: false });
     await nextTick();

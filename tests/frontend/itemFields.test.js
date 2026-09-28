@@ -54,6 +54,17 @@ describe("itemFieldDefs", () => {
     expect(year.max).toBe(new Date().getFullYear() + 1);
   });
 
+  it("marks long text fields as block fields with a character limit", () => {
+    const notes = itemFieldDefs("general_item", ctx).find((f) => f.key === "notes");
+    expect(notes.block).toBe(true);
+    expect(notes.maxLength).toBe(10000);
+    const particularities = itemFieldDefs("instrument", ctx).find(
+      (f) => f.key === "particularities",
+    );
+    expect(particularities.block).toBe(true);
+    expect(particularities.maxLength).toBe(500);
+  });
+
   it("detects renumbering only when the short code changes", () => {
     const item = { category: "instrument", number_prefix: "TU" };
     expect(renumberPrefix(item, 2, ctx.types)).toBe("HR");

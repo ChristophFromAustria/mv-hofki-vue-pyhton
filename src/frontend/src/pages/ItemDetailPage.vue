@@ -9,6 +9,7 @@ import ImageGallery from "../components/ImageGallery.vue";
 import ScanDocuments from "../components/ScanDocuments.vue";
 import CollapsibleSection from "../components/CollapsibleSection.vue";
 import InlineField from "../components/InlineField.vue";
+import NotesBlock from "../components/NotesBlock.vue";
 import { useInlineEdit } from "../composables/useInlineEdit.js";
 import { itemFieldDefs, renumberPrefix } from "../lib/itemFields.js";
 import { formatDate, formatMoney } from "../lib/format.js";
@@ -69,6 +70,10 @@ const fields = computed(() =>
     currencies: currencies.value,
   }),
 );
+// Long free-text fields (notes, particularities) render as a full-width
+// NotesBlock with a dialog editor, below the <dl>, instead of inline.
+const inlineFields = computed(() => fields.value.filter((f) => !f.block));
+const blockFields = computed(() => fields.value.filter((f) => f.block));
 
 const inline = useInlineEdit(async (patch) => {
   item.value = await put(`/items/${props.id}`, patch);
@@ -366,7 +371,7 @@ async function onEditSave() {
         <dt>Inventarnummer</dt>
         <dd>{{ item.display_nr }}</dd>
         <InlineField
-          v-for="f in fields"
+          v-for="f in inlineFields"
           :key="f.key"
           :field-key="f.key"
           :label="f.label"
@@ -393,6 +398,21 @@ async function onEditSave() {
           </template>
         </InlineField>
       </dl>
+
+      <NotesBlock
+        v-for="f in blockFields"
+        :key="f.key"
+        :label="f.label"
+        :value="f.value(item)"
+        :max-length="f.maxLength"
+        :saving="inline.savingKey.value === f.key"
+        :saved="inline.savedKey.value === f.key"
+        :error="inline.editingKey.value === f.key ? inline.error.value : ''"
+        :editing="inline.editingKey.value === f.key"
+        @start="inline.start(f.key)"
+        @cancel="inline.cancel()"
+        @save="(v) => saveField(f, v)"
+      />
     </CollapsibleSection>
 
     <!-- Loan management section -->

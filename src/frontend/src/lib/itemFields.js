@@ -22,7 +22,14 @@ const COMMON_TAIL = [
     }),
     toPatch: (v) => ({ acquisition_cost: v.amount, currency_id: v.currency_id }),
   },
-  { key: "notes", label: "Notizen", type: "textarea", ...same("notes") },
+  {
+    key: "notes",
+    label: "Notizen",
+    type: "textarea",
+    block: true,
+    maxLength: 10000,
+    ...same("notes"),
+  },
 ];
 
 const QUANTITY = {
@@ -69,6 +76,8 @@ export function itemFieldDefs(category, { types = [], genres = [], categories = 
           key: "particularities",
           label: "Besonderheiten",
           type: "textarea",
+          block: true,
+          maxLength: 500,
           ...same("particularities"),
         },
         ...withoutManufacturer,

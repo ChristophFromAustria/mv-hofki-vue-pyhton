@@ -24,4 +24,10 @@ describe("musicianFieldDefs", () => {
     expect(d.contact.find((f) => f.key === "first_name").required).toBe(true);
     expect(d.membership.find((f) => f.key === "is_active").label).toBe("Status");
   });
+
+  it("marks notes as a block field with a character limit", () => {
+    const notes = musicianFieldDefs(regs).membership.find((f) => f.key === "notes");
+    expect(notes.block).toBe(true);
+    expect(notes.maxLength).toBe(10000);
+  });
 });

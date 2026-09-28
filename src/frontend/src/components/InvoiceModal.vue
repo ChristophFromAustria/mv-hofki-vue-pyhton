@@ -5,7 +5,6 @@ const props = defineProps({
   open: Boolean,
   invoice: { type: Object, default: null },
   currencies: { type: Array, default: () => [] },
-  instrumentId: { type: Number, required: true },
   defaultCurrencyId: { type: Number, default: null },
 });
 

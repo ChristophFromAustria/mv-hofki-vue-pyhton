@@ -9,6 +9,7 @@ import { musicianFieldDefs } from "../lib/musicianFields.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import CollapsibleSection from "../components/CollapsibleSection.vue";
 import InlineField from "../components/InlineField.vue";
+import NotesBlock from "../components/NotesBlock.vue";
 import { useInlineEdit } from "../composables/useInlineEdit.js";
 
 const route = useRoute();
@@ -21,6 +22,10 @@ const loadError = ref("");
 const deleteError = ref("");
 
 const defs = computed(() => musicianFieldDefs(registers.value));
+// Notes render as a full-width NotesBlock with a dialog editor, below the
+// <dl>, instead of inline.
+const membershipInlineFields = computed(() => defs.value.membership.filter((f) => !f.block));
+const membershipBlockFields = computed(() => defs.value.membership.filter((f) => f.block));
 
 const inline = useInlineEdit(async (patch) => {
   musician.value = await put(`/musicians/${route.params.id}`, patch);
@@ -95,7 +100,7 @@ async function remove() {
     >
       <dl class="detail-grid">
         <InlineField
-          v-for="f in defs.membership"
+          v-for="f in membershipInlineFields"
           :key="f.key"
           :field-key="f.key"
           :label="f.label"
@@ -123,6 +128,21 @@ async function remove() {
           </template>
         </InlineField>
       </dl>
+
+      <NotesBlock
+        v-for="f in membershipBlockFields"
+        :key="f.key"
+        :label="f.label"
+        :value="f.value(musician)"
+        :max-length="f.maxLength"
+        :saving="inline.savingKey.value === f.key"
+        :saved="inline.savedKey.value === f.key"
+        :error="inline.editingKey.value === f.key ? inline.error.value : ''"
+        :editing="inline.editingKey.value === f.key"
+        @start="inline.start(f.key)"
+        @cancel="inline.cancel()"
+        @save="(v) => inline.commit(f.key, f.toPatch(v))"
+      />
     </CollapsibleSection>
 
     <CollapsibleSection

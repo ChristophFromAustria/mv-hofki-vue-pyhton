@@ -26,7 +26,14 @@ export function musicianFieldDefs(registers = []) {
         value: (m) => !!m.is_extern,
         toPatch: (v) => ({ is_extern: v }),
       },
-      { key: "notes", label: "Notizen", type: "textarea", ...same("notes") },
+      {
+        key: "notes",
+        label: "Notizen",
+        type: "textarea",
+        block: true,
+        maxLength: 10000,
+        ...same("notes"),
+      },
     ],
     contact: [
       { key: "first_name", label: "Vorname", type: "text", required: true, ...same("first_name") },
