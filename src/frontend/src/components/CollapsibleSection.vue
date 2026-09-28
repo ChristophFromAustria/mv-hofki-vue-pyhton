@@ -13,7 +13,7 @@ const panelId = `section-${props.scope}-${props.section}`;
 </script>
 
 <template>
-  <section class="page-section collapsible-section">
+  <section class="page-section collapsible-section" :class="{ 'is-open': open }">
     <div class="section-header">
       <h2 class="collapsible-heading">
         <button
@@ -45,17 +45,42 @@ const panelId = `section-${props.scope}-${props.section}`;
    selector, so an "inherit" here would win and reset the heading to the wrong size.
    The button below picks up the h2's resulting font via `font: inherit`. */
 .collapsible-heading {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
 }
 
+/* Tighter than a plain .page-section: detail pages stack many of these. */
+.collapsible-section {
+  padding-block: var(--space-3);
+}
+
+.collapsible-section:first-of-type {
+  padding-top: 0;
+}
+
+.collapsible-section .section-header {
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.collapsible-section.is-open .section-header {
+  margin-bottom: var(--space-3);
+}
+
+/* The whole header row is the hit area (easier on phones); the negative
+   margin keeps the text aligned with the content below. */
 .collapsible-toggle {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
+  width: calc(100% + 2 * var(--space-2));
   min-height: 44px;
-  padding: 0;
+  margin-inline: calc(-1 * var(--space-2));
+  padding: var(--space-2);
   border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -64,9 +89,13 @@ const panelId = `section-${props.scope}-${props.section}`;
   cursor: pointer;
 }
 
+.collapsible-toggle:hover {
+  background: var(--color-bg-soft);
+}
+
 .collapsible-toggle:focus-visible {
   outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline-offset: 0;
 }
 
 .collapsible-chevron {
