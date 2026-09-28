@@ -56,6 +56,28 @@ describe("InlineField editing", () => {
     expect(w.emitted("cancel")).toHaveLength(1);
   });
 
+  it("does not steal focus on initial mount, only returns it after a real editing end", async () => {
+    const w = mountField({ editing: false });
+    await nextTick();
+    await nextTick();
+    const btn = w.find('button[aria-label="„Seriennummer“ bearbeiten"]');
+    expect(document.activeElement).not.toBe(btn.element);
+
+    await w.setProps({ editing: true });
+    await nextTick();
+    await nextTick();
+    const input = w.find("input");
+    expect(document.activeElement).toBe(input.element);
+
+    await w.setProps({ editing: false });
+    await nextTick();
+    await nextTick();
+    // v-if re-creates the button DOM node when leaving edit mode, so re-query
+    // it rather than reuse the (now detached) reference from before editing.
+    const btnAfter = w.find('button[aria-label="„Seriennummer“ bearbeiten"]');
+    expect(document.activeElement).toBe(btnAfter.element);
+  });
+
   it("empty optional text saves null; required shows Pflichtfeld", async () => {
     const w = mountField({ editing: true });
     await w.find("input").setValue("  ");
@@ -102,6 +124,30 @@ describe("InlineField editing", () => {
     await w.find("select").setValue("");
     await w.find(".inline-save").trigger("click");
     expect(w.emitted("save")).toEqual([[null]]);
+  });
+
+  it("select: saves the option's own value type (number, not string)", async () => {
+    const opts = [{ value: 1, label: "Marsch" }, { value: 2, label: "Walzer" }];
+    const w = mountField({ type: "select", value: 1, options: opts, editing: true });
+    await w.find("select").setValue("2");
+    await w.find(".inline-save").trigger("click");
+    expect(w.emitted("save")).toEqual([[2]]);
+    expect(typeof w.emitted("save")[0][0]).toBe("number");
+  });
+
+  it("tags: renders a TagSelect and saves the selected ids", async () => {
+    const opts = [{ value: 9, label: "Deko" }];
+    const w = mountField({ type: "tags", value: [], options: opts, editing: true });
+    const input = w.find('[role="combobox"]');
+    expect(input.exists()).toBe(true);
+
+    await w.find(".inline-save").trigger("click");
+    expect(w.emitted("save")).toEqual([[[]]]);
+
+    await input.setValue("deko");
+    await input.trigger("keydown", { key: "Enter" });
+    await w.find(".inline-save").trigger("click");
+    expect(w.emitted("save")[1]).toEqual([[9]]);
   });
 
   it("bool, multiselect and money", async () => {

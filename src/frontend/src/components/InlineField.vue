@@ -60,13 +60,16 @@ function initialDraft() {
 
 watch(
   () => props.editing,
-  async (editing) => {
+  async (editing, wasEditing) => {
     localError.value = "";
     if (editing) {
       draft.value = initialDraft();
       await nextTick();
       editor.value?.querySelector("input, select, textarea")?.focus();
-    } else {
+    } else if (wasEditing === true) {
+      // Only return focus to the edit button on a real true→false transition —
+      // never on initial mount (wasEditing is undefined then), or the last
+      // field's edit button would steal focus on page load.
       await nextTick();
       editButton.value?.focus?.();
     }
