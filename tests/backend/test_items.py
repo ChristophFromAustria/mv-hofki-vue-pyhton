@@ -589,3 +589,53 @@ async def test_wipe_inventory_removes_category_links(client, db_session):
         select(func.count()).select_from(general_item_category_links)
     )
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# Partial updates used by inline editing
+# ---------------------------------------------------------------------------
+
+
+async def _general_item(client):
+    resp = await client.post(
+        "/api/v1/items", json={"category": "general_item", "label": "Stehtisch"}
+    )
+    return resp.json()["id"]
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"quantity": 0},
+        {"quantity": None},
+        {"owner": ""},
+        {"owner": "   "},
+        {"owner": None},
+        {"label": ""},
+        {"label": None},
+    ],
+)
+async def test_invalid_partial_update_is_422_and_changes_nothing(client, patch):
+    item_id = await _general_item(client)
+    resp = await client.put(f"/api/v1/items/{item_id}", json=patch)
+    assert resp.status_code == 422, resp.text
+    detail = (await client.get(f"/api/v1/items/{item_id}")).json()
+    assert detail["label"] == "Stehtisch"
+    assert detail["owner"] == "MV Hofkirchen"
+    assert detail["quantity"] == 1
+
+
+async def test_required_field_message(client):
+    item_id = await _general_item(client)
+    resp = await client.put(f"/api/v1/items/{item_id}", json={"owner": ""})
+    assert "Pflichtfeld" in resp.json()["detail"][0]["msg"]
+
+
+async def test_single_field_updates_still_work(client):
+    item_id = await _general_item(client)
+    resp = await client.put(f"/api/v1/items/{item_id}", json={"notes": "wackelt"})
+    assert resp.status_code == 200 and resp.json()["notes"] == "wackelt"
+    resp = await client.put(f"/api/v1/items/{item_id}", json={"notes": None})
+    assert resp.status_code == 200 and resp.json()["notes"] is None
+    resp = await client.put(f"/api/v1/items/{item_id}", json={"quantity": 3})
+    assert resp.json()["quantity"] == 3

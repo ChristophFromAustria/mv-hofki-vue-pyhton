@@ -134,6 +134,7 @@ async def update_item(
     item_id: int, body: dict[str, Any], db: AsyncSession = Depends(get_db)
 ):
     from fastapi import HTTPException
+    from pydantic import ValidationError
 
     # First fetch item to know its category
     current = await item_service.get_by_id(db, item_id)
@@ -147,7 +148,16 @@ async def update_item(
 
     schema_cls = _UPDATE_SCHEMAS.get(category)
     if schema_cls:
-        validated = schema_cls(**body)
+        try:
+            validated = schema_cls(**body)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=[
+                    {"loc": e["loc"], "msg": e["msg"], "type": e["type"]}
+                    for e in exc.errors()
+                ],
+            ) from exc
         update_data = validated.model_dump(exclude_unset=True)
     else:
         update_data = body

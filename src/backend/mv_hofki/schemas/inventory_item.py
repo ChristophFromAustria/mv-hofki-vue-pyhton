@@ -103,6 +103,15 @@ class ItemUpdateBase(BaseModel):
     notes: str | None = None
     storage_location: str | None = None
 
+    @model_validator(mode="after")
+    def required_fields_not_cleared(self):
+        for name in ("label", "owner", "quantity"):
+            if name in self.model_fields_set:
+                value = getattr(self, name)
+                if value is None or (isinstance(value, str) and not value.strip()):
+                    raise ValueError(f"Pflichtfeld: {name}")
+        return self
+
 
 class InstrumentItemUpdate(ItemUpdateBase):
     instrument_type_id: int | None = None
