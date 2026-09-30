@@ -21,7 +21,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 
 ## Musiker
 
-4. **Musiker direkt anlegen** — *klein.* Eine neue Person direkt im
+4. ~~**Musiker direkt anlegen**~~ — ✅ erledigt (30.09.2026). *klein.* Eine neue Person direkt im
    Personen-Auswahlfeld (z. B. beim Ausleihen) anlegen, ohne die Seite zu
    verlassen.
 5. ~~**Suchumfang umschaltbar**~~ — ✅ erledigt (30.09.2026). *klein.* In Personen-Suchfeldern direkt

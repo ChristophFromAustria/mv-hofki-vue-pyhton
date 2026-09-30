@@ -14,6 +14,7 @@ import GroupSelect from "../components/GroupSelect.vue";
 import GroupToggleAll from "../components/GroupToggleAll.vue";
 import InfiniteLoader from "../components/InfiniteLoader.vue";
 import RemotePicker from "../components/RemotePicker.vue";
+import MusicianPicker from "../components/MusicianPicker.vue";
 
 const GROUP_OPTIONS = [
   { key: "musician", label: "Musiker" },
@@ -210,13 +211,7 @@ async function returnWithDate(id) {
             <span v-if="formErrors.item_id" class="form-error">{{ formErrors.item_id }}</span>
           </div>
           <div class="form-group" :class="{ error: formErrors.musician_id }">
-            <RemotePicker
-              v-model="form.musician_id"
-              :fetch-options="fetchMusicianOptions"
-              :scopes="MUSICIAN_SCOPES"
-              label="Musiker *"
-              placeholder="Name …"
-            />
+            <MusicianPicker v-model="form.musician_id" label="Musiker *" creatable />
             <span v-if="formErrors.musician_id" class="form-error">{{
               formErrors.musician_id
             }}</span>

@@ -17,8 +17,7 @@ import { splitImages } from "../lib/images.js";
 import { quantityDetail } from "../lib/quantity.js";
 import InvoiceModal from "../components/InvoiceModal.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
-import RemotePicker from "../components/RemotePicker.vue";
-import { fetchMusicianOptions, MUSICIAN_SCOPES } from "../lib/pickers.js";
+import MusicianPicker from "../components/MusicianPicker.vue";
 import { isOverdue, loanStatus } from "../lib/loans.js";
 
 const props = defineProps({
@@ -499,12 +498,11 @@ async function onEditSave() {
         </p>
         <form class="cluster cluster-end" @submit.prevent="createLoan">
           <div class="form-group grow" :class="{ error: loanErrors.musician_id }">
-            <RemotePicker
+            <MusicianPicker
               v-model="loanForm.musician_id"
-              :fetch-options="fetchMusicianOptions"
-              :scopes="MUSICIAN_SCOPES"
               label="Musiker"
               placeholder="Name eingeben …"
+              creatable
             />
             <span v-if="loanErrors.musician_id" class="form-error">{{
               loanErrors.musician_id

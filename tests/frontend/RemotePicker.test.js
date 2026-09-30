@@ -141,3 +141,41 @@ describe("RemotePicker scopes", () => {
     expect(plain.w.find(".remote-picker-scopes").exists()).toBe(false);
   });
 });
+
+describe("RemotePicker create entry", () => {
+  const createLabel = (t) => `„${t}“ als neuen Musiker anlegen …`;
+
+  it("offers to create what was typed, by click and by keyboard", async () => {
+    const { w } = setup({ createLabel, fetchOptions: vi.fn().mockResolvedValue([]) });
+    const input = w.find("input");
+    await input.trigger("focus");
+    await input.setValue("Anna Neu");
+    await tick();
+    await flushPromises();
+    const entry = w.find(".remote-picker-create");
+    expect(entry.text()).toContain("„Anna Neu“ als neuen Musiker anlegen …");
+    expect(w.text()).not.toContain("Keine Treffer");
+    await entry.trigger("click");
+    expect(w.emitted("create")).toEqual([["Anna Neu"]]);
+
+    await input.trigger("focus");
+    await input.trigger("keydown", { key: "ArrowDown" });
+    await input.trigger("keydown", { key: "Enter" });
+    expect(w.emitted("create")).toHaveLength(2);
+  });
+
+  it("comes after the results and has no entry without typed text", async () => {
+    const { w } = setup({ createLabel });
+    const input = w.find("input");
+    await input.trigger("focus");
+    await tick();
+    await flushPromises();
+    expect(w.find(".remote-picker-create").exists()).toBe(false);
+    await input.setValue("mai");
+    await tick();
+    await flushPromises();
+    const items = w.findAll('[role="option"]');
+    expect(items.at(-1).classes()).toContain("remote-picker-create");
+    expect(items).toHaveLength(OPTIONS.length + 1);
+  });
+});

@@ -13,8 +13,12 @@ const props = defineProps({
   // and passed to fetchOptions(text, { scope }).
   scopes: { type: Array, default: null },
   defaultScope: { type: String, default: "" },
+  // Optional "create new" entry after the results: (typed text) => its label,
+  // e.g. (t) => `„${t}“ als neuen Musiker anlegen …`. Choosing it emits
+  // "create" with the typed text; the parent then sets v-model/selectedLabel.
+  createLabel: { type: Function, default: null },
 });
-const emit = defineEmits(["update:modelValue", "select"]);
+const emit = defineEmits(["update:modelValue", "select", "create"]);
 
 const baseId = `remote-picker-${Math.random().toString(36).slice(2, 9)}`;
 const query = ref(props.modelValue != null ? props.selectedLabel : "");
@@ -80,6 +84,20 @@ function onInput() {
   schedule();
 }
 
+const createText = computed(() =>
+  props.createLabel && query.value.trim() && !loading.value
+    ? props.createLabel(query.value.trim())
+    : "",
+);
+// Index of the create entry in keyboard navigation (after the options).
+const createIndex = computed(() => (createText.value ? options.value.length : -1));
+
+function create() {
+  open.value = false;
+  activeIndex.value = -1;
+  emit("create", query.value.trim());
+}
+
 function choose(option) {
   selected.value = option;
   query.value = option.label;
@@ -104,7 +122,7 @@ function clear() {
 }
 
 function onKeydown(e) {
-  const count = options.value.length;
+  const count = options.value.length + (createText.value ? 1 : 0);
   if (e.key === "ArrowDown") {
     e.preventDefault();
     open.value = true;
@@ -114,7 +132,10 @@ function onKeydown(e) {
     e.preventDefault();
     if (count) activeIndex.value = Math.max(0, activeIndex.value - 1);
   } else if (e.key === "Enter") {
-    if (open.value && activeIndex.value >= 0 && options.value[activeIndex.value]) {
+    if (open.value && activeIndex.value >= 0 && activeIndex.value === createIndex.value) {
+      e.preventDefault();
+      create();
+    } else if (open.value && activeIndex.value >= 0 && options.value[activeIndex.value]) {
       e.preventDefault();
       choose(options.value[activeIndex.value]);
     }
@@ -205,10 +226,22 @@ const showClear = computed(() => props.modelValue != null);
           <span>{{ o.label }}</span>
           <span v-if="o.description" class="remote-picker-desc">{{ o.description }}</span>
         </li>
+        <li
+          v-if="createText"
+          :id="`${baseId}-opt-${createIndex}`"
+          role="option"
+          class="remote-picker-create"
+          :aria-selected="String(activeIndex === createIndex)"
+          :class="{ active: activeIndex === createIndex }"
+          @mousedown.prevent
+          @click="create"
+        >
+          <span aria-hidden="true">＋</span> {{ createText }}
+        </li>
       </ul>
       <p v-if="loading" class="remote-picker-status">Suche …</p>
       <p v-else-if="error" class="remote-picker-status form-error" role="alert">{{ error }}</p>
-      <p v-else-if="!options.length" class="remote-picker-status">Keine Treffer</p>
+      <p v-else-if="!options.length && !createText" class="remote-picker-status">Keine Treffer</p>
     </div>
   </div>
 </template>
@@ -288,6 +321,13 @@ const showClear = computed(() => props.modelValue != null);
 .remote-picker-popup li.active,
 .remote-picker-popup li:hover {
   background: var(--color-primary-light);
+}
+
+.remote-picker-popup li.remote-picker-create {
+  justify-content: flex-start;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-primary);
+  font-weight: 500;
 }
 
 .remote-picker-desc {
