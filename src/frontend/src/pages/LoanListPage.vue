@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { get, post, put } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
-import { fetchLoanableItemOptions, fetchMusicianOptions } from "../lib/pickers.js";
+import { fetchLoanableItemOptions, fetchMusicianOptions, MUSICIAN_SCOPES } from "../lib/pickers.js";
 import { useListQuery } from "../composables/useListQuery.js";
 import { useGroupCollapse } from "../composables/useGroupCollapse.js";
 import DataTable from "../components/DataTable.vue";
@@ -200,6 +200,7 @@ async function returnWithDate(id) {
             <RemotePicker
               v-model="form.musician_id"
               :fetch-options="fetchMusicianOptions"
+              :scopes="MUSICIAN_SCOPES"
               label="Musiker *"
               placeholder="Name …"
             />
@@ -231,7 +232,9 @@ async function returnWithDate(id) {
         class="loan-musician-filter"
         :model-value="state.musician_id"
         :selected-label="filterMusicianLabel"
-        :fetch-options="(t) => fetchMusicianOptions(t, { activeOnly: false })"
+        :fetch-options="fetchMusicianOptions"
+        :scopes="MUSICIAN_SCOPES"
+        default-scope="all"
         label="Musiker"
         placeholder="Alle Musiker"
         @update:model-value="setFilter('musician_id', $event)"

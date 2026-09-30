@@ -27,6 +27,18 @@ describe("pickers", () => {
     expect(get).toHaveBeenLastCalledWith("/musicians?limit=20");
   });
 
+  it("musician options: scope wins over activeOnly and inactive ones are marked", async () => {
+    get.mockResolvedValue({
+      items: [{ id: 4, first_name: "Karl", last_name: "Alt", is_extern: true, is_active: false }],
+      total: 1,
+    });
+    const opts = await fetchMusicianOptions("alt", { scope: "all" });
+    expect(get).toHaveBeenCalledWith("/musicians?limit=20&search=alt");
+    expect(opts[0].description).toBe("extern · inaktiv");
+    await fetchMusicianOptions("", { scope: "active", activeOnly: false });
+    expect(get).toHaveBeenLastCalledWith("/musicians?is_active=true&limit=20");
+  });
+
   it("loanable items: three categories, available only, labelled", async () => {
     get.mockImplementation(async (path) => ({
       items: path.includes("instrument")

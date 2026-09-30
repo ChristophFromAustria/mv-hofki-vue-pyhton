@@ -2,7 +2,15 @@
 import { get } from "./api.js";
 import { CATEGORIES } from "./categories.js";
 
-export async function fetchMusicianOptions(text, { activeOnly = true } = {}) {
+// Search scopes for musician pickers (RemotePicker `scopes`).
+export const MUSICIAN_SCOPES = [
+  { value: "active", label: "Nur aktive" },
+  { value: "all", label: "Alle" },
+];
+
+// `scope` (from RemotePicker) wins over `activeOnly`.
+export async function fetchMusicianOptions(text, { activeOnly = true, scope } = {}) {
+  if (scope) activeOnly = scope !== "all";
   const params = new URLSearchParams();
   if (activeOnly) params.set("is_active", "true");
   params.set("limit", "20");
@@ -11,7 +19,9 @@ export async function fetchMusicianOptions(text, { activeOnly = true } = {}) {
   return page.items.map((m) => ({
     id: m.id,
     label: `${m.last_name} ${m.first_name}`,
-    description: m.is_extern ? "extern" : "",
+    description: [m.is_extern && "extern", m.is_active === false && "inaktiv"]
+      .filter(Boolean)
+      .join(" · "),
   }));
 }
 

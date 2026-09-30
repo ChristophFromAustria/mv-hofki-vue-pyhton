@@ -8,6 +8,11 @@ const props = defineProps({
   placeholder: { type: String, default: "Suchen …" },
   selectedLabel: { type: String, default: "" },
   debounceMs: { type: Number, default: 250 },
+  // Optional search scopes, e.g. [{ value: "active", label: "Nur aktive" },
+  // { value: "all", label: "Alle" }]: shown as a switch above the results
+  // and passed to fetchOptions(text, { scope }).
+  scopes: { type: Array, default: null },
+  defaultScope: { type: String, default: "" },
 });
 const emit = defineEmits(["update:modelValue", "select"]);
 
@@ -19,6 +24,7 @@ const activeIndex = ref(-1);
 const loading = ref(false);
 const error = ref("");
 const selected = ref(null);
+const scope = ref(props.defaultScope || props.scopes?.[0]?.value || "");
 let timer = null;
 let seq = 0;
 
@@ -40,7 +46,9 @@ async function search(text) {
   loading.value = true;
   error.value = "";
   try {
-    const result = await props.fetchOptions(text.trim());
+    const result = props.scopes
+      ? await props.fetchOptions(text.trim(), { scope: scope.value })
+      : await props.fetchOptions(text.trim());
     if (my !== seq) return;
     options.value = result;
     activeIndex.value = -1;
@@ -79,6 +87,13 @@ function choose(option) {
   activeIndex.value = -1;
   emit("update:modelValue", option.id);
   emit("select", option);
+}
+
+function setScope(value) {
+  if (scope.value === value) return;
+  scope.value = value;
+  clearTimeout(timer);
+  search(query.value);
 }
 
 function clear() {
@@ -158,6 +173,24 @@ const showClear = computed(() => props.modelValue != null);
       </button>
     </div>
     <div v-show="expanded" class="remote-picker-popup">
+      <div
+        v-if="scopes"
+        class="view-toggle remote-picker-scopes"
+        role="group"
+        aria-label="Suchumfang"
+      >
+        <button
+          v-for="s in scopes"
+          :key="s.value"
+          type="button"
+          :class="{ active: scope === s.value }"
+          :aria-pressed="scope === s.value ? 'true' : 'false'"
+          @mousedown.prevent
+          @click="setScope(s.value)"
+        >
+          {{ s.label }}
+        </button>
+      </div>
       <ul :id="`${baseId}-list`" role="listbox" :aria-label="label">
         <li
           v-for="(o, i) in options"
@@ -224,6 +257,16 @@ const showClear = computed(() => props.modelValue != null);
   border-radius: var(--radius);
   background: var(--color-bg);
   box-shadow: var(--shadow-float);
+}
+
+.remote-picker-scopes {
+  display: flex;
+  margin: var(--space-2) var(--space-3) 0;
+}
+
+.remote-picker-scopes button {
+  flex: 1;
+  min-height: 44px;
 }
 
 .remote-picker-popup ul {

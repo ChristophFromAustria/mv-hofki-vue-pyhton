@@ -24,7 +24,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 4. **Musiker direkt anlegen** — *klein.* Eine neue Person direkt im
    Personen-Auswahlfeld (z. B. beim Ausleihen) anlegen, ohne die Seite zu
    verlassen.
-5. **Suchumfang umschaltbar** — *klein.* In Personen-Suchfeldern direkt
+5. ~~**Suchumfang umschaltbar**~~ — ✅ erledigt (30.09.2026). *klein.* In Personen-Suchfeldern direkt
    umstellen können: nur aktive / alle Musiker. Heute sucht das Auswahlfeld
    beim Ausleihen fest nur aktive (`fetchMusicianOptions`, `activeOnly`).
 6. ~~**Status-Schalter auf der Detailseite**~~ — ✅ erledigt (30.09.2026). *klein.* Die Checkbox „Status“

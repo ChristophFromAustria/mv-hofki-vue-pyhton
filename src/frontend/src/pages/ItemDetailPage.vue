@@ -18,7 +18,7 @@ import { quantityDetail } from "../lib/quantity.js";
 import InvoiceModal from "../components/InvoiceModal.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
 import RemotePicker from "../components/RemotePicker.vue";
-import { fetchMusicianOptions } from "../lib/pickers.js";
+import { fetchMusicianOptions, MUSICIAN_SCOPES } from "../lib/pickers.js";
 
 const props = defineProps({
   category: { type: String, required: true },
@@ -460,6 +460,7 @@ async function onEditSave() {
             <RemotePicker
               v-model="loanForm.musician_id"
               :fetch-options="fetchMusicianOptions"
+              :scopes="MUSICIAN_SCOPES"
               label="Musiker"
               placeholder="Name eingeben …"
             />

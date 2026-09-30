@@ -104,3 +104,40 @@ describe("RemotePicker", () => {
     expect(w.find("input").element.value).toBe("");
   });
 });
+
+describe("RemotePicker scopes", () => {
+  const scopes = [
+    { value: "active", label: "Nur aktive" },
+    { value: "all", label: "Alle" },
+  ];
+
+  it("passes the scope to fetchOptions and re-searches when it changes", async () => {
+    const { w, fetchOptions } = setup({ scopes });
+    await w.find("input").trigger("focus");
+    await tick();
+    await flushPromises();
+    expect(fetchOptions).toHaveBeenLastCalledWith("", { scope: "active" });
+    const buttons = w.findAll(".remote-picker-scopes button");
+    expect(buttons.map((b) => b.text())).toEqual(["Nur aktive", "Alle"]);
+    expect(buttons[0].attributes("aria-pressed")).toBe("true");
+    await w.find("input").setValue("mai");
+    await buttons[1].trigger("click");
+    await flushPromises();
+    expect(fetchOptions).toHaveBeenLastCalledWith("mai", { scope: "all" });
+    expect(buttons[1].attributes("aria-pressed")).toBe("true");
+  });
+
+  it("starts with defaultScope and calls fetchOptions with the text only without scopes", async () => {
+    const { w, fetchOptions } = setup({ scopes, defaultScope: "all" });
+    await w.find("input").trigger("focus");
+    await tick();
+    await flushPromises();
+    expect(fetchOptions).toHaveBeenLastCalledWith("", { scope: "all" });
+    const plain = setup();
+    await plain.w.find("input").trigger("focus");
+    await tick();
+    await flushPromises();
+    expect(plain.fetchOptions).toHaveBeenLastCalledWith("");
+    expect(plain.w.find(".remote-picker-scopes").exists()).toBe(false);
+  });
+});
