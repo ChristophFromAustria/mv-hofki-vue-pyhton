@@ -3,7 +3,9 @@ import { computed, ref, onMounted, onUnmounted } from "vue";
 import LoadingSpinner from "./LoadingSpinner.vue";
 import SortSelect from "./SortSelect.vue";
 import GroupHeader from "./GroupHeader.vue";
+import HighlightText from "./HighlightText.vue";
 import { buildSegments } from "../lib/grouping.js";
+import { displayNrParts, highlightParts } from "../lib/highlight.js";
 
 const props = defineProps({
   columns: { type: Array, default: () => [] },
@@ -17,6 +19,12 @@ const props = defineProps({
   selectable: { type: Boolean, default: false },
   selectedIds: { type: Array, default: () => [] },
   rowLabel: { type: Function, default: (r) => r.label ?? "" },
+  // Search term to mark in columns with `highlight` (true, or "display-nr"
+  // for inventory numbers typed as "tu 2").
+  highlight: { type: String, default: "" },
+  // (row) => { label, parts } | null — where a row was found when no column
+  // shows it; rendered under the column with `hint: true` (or as a card row).
+  rowHint: { type: Function, default: null },
 });
 const emit = defineEmits(["row-click", "update:sort", "toggle-group", "toggle-select"]);
 
@@ -39,6 +47,17 @@ function toggleSort(col) {
   const active = sortKeyOf(props.sort) === col.sortKey;
   emit("update:sort", active && !props.sort.startsWith("-") ? `-${col.sortKey}` : col.sortKey);
 }
+
+function cellParts(row, col) {
+  if (!col.highlight || !props.highlight) return null;
+  const value = row[col.key];
+  if (value == null || value === "") return null;
+  return col.highlight === "display-nr"
+    ? displayNrParts(String(value), props.highlight)
+    : highlightParts(String(value), props.highlight);
+}
+
+const hintOf = (row) => (props.rowHint ? props.rowHint(row) : null);
 
 // Spalten mit `hideEmptyInCard` erscheinen in der Kartenansicht nur mit Wert.
 function cardColumns(row) {
@@ -100,10 +119,15 @@ onUnmounted(() => {
           <span class="dt-card-label">{{ col.label }}</span>
           <span class="dt-card-value">
             <slot :name="col.key" :row="seg.row" :value="seg.row[col.key]">
-              {{ seg.row[col.key] }}
+              <HighlightText v-if="cellParts(seg.row, col)" :parts="cellParts(seg.row, col)" />
+              <template v-else>{{ seg.row[col.key] }}</template>
             </slot>
           </span>
         </div>
+        <p v-if="hintOf(seg.row)" class="search-hint dt-card-hint">
+          <span class="search-hint-label">{{ `Treffer in ${hintOf(seg.row).label}: ` }}</span>
+          <HighlightText :parts="hintOf(seg.row).parts" />
+        </p>
       </div>
     </template>
   </div>
@@ -163,8 +187,13 @@ onUnmounted(() => {
             </td>
             <td v-for="col in columns" :key="col.key" :class="col.class">
               <slot :name="col.key" :row="seg.row" :value="seg.row[col.key]">
-                {{ seg.row[col.key] }}
+                <HighlightText v-if="cellParts(seg.row, col)" :parts="cellParts(seg.row, col)" />
+                <template v-else>{{ seg.row[col.key] }}</template>
               </slot>
+              <span v-if="col.hint && hintOf(seg.row)" class="search-hint">
+                <span class="search-hint-label">{{ `Treffer in ${hintOf(seg.row).label}: ` }}</span>
+                <HighlightText :parts="hintOf(seg.row).parts" />
+              </span>
             </td>
           </tr>
         </template>
@@ -229,6 +258,12 @@ onUnmounted(() => {
 
 .dt-card-value {
   text-align: right;
+}
+
+.dt-card-hint {
+  margin: 0;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--color-border);
 }
 
 .th-sort {

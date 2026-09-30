@@ -137,6 +137,9 @@ export function useListQuery({
   const items = ref([]);
   const total = ref(0);
   const lastResponse = ref(null);
+  // The query behind the rows on screen (e.g. to mark the search term they
+  // were found by — state.search may already be ahead of them).
+  const appliedParams = ref(new URLSearchParams());
   const loading = ref(false);
   const loadingMore = ref(false);
   const error = ref("");
@@ -180,6 +183,7 @@ export function useListQuery({
       items.value = append ? [...items.value, ...mapped] : mapped;
       total.value = data.total;
       lastResponse.value = data;
+      appliedParams.value = params;
     } catch (e) {
       if (my !== seq) return;
       error.value = e?.message || "Laden fehlgeschlagen.";
@@ -287,6 +291,7 @@ export function useListQuery({
     groups,
     itemTotal,
     lastResponse,
+    appliedParams,
     loading,
     loadingMore,
     error,

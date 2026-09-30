@@ -1,6 +1,8 @@
 <script setup>
 import { RouterLink } from "vue-router";
 import CategoryChips from "./CategoryChips.vue";
+import HighlightText from "./HighlightText.vue";
+import { displayNrParts, highlightParts } from "../lib/highlight.js";
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -8,6 +10,9 @@ const props = defineProps({
   to: { type: String, required: true },
   selecting: Boolean,
   selected: Boolean,
+  // Search term to mark, and where the item was found if nothing shown has it.
+  term: { type: String, default: "" },
+  hint: { type: Object, default: null },
 });
 defineEmits(["toggle-select"]);
 </script>
@@ -33,14 +38,23 @@ defineEmits(["toggle-select"]);
     </span>
     <span class="item-card-body">
       <span class="item-card-title">
-        {{ item.label }}
+        <HighlightText :parts="highlightParts(item.label, term)" />
         <span v-if="item.quantity_label" class="item-card-quantity">{{ item.quantity_label }}</span>
       </span>
       <span class="item-card-meta">
-        {{ item.display_nr }}{{ item.manufacturer ? " · " + item.manufacturer : "" }}
+        <HighlightText :parts="displayNrParts(item.display_nr, term)" /><template
+          v-if="item.manufacturer"
+        >
+          · <HighlightText :parts="highlightParts(item.manufacturer, term)"
+        /></template>
       </span>
       <span v-if="hasLoans && item.active_loan" class="item-card-borrower">
-        <span class="sr-only">Ausgeliehen an </span>{{ item.active_loan.musician_name }}
+        <span class="sr-only">Ausgeliehen an </span
+        ><HighlightText :parts="highlightParts(item.active_loan.musician_name, term)" />
+      </span>
+      <span v-if="hint" class="search-hint item-card-hint">
+        <span class="search-hint-label">{{ `Treffer in ${hint.label}: ` }}</span>
+        <HighlightText :parts="hint.parts" />
       </span>
       <CategoryChips v-if="item.categories?.length" :categories="item.categories" />
     </span>
@@ -138,6 +152,11 @@ defineEmits(["toggle-select"]);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.item-card-hint {
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .item-card-status {

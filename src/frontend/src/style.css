@@ -53,6 +53,8 @@ dialog:modal {
   --color-shadow: rgba(27, 39, 53, 0.1);
   --color-overlay: rgba(27, 39, 53, 0.45);
   --color-row-alt: rgba(47, 74, 104, 0.035);
+  --color-highlight-bg: #f3e1ad;
+  --color-highlight-text: #1b2735;
   --color-focus-ring: rgba(47, 74, 104, 0.35);
   --shadow-float: 0 4px 12px var(--color-shadow);
   --shadow-dialog: 0 10px 25px var(--color-shadow);
@@ -130,6 +132,8 @@ dialog:modal {
   --color-shadow: rgba(0, 0, 0, 0.4);
   --color-overlay: rgba(0, 0, 0, 0.6);
   --color-row-alt: rgba(143, 176, 211, 0.05);
+  --color-highlight-bg: #5c4717;
+  --color-highlight-text: #f4ead2;
   --color-focus-ring: rgba(143, 176, 211, 0.45);
   color-scheme: dark;
 }
@@ -334,6 +338,35 @@ input[type="range"] {
 /* Multi-line free text (notes) keeps its line breaks */
 .text-pre-line {
   white-space: pre-line;
+}
+
+/* Search hits */
+mark {
+  background: var(--color-highlight-bg);
+  color: var(--color-highlight-text);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.search-hint {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  /* An excerpt, not the whole text: never widen a column, at most 2 lines. */
+  max-width: 40ch;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.search-hint-label {
+  font-weight: 500;
 }
 
 /* Tables */

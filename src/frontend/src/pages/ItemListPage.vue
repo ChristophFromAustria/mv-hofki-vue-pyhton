@@ -8,6 +8,7 @@ import { toggleId, mergeIds } from "../lib/bulkSelection.js";
 import { useListQuery } from "../composables/useListQuery.js";
 import { useGroupCollapse } from "../composables/useGroupCollapse.js";
 import { buildSegments } from "../lib/grouping.js";
+import { searchHint } from "../lib/highlight.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import FilterBar from "../components/FilterBar.vue";
@@ -191,7 +192,11 @@ const {
   loadMore,
   reload,
   resetFilters,
+  appliedParams,
 } = list;
+
+// The term the rows on screen were found by (state.search may be ahead).
+const searchTerm = computed(() => appliedParams.value.get("search") || "");
 
 const collapseKey = computed(() => `${props.category}:${state.group_by || "none"}`);
 const {
@@ -299,13 +304,32 @@ const columns = computed(() => {
   return [...base.slice(0, 2), QUANTITY_COLUMN, ...base.slice(2)];
 });
 
+const BORROWER_COLUMN = {
+  key: "borrower",
+  label: "Ausgeliehen an",
+  sortKey: "borrower",
+  highlight: true,
+  hideEmptyInCard: true,
+};
+
+// Where a row was found when nothing on screen shows the search term.
+const tableHint = (row) =>
+  searchHint(
+    row,
+    searchTerm.value,
+    columns.value.map((c) => c.key),
+  );
+// ItemCard shows label, number, manufacturer and borrower.
+const cardHint = (row) =>
+  searchHint(row, searchTerm.value, ["label", "display_nr", "manufacturer", "borrower"]);
+
 const baseColumns = computed(() => {
   switch (props.category) {
     case "instrument":
       return [
-        { key: "display_nr", label: "Inv.-Nr.", sortKey: "number" },
-        { key: "type_label", label: "Typ", sortKey: "type" },
-        { key: "manufacturer", label: "Hersteller", sortKey: "manufacturer" },
+        { key: "display_nr", label: "Inv.-Nr.", sortKey: "number", highlight: "display-nr" },
+        { key: "type_label", label: "Typ", sortKey: "type", hint: true },
+        { key: "manufacturer", label: "Hersteller", sortKey: "manufacturer", highlight: true },
         { key: "serial_nr", label: "Seriennr." },
         {
           key: "construction_year",
@@ -316,30 +340,30 @@ const baseColumns = computed(() => {
         },
         { key: "owner", label: "Eigentümer" },
         { key: "status_label", label: "Status" },
-        { key: "borrower", label: "Ausgeliehen an", sortKey: "borrower", hideEmptyInCard: true },
+        BORROWER_COLUMN,
       ];
     case "clothing":
       return [
-        { key: "display_nr", label: "Inv.-Nr.", sortKey: "number" },
-        { key: "type_label", label: "Typ", sortKey: "type" },
+        { key: "display_nr", label: "Inv.-Nr.", sortKey: "number", highlight: "display-nr" },
+        { key: "type_label", label: "Typ", sortKey: "type", hint: true },
         { key: "size", label: "Größe", sortKey: "size" },
         { key: "gender", label: "Geschlecht" },
         { key: "owner", label: "Eigentümer" },
         { key: "status_label", label: "Status" },
-        { key: "borrower", label: "Ausgeliehen an", sortKey: "borrower", hideEmptyInCard: true },
+        BORROWER_COLUMN,
       ];
     case "sheet_music":
       return [
-        { key: "display_nr", label: "Inv.-Nr.", sortKey: "number" },
-        { key: "label", label: "Titel", sortKey: "label" },
+        { key: "display_nr", label: "Inv.-Nr.", sortKey: "number", highlight: "display-nr" },
+        { key: "label", label: "Titel", sortKey: "label", highlight: true, hint: true },
         { key: "composer", label: "Komponist", sortKey: "composer" },
         { key: "arranger", label: "Arrangeur" },
         { key: "genre_label", label: "Gattung" },
       ];
     case "general_item":
       return [
-        { key: "display_nr", label: "Inv.-Nr.", sortKey: "number" },
-        { key: "label", label: "Bezeichnung", sortKey: "label" },
+        { key: "display_nr", label: "Inv.-Nr.", sortKey: "number", highlight: "display-nr" },
+        { key: "label", label: "Bezeichnung", sortKey: "label", highlight: true, hint: true },
         { key: "categories", label: "Kategorien", hideEmptyInCard: true },
         {
           key: "storage_location",
@@ -347,10 +371,10 @@ const baseColumns = computed(() => {
           sortKey: "storage_location",
           hideEmptyInCard: true,
         },
-        { key: "manufacturer", label: "Hersteller" },
+        { key: "manufacturer", label: "Hersteller", highlight: true },
         { key: "owner", label: "Eigentümer" },
         { key: "status_label", label: "Status" },
-        { key: "borrower", label: "Ausgeliehen an", sortKey: "borrower", hideEmptyInCard: true },
+        BORROWER_COLUMN,
       ];
     default:
       return [];
@@ -478,6 +502,8 @@ function onModalSave() {
           :collapsed-groups="collapsed"
           :selectable="selecting"
           :selected-ids="selectedIds"
+          :highlight="searchTerm"
+          :row-hint="tableHint"
           :empty-text="filtered ? 'Keine Einträge für diese Filter.' : 'Noch keine Einträge.'"
           @update:sort="setSort"
           @row-click="goTo"
@@ -527,6 +553,8 @@ function onModalSave() {
               :to="`${cat.routeBase}/${seg.row.id}`"
               :selecting="selecting"
               :selected="selectedIds.includes(seg.row.id)"
+              :term="searchTerm"
+              :hint="cardHint(seg.row)"
               @toggle-select="toggleSelect(seg.row)"
             />
           </template>

@@ -40,6 +40,16 @@ describe("ItemCard", () => {
     expect(mountCard({ item: loaned, hasLoans: false }).find(".item-card-borrower").exists()).toBe(false);
   });
 
+  it("marks the search term and shows where a hidden hit was found", () => {
+    const loaned = { ...item, active_loan: { loan_id: 1, musician_id: 3, musician_name: "Anna Huber", is_extern: false, start_date: "2026-01-01" } };
+    const w = mountCard({ item: loaned, term: "huber" });
+    expect(w.findAll("mark").map((m) => m.text())).toEqual(["Huber"]);
+    expect(mountCard({ term: "tu 2" }).find(".item-card-meta mark").text()).toBe("TU-002");
+    const hinted = mountCard({ term: "markus", hint: { label: "Notizen", parts: [{ text: "…Lackinger ", match: false }, { text: "Markus", match: true }] } });
+    expect(hinted.find(".search-hint").text()).toBe("Treffer in Notizen: …Lackinger Markus");
+    expect(hinted.find(".search-hint mark").text()).toBe("Markus");
+  });
+
   it("shows the profile image", () => {
     const w = mountCard({ item: { ...item, profile_image_url: "/x.jpg" } });
     expect(w.find("img").attributes("src")).toBe("/x.jpg");

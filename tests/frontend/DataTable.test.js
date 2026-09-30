@@ -100,3 +100,33 @@ describe("DataTable groups and selection", () => {
     expect(w.emitted("toggle-select")[0][0]).toMatchObject({ id: 1 });
   });
 });
+
+describe("DataTable search highlighting", () => {
+  const hlColumns = [
+    { key: "display_nr", label: "Nr.", highlight: "display-nr" },
+    { key: "label", label: "Bezeichnung", highlight: true, hint: true },
+    { key: "year", label: "Baujahr" },
+  ];
+
+  it("marks the term only in columns flagged for it", () => {
+    const w = mount(DataTable, {
+      props: { columns: hlColumns, rows: [{ id: 1, display_nr: "A-001", label: "Tisch 1990", year: 1990 }], highlight: "1990" },
+    });
+    expect(w.findAll("mark").map((m) => m.text())).toEqual(["1990"]);
+    expect(w.findAll("td")[1].find("mark").exists()).toBe(true);
+  });
+
+  it("shows a row hint under the hint column", () => {
+    const w = mount(DataTable, {
+      props: {
+        columns: hlColumns,
+        rows,
+        highlight: "markus",
+        rowHint: () => ({ label: "Notizen", parts: [{ text: "Markus", match: true }] }),
+      },
+    });
+    const cell = w.findAll("td")[1];
+    expect(cell.find(".search-hint").text()).toBe("Treffer in Notizen: Markus");
+    expect(w.findAll(".search-hint")).toHaveLength(1);
+  });
+});
