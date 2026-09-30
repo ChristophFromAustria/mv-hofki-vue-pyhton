@@ -56,6 +56,11 @@ async def create(session: AsyncSession, data: LoanCreate) -> Loan:
     item = item_result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
+    if item.retired_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ausgeschiedene Gegenstände können nicht ausgeliehen werden",
+        )
     if await session.get(Musician, data.musician_id) is None:
         raise HTTPException(status_code=404, detail="Musiker nicht gefunden")
     if item.category not in LOANABLE_CATEGORIES:

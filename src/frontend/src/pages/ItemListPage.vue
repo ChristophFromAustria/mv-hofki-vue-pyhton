@@ -10,6 +10,7 @@ import { useGroupCollapse } from "../composables/useGroupCollapse.js";
 import { buildSegments } from "../lib/grouping.js";
 import { searchHint } from "../lib/highlight.js";
 import { isOverdue } from "../lib/loans.js";
+import { STOCK_OPTIONS } from "../lib/retire.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import FilterBar from "../components/FilterBar.vue";
@@ -103,6 +104,7 @@ const STATUS_OPTIONS = [
 ];
 
 const search = { type: "string", default: "", debounce: true };
+const bestand = { type: "string", default: "aktiv" };
 const GROUP_DEFAULTS = { instrument: "type" };
 const GROUP_OPTIONS = {
   instrument: [
@@ -131,6 +133,7 @@ const FILTERS = {
     owner: { type: "string", default: "" },
     construction_year__gte: { type: "number", default: null },
     construction_year__lte: { type: "number", default: null },
+    bestand,
     group_by: groupBy("instrument"),
   },
   clothing: {
@@ -139,6 +142,7 @@ const FILTERS = {
     size: { type: "string", default: "" },
     gender: { type: "string", default: "" },
     status: { type: "string", default: "" },
+    bestand,
     group_by: groupBy("clothing"),
   },
   sheet_music: {
@@ -146,6 +150,7 @@ const FILTERS = {
     genre_id__in: { type: "list", default: [] },
     difficulty: { type: "string", default: "" },
     storage_location__ilike: { type: "string", default: "", debounce: true },
+    bestand,
     group_by: groupBy("sheet_music"),
   },
   general_item: {
@@ -154,6 +159,7 @@ const FILTERS = {
     without_category: { type: "bool", default: null },
     storage_location__ilike: { type: "string", default: "", debounce: true },
     status: { type: "string", default: "" },
+    bestand,
     group_by: groupBy("general_item"),
   },
 };
@@ -214,7 +220,11 @@ const typeChoice = computed(() =>
   typeOptions.value.map((t) => ({ value: String(t.id), label: t.label })),
 );
 
-const filterDefs = computed(() => {
+const STOCK_DEF = { key: "bestand", label: "Bestand", type: "segmented", options: STOCK_OPTIONS };
+
+const filterDefs = computed(() => [...categoryFilterDefs.value, STOCK_DEF]);
+
+const categoryFilterDefs = computed(() => {
   switch (props.category) {
     case "instrument":
       return [
@@ -399,11 +409,13 @@ function mapItem(i) {
     mapped.categories = i.categories?.length ? i.categories : null;
   }
   if (cat.value.hasLoans) {
-    mapped.status_label = !i.active_loan
-      ? "Verfügbar"
-      : isOverdue(i.active_loan)
-        ? "Überfällig"
-        : "Ausgeliehen";
+    mapped.status_label = i.retired_at
+      ? "Ausgeschieden"
+      : !i.active_loan
+        ? "Verfügbar"
+        : isOverdue(i.active_loan)
+          ? "Überfällig"
+          : "Ausgeliehen";
     mapped.borrower = i.active_loan?.musician_name || "";
   }
   return mapped;

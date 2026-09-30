@@ -18,6 +18,9 @@ class ItemHit(BaseModel):
     notes: str | None = None
     active_loan: ActiveLoanInfo | None = None
     profile_image_url: str | None = None
+    # Retired items are found too, marked.
+    retired_at: date | None = None
+    retired_reason: str | None = None
 
 
 class MusicianHit(BaseModel):

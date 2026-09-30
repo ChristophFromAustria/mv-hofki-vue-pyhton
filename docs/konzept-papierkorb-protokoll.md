@@ -1,7 +1,8 @@
 # Konzept: Protokoll, Papierkorb, Ausgeschieden
 
 Todo-Punkte 11 und 15 (`docs/todo.md`), deckt nebenbei Punkt 2 ab. Ergebnis des
-Brainstormings vom 30.09.2026. Umsetzung in drei Phasen, in dieser Reihenfolge.
+Brainstormings vom 30.09.2026. Umsetzung in drei Phasen, in dieser Reihenfolge —
+alle drei am 30.09.2026 umgesetzt.
 
 ## Phase 1 — Protokoll (Event Log)
 

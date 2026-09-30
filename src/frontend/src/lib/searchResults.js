@@ -19,9 +19,12 @@ function itemEntry(hit, term) {
     displayNr: hit.display_nr,
     meta: hit.manufacturer || "",
     borrower: row.borrower,
-    status: loan
-      ? loanStatus({ ...loan, end_date: null })
-      : { label: "Verfügbar", badge: "badge badge-gray" },
+    status: hit.retired_at
+      ? { label: "Ausgeschieden", badge: "badge badge-gray" }
+      : loan
+        ? loanStatus({ ...loan, end_date: null })
+        : { label: "Verfügbar", badge: "badge badge-gray" },
+    muted: !!hit.retired_at,
     hint: searchHint(row, term, ITEM_VISIBLE),
     image: hit.profile_image_url,
   };
@@ -83,7 +86,8 @@ export function searchSections(result, term = result?.query || "") {
       key: group.category,
       label: group.label,
       total: group.total,
-      listTo: cat ? `${cat.routeBase}?search=${q}` : null,
+      // The search finds retired items too; so does the list with bestand=alle.
+      listTo: cat ? `${cat.routeBase}?search=${q}&bestand=alle` : null,
       entries: group.hits.filter((h) => h.id !== result.exact?.id).map((h) => itemEntry(h, term)),
     });
   }

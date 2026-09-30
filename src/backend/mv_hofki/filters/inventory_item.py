@@ -45,7 +45,7 @@ CATEGORY_LABELS = {
     "general_item": "Allgemein",
 }
 
-_COMMON_FIELDS = {"search", "order_by", "group_by"}
+_COMMON_FIELDS = {"search", "order_by", "group_by", "bestand"}
 _CATEGORY_FIELDS = {
     "instrument": {
         "instrument_type_id__in",
@@ -181,6 +181,8 @@ class ItemFilter(ListFilter):
     category_id__in: list[int] | None = None
     without_category: bool | None = None
     status: Literal["verfuegbar", "verliehen"] | None = None
+    # In stock (default), retired, or both.
+    bestand: Literal["aktiv", "ausgeschieden", "alle"] = "aktiv"
     owner: str | None = None
     size: str | None = None
     gender: str | None = None
@@ -298,6 +300,21 @@ class ItemFilter(ListFilter):
 
     def search_clause(self, value: str) -> ColumnElement[bool] | None:
         return item_search_clause(value)
+
+    def filter(self, query: Select) -> Select:  # type: ignore[override]
+        query = super().filter(query)
+        # fastapi-filter applies only fields that were given; "in stock" is
+        # the default and must hold without ?bestand= too.
+        if "bestand" not in self.model_fields_set:
+            query = self.filter_bestand(query, "aktiv")
+        return query
+
+    def filter_bestand(self, query: Select, value: str) -> Select:
+        if value == "aktiv":
+            return query.where(InventoryItem.retired_at.is_(None))
+        if value == "ausgeschieden":
+            return query.where(InventoryItem.retired_at.is_not(None))
+        return query
 
     def filter_status(self, query: Select, value: str) -> Select:
         open_loan = exists().where(

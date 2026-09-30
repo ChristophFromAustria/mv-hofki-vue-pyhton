@@ -26,7 +26,11 @@ CATEGORY_LABELS = {
 
 async def get_stats(session: AsyncSession) -> DashboardStats:
     total_items = (
-        await session.execute(select(func.count()).select_from(InventoryItem))
+        await session.execute(
+            select(func.count())
+            .select_from(InventoryItem)
+            .where(InventoryItem.retired_at.is_(None))
+        )
     ).scalar_one()
 
     total_musicians = (
@@ -48,6 +52,9 @@ async def get_stats(session: AsyncSession) -> DashboardStats:
             InstrumentDetail,
             InstrumentDetail.instrument_type_id == InstrumentType.id,
         )
+        # Through the item: hides items in the trash and retired ones.
+        .join(InventoryItem, InventoryItem.id == InstrumentDetail.item_id)
+        .where(InventoryItem.retired_at.is_(None))
         .group_by(InstrumentType.id, InstrumentType.label, InstrumentType.label_short)
         .order_by(func.count(InstrumentDetail.id).desc())
     )
@@ -67,6 +74,7 @@ async def get_stats(session: AsyncSession) -> DashboardStats:
             InventoryItem.category,
             func.count(InventoryItem.id).label("cat_count"),
         )
+        .where(InventoryItem.retired_at.is_(None))
         .group_by(InventoryItem.category)
         .order_by(func.count(InventoryItem.id).desc())
     )

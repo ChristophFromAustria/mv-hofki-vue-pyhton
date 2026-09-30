@@ -56,6 +56,11 @@ describe("ItemCard", () => {
     expect(mountCard({ item: overdue }).find(".badge").classes()).toContain("badge-warning");
   });
 
+  it("shows a retired item as Ausgeschieden", () => {
+    const w = mountCard({ item: { ...item, retired_at: "2026-09-01" } });
+    expect(w.find(".badge").text()).toBe("Ausgeschieden");
+  });
+
   it("shows the profile image", () => {
     const w = mountCard({ item: { ...item, profile_image_url: "/x.jpg" } });
     expect(w.find("img").attributes("src")).toBe("/x.jpg");

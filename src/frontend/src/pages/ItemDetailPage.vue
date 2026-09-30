@@ -19,6 +19,8 @@ import InvoiceModal from "../components/InvoiceModal.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
 import MusicianPicker from "../components/MusicianPicker.vue";
 import RecordHistory from "../components/RecordHistory.vue";
+import RetireDialog from "../components/RetireDialog.vue";
+import { retireReasonLabel } from "../lib/retire.js";
 import { isOverdue, loanStatus } from "../lib/loans.js";
 import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
 
@@ -39,6 +41,9 @@ const genres = ref([]);
 const categories = ref([]);
 const showDelete = ref(false);
 const deleteError = ref("");
+const showRetire = ref(false);
+const reinstating = ref(false);
+const reinstateError = ref("");
 const showEditModal = ref(false);
 
 // Loan form state
@@ -233,6 +238,24 @@ watch(
   },
 );
 
+async function onRetired() {
+  showRetire.value = false;
+  await reload();
+}
+
+async function reinstate() {
+  reinstating.value = true;
+  reinstateError.value = "";
+  try {
+    await post(`/items/${props.id}/reinstate`, {});
+    await reload();
+  } catch (e) {
+    reinstateError.value = "Wieder in Bestand nicht möglich: " + e.message;
+  } finally {
+    reinstating.value = false;
+  }
+}
+
 async function remove() {
   deleteError.value = "";
   try {
@@ -358,11 +381,29 @@ async function onEditSave() {
       <h1>{{ item.display_nr }} — {{ item.label }}</h1>
       <div class="cluster">
         <button class="btn" @click="showEditModal = true">Bearbeiten</button>
+        <button v-if="!item.retired_at" class="btn" @click="showRetire = true">
+          Ausscheiden …
+        </button>
         <button class="btn-danger" @click="showDelete = true">Löschen</button>
       </div>
     </div>
 
     <div v-if="deleteError" class="alert alert-danger" role="alert">{{ deleteError }}</div>
+
+    <section v-if="item.retired_at" class="retired-banner" aria-label="Ausgeschieden">
+      <div>
+        <p class="retired-title">
+          <strong>Ausgeschieden</strong>
+          am {{ formatDate(item.retired_at) }} · {{ retireReasonLabel(item.retired_reason) }}
+        </p>
+        <p v-if="item.retired_notes" class="retired-notes">{{ item.retired_notes }}</p>
+        <p class="retired-hint">Nicht mehr im Bestand – Nummer und Historie bleiben erhalten.</p>
+        <p v-if="reinstateError" class="form-error" role="alert">{{ reinstateError }}</p>
+      </div>
+      <button type="button" class="btn" :disabled="reinstating" @click="reinstate">
+        Wieder in Bestand
+      </button>
+    </section>
 
     <CollapsibleSection :scope="category" section="photos" title="Fotos" :summary="photoSummary">
       <div v-if="imageError" class="alert alert-danger image-alert" role="alert">
@@ -507,6 +548,10 @@ async function onEditSave() {
         </div>
       </div>
 
+      <p v-else-if="item.retired_at" class="section-lead">
+        Ausgeschiedene Gegenstände können nicht ausgeliehen werden.
+      </p>
+
       <!-- Available — loan form -->
       <div v-else>
         <p class="section-lead">
@@ -648,6 +693,13 @@ async function onEditSave() {
 
     <RecordHistory :scope="category" :item-id="item.id" :refresh-key="historyKey" />
 
+    <RetireDialog
+      :open="showRetire"
+      :item="item"
+      @retired="onRetired"
+      @cancel="showRetire = false"
+    />
+
     <ConfirmDialog
       :open="showDelete"
       :title="cat.labelSingular + ' löschen'"
@@ -694,6 +746,42 @@ async function onEditSave() {
 </template>
 
 <style scoped>
+.retired-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-section);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-soft);
+}
+
+.retired-banner p {
+  margin: 0;
+}
+
+.retired-title {
+  font-weight: 500;
+}
+
+.retired-banner .retired-notes {
+  margin-top: var(--space-1);
+  white-space: pre-line;
+}
+
+.retired-banner .retired-hint {
+  margin-top: var(--space-1);
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+
+.retired-banner button {
+  min-height: 44px;
+}
+
 .loan-details {
   margin: 0 0 var(--space-3);
 }

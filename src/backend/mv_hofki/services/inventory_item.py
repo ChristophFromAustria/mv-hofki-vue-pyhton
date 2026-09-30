@@ -30,6 +30,7 @@ from mv_hofki.models.sheet_music_detail import SheetMusicDetail
 from mv_hofki.schemas.inventory_item import (
     CATEGORY_PREFIXES,
     ActiveLoanInfo,
+    ItemRetire,
     format_display_nr,
 )
 from mv_hofki.services import general_item_category as category_service
@@ -166,6 +167,9 @@ def _build_read_dict(item: InventoryItem, detail: Any) -> dict[str, Any]:
         "owner": item.owner,
         "notes": item.notes,
         "storage_location": item.storage_location,
+        "retired_at": item.retired_at,
+        "retired_reason": item.retired_reason,
+        "retired_notes": item.retired_notes,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "currency": item.currency,
@@ -462,6 +466,49 @@ async def delete(session: AsyncSession, item_id: int) -> None:
         )
     item.deleted_at = utcnow()
     await session.commit()
+
+
+async def retire(
+    session: AsyncSession, item_id: int, data: ItemRetire
+) -> dict[str, Any]:
+    """Mark an item as no longer in stock (sold, lost, …). Not while on loan."""
+    item = await session.get(InventoryItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
+    if item.retired_at is not None:
+        raise HTTPException(
+            status_code=409, detail="Gegenstand ist bereits ausgeschieden"
+        )
+    open_loan = await session.scalar(
+        select(func.count()).where(Loan.item_id == item_id, Loan.end_date.is_(None))
+    )
+    if open_loan:
+        raise HTTPException(
+            status_code=409,
+            detail="Gegenstand ist ausgeliehen – bitte zuerst zurückgeben",
+        )
+    item.retired_at = data.retired_at
+    item.retired_reason = data.reason
+    notes = (data.notes or "").strip()
+    item.retired_notes = notes or None
+    await session.commit()
+    return await get_by_id(session, item_id)
+
+
+async def reinstate(session: AsyncSession, item_id: int) -> dict[str, Any]:
+    """Undo retire: the item is in stock again."""
+    item = await session.get(InventoryItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
+    if item.retired_at is None:
+        raise HTTPException(
+            status_code=409, detail="Gegenstand ist nicht ausgeschieden"
+        )
+    item.retired_at = None
+    item.retired_reason = None
+    item.retired_notes = None
+    await session.commit()
+    return await get_by_id(session, item_id)
 
 
 async def purge_item(session: AsyncSession, item: InventoryItem) -> list[Path]:

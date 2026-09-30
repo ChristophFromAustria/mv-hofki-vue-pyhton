@@ -13,6 +13,8 @@ beforeAll(() => {
     this.removeAttribute("open");
   };
 });
+// Block body: a value returned from beforeEach is called as teardown, and
+// mockReset() returns the mock itself.
 beforeEach(() => {
   post.mockReset();
 });

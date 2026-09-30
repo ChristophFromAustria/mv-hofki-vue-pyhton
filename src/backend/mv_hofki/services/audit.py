@@ -40,7 +40,7 @@ from mv_hofki.models.musician import Musician
 from mv_hofki.models.register import Register
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
 from mv_hofki.models.sheet_music_genre import SheetMusicGenre
-from mv_hofki.schemas.inventory_item import format_display_nr
+from mv_hofki.schemas.inventory_item import RETIRE_REASONS, format_display_nr
 
 actor_var: ContextVar[str | None] = ContextVar("audit_actor", default=None)
 source_var: ContextVar[str] = ContextVar("audit_source", default="web")
@@ -158,6 +158,9 @@ ITEM_FIELDS = {
     "arranger": "Arrangeur",
     "difficulty": "Schwierigkeitsgrad",
     "genre_id": "Gattung",
+    "retired_at": "Ausgeschieden am",
+    "retired_reason": "Grund",
+    "retired_notes": "Notiz zum Ausscheiden",
 }
 
 MUSICIAN_FIELDS = {
@@ -200,7 +203,13 @@ LOOKUP_FIELDS = {
     "expects_instrument": "Mit Instrument",
 }
 
+
+def _retire_reason(session: Session, value: Any) -> Any:
+    return RETIRE_REASONS.get(value, value)
+
+
 FK_LABELS: dict[str, Callable[[Session, Any], Any]] = {
+    "retired_reason": _retire_reason,
     "currency_id": _label_of(Currency, "abbreviation"),
     "instrument_type_id": _label_of(InstrumentType),
     "clothing_type_id": _label_of(ClothingType),
@@ -439,7 +448,10 @@ def _collect(session: Session) -> None:
         if not changes:
             continue
         action = "updated"
-        if isinstance(obj, Loan) and any(
+        retired = next((c for c in changes if c["field"] == "retired_at"), None)
+        if isinstance(obj, InventoryItem) and retired is not None:
+            action = "retired" if retired["old"] is None else "reinstated"
+        elif isinstance(obj, Loan) and any(
             c["field"] == "end_date" and c["old"] is None for c in changes
         ):
             action = "returned"

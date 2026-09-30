@@ -48,6 +48,8 @@ def _item_hit(item: InventoryItem) -> ItemHit:
         notes=item.notes,
         active_loan=getattr(item, "active_loan", None),
         profile_image_url=getattr(item, "profile_image_url", None),
+        retired_at=item.retired_at,
+        retired_reason=item.retired_reason,
     )
 
 

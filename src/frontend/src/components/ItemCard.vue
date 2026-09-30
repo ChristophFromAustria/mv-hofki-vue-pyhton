@@ -60,7 +60,8 @@ defineEmits(["toggle-select"]);
       <CategoryChips v-if="item.categories?.length" :categories="item.categories" />
     </span>
     <span v-if="hasLoans" class="item-card-status">
-      <span v-if="isOverdue(item.active_loan)" class="badge badge-warning">Überfällig</span>
+      <span v-if="item.retired_at" class="badge badge-gray">Ausgeschieden</span>
+      <span v-else-if="isOverdue(item.active_loan)" class="badge badge-warning">Überfällig</span>
       <span v-else :class="item.active_loan ? 'badge badge-green' : 'badge badge-gray'">
         {{ item.active_loan ? "Ausgeliehen" : "Verfügbar" }}
       </span>

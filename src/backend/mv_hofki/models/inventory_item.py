@@ -57,6 +57,11 @@ class InventoryItem(SoftDeleteMixin, Base):
     )
     notes: Mapped[str | None] = mapped_column(Text)
     storage_location: Mapped[str | None] = mapped_column(String(200))
+    # Retired (sold, lost, scrapped, …): kept with history and number, but no
+    # longer in stock. Reason: a key of schemas.inventory_item.RETIRE_REASONS.
+    retired_at: Mapped[date | None] = mapped_column(Date)
+    retired_reason: Mapped[str | None] = mapped_column(String(30))
+    retired_notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()

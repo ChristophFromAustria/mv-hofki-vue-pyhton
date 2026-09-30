@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -25,6 +25,21 @@ CATEGORY_PREFIXES = {
 
 def format_display_nr(number_prefix: str, inventory_nr: int) -> str:
     return f"{number_prefix}-{inventory_nr:04d}"
+
+
+RETIRE_REASONS = {
+    "sold": "Verkauft",
+    "lost": "Verloren/gestohlen",
+    "scrapped": "Verschrottet/defekt",
+    "returned_to_owner": "An Eigentümer zurückgegeben",
+    "other": "Sonstiges",
+}
+
+
+class ItemRetire(BaseModel):
+    reason: Literal["sold", "lost", "scrapped", "returned_to_owner", "other"]
+    retired_at: date = Field(default_factory=date.today)
+    notes: str | None = Field(None, max_length=1000)
 
 
 class ActiveLoanInfo(BaseModel):
@@ -169,6 +184,9 @@ class ItemRead(BaseModel):
     owner: str
     notes: str | None
     storage_location: str | None = None
+    retired_at: date | None = None
+    retired_reason: str | None = None
+    retired_notes: str | None = None
     created_at: datetime
     updated_at: datetime
     currency: CurrencyRead | None = None

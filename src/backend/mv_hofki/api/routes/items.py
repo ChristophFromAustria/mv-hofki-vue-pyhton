@@ -26,6 +26,7 @@ from mv_hofki.schemas.inventory_item import (
     InstrumentItemCreate,
     InstrumentItemRead,
     InstrumentItemUpdate,
+    ItemRetire,
     SheetMusicItemCreate,
     SheetMusicItemRead,
     SheetMusicItemUpdate,
@@ -164,6 +165,18 @@ async def update_item(
 
     result = await item_service.update(db, item_id, update_data)
     return _to_read(result)
+
+
+@router.post("/{item_id}/retire")
+async def retire_item(
+    item_id: int, data: ItemRetire, db: AsyncSession = Depends(get_db)
+):
+    return _to_read(await item_service.retire(db, item_id, data))
+
+
+@router.post("/{item_id}/reinstate")
+async def reinstate_item(item_id: int, db: AsyncSession = Depends(get_db)):
+    return _to_read(await item_service.reinstate(db, item_id))
 
 
 @router.delete("/{item_id}", status_code=204)
