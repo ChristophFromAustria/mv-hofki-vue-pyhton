@@ -18,6 +18,8 @@ from mv_hofki.schemas.general_item_category import (
     GeneralItemCategoryCreate,
     GeneralItemCategoryUpdate,
 )
+from mv_hofki.schemas.inventory_item import format_display_nr
+from mv_hofki.services import audit
 
 
 def _sort_key(label: str) -> str:
@@ -127,11 +129,46 @@ async def set_item_categories(
     session: AsyncSession, item_id: int, ids: list[int]
 ) -> None:
     """Replace an item's categories. ``ids`` must come from check_category_ids."""
+    before = await _labels_of_item(session, item_id)
     await session.execute(sa_delete(links).where(links.c.item_id == item_id))
     if ids:
         await session.execute(
             insert(links), [{"item_id": item_id, "category_id": i} for i in ids]
         )
+    await _record_change(session, item_id, before)
+
+
+async def _labels_of_item(session: AsyncSession, item_id: int) -> list[str]:
+    result = await session.execute(
+        select(GeneralItemCategory.label)
+        .join(links, links.c.category_id == GeneralItemCategory.id)
+        .where(links.c.item_id == item_id)
+    )
+    return sorted(result.scalars(), key=_sort_key)
+
+
+async def _record_change(
+    session: AsyncSession, item_id: int, before: list[str]
+) -> None:
+    """Log a change of an item's categories (the link table bypasses the ORM,
+    so the flush listener doesn't see it)."""
+    after = await _labels_of_item(session, item_id)
+    if after == before:
+        return
+    item = await session.get(InventoryItem, item_id)
+    audit.record(
+        session,
+        entity_type="item",
+        entity_id=item_id,
+        entity_label=(
+            f"{format_display_nr(item.number_prefix, item.inventory_nr)} {item.label}"
+            if item
+            else f"Gegenstand {item_id}"
+        ),
+        action="updated",
+        changes=[audit.change("categories", "Kategorien", before, after)],
+        item_id=item_id,
+    )
 
 
 async def categories_for_items(
@@ -196,6 +233,7 @@ async def bulk_update(
         )
     add = await check_category_ids(session, add_ids)
     remove = await check_category_ids(session, remove_ids)
+    before = {i: await _labels_of_item(session, i) for i in wanted}
     if remove:
         await session.execute(
             sa_delete(links).where(
@@ -220,5 +258,7 @@ async def bulk_update(
         ]
         if new:
             await session.execute(insert(links), new)
+    for item_id in wanted:
+        await _record_change(session, item_id, before[item_id])
     await session.commit()
     return len(wanted)

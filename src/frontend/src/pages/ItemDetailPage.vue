@@ -18,6 +18,7 @@ import { quantityDetail } from "../lib/quantity.js";
 import InvoiceModal from "../components/InvoiceModal.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
 import MusicianPicker from "../components/MusicianPicker.vue";
+import RecordHistory from "../components/RecordHistory.vue";
 import { isOverdue, loanStatus } from "../lib/loans.js";
 
 const props = defineProps({
@@ -82,8 +83,12 @@ const loanInline = useInlineEdit(async (patch) => {
   await reload();
 });
 
+// Bumped after every save/reload so the "Verlauf" shows the new events.
+const historyKey = ref(0);
+
 const inline = useInlineEdit(async (patch) => {
   item.value = await put(`/items/${props.id}`, patch);
+  historyKey.value++;
 });
 const pendingRenumber = ref(null); // { key, patch, from, to }
 
@@ -159,6 +164,7 @@ const historySummary = computed(
 );
 
 async function reload() {
+  historyKey.value++;
   item.value = await get(`/items/${props.id}`);
   images.value = await get(`/items/${props.id}/images`);
   if (cat.value.hasLoans) {
@@ -617,12 +623,16 @@ async function onEditSave() {
               <td>
                 <span :class="loanStatus(l).badge">{{ loanStatus(l).label }}</span>
               </td>
-              <td class="loan-note">{{ l.notes || "" }}</td>
+              <td>
+                <span class="loan-note">{{ l.notes || "" }}</span>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
     </CollapsibleSection>
+
+    <RecordHistory :scope="category" :item-id="item.id" :refresh-key="historyKey" />
 
     <ConfirmDialog
       :open="showDelete"

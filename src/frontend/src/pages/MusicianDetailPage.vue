@@ -10,6 +10,7 @@ import ConfirmDialog from "../components/ConfirmDialog.vue";
 import CollapsibleSection from "../components/CollapsibleSection.vue";
 import InlineField from "../components/InlineField.vue";
 import NotesBlock from "../components/NotesBlock.vue";
+import RecordHistory from "../components/RecordHistory.vue";
 import { useInlineEdit } from "../composables/useInlineEdit.js";
 import { formatDate } from "../lib/format.js";
 import { loanStatus } from "../lib/loans.js";
@@ -29,8 +30,12 @@ const defs = computed(() => musicianFieldDefs(registers.value));
 const membershipInlineFields = computed(() => defs.value.membership.filter((f) => !f.block));
 const membershipBlockFields = computed(() => defs.value.membership.filter((f) => f.block));
 
+// Bumped after every save so the "Verlauf" shows the new events.
+const historyKey = ref(0);
+
 const inline = useInlineEdit(async (patch) => {
   musician.value = await put(`/musicians/${route.params.id}`, patch);
+  historyKey.value++;
 });
 
 const membershipSummary = computed(() => {
@@ -211,12 +216,16 @@ async function remove() {
               <td>
                 <span :class="loanStatus(l).badge">{{ loanStatus(l).label }}</span>
               </td>
-              <td class="loan-note">{{ l.notes || "" }}</td>
+              <td>
+                <span class="loan-note">{{ l.notes || "" }}</span>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
     </CollapsibleSection>
+
+    <RecordHistory scope="musician" :musician-id="musician.id" :refresh-key="historyKey" />
 
     <ConfirmDialog
       :open="showDelete"

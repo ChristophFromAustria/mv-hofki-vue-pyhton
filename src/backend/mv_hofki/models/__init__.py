@@ -7,6 +7,7 @@ from mv_hofki.models.detected_measure import DetectedMeasure
 from mv_hofki.models.detected_staff import DetectedStaff
 from mv_hofki.models.detected_symbol import DetectedSymbol
 from mv_hofki.models.detected_text_region import DetectedTextRegion
+from mv_hofki.models.event import Event
 from mv_hofki.models.general_item_category import GeneralItemCategory
 from mv_hofki.models.import_page import ImportPage
 from mv_hofki.models.import_session import ImportSession
@@ -44,6 +45,7 @@ __all__ = [
     "InventoryItem",
     "ItemImage",
     "ItemInvoice",
+    "Event",
     "Loan",
     "RetiredInventoryNumber",
     "Musician",

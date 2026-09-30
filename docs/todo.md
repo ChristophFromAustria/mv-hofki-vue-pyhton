@@ -13,7 +13,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 ## Leihregister
 
 1. ~~**Notizen auf Leihregister**~~ — ✅ erledigt (30.09.2026). *klein.* Freitextfeld pro Ausleihe.
-2. **Wer hat ausgegeben / zurückgenommen** — *mittel.* Bei Ausgabe und Rückgabe
+2. ~~**Wer hat ausgegeben / zurückgenommen**~~ — ✅ erledigt über das Protokoll (30.09.2026). *mittel.* Bei Ausgabe und Rückgabe
    festhalten, wer sie erfasst hat. Setzt Benutzer voraus (14), mindestens die
    E-Mail aus Cloudflare Access.
 3. ~~**Geplantes Rückgabedatum**~~ — ✅ erledigt (30.09.2026). *klein.* Soll-Rückgabedatum pro Ausleihe;
@@ -68,7 +68,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 14. **Berechtigungssystem** — *groß, Brainstorming.* Rollen (z. B. Zeugwart,
     Notenwart, nur lesen). Heute keine Benutzer; Cloudflare Access liefert die
     E-Mail der angemeldeten Person mit.
-15. **Event Log** — *groß, in Umsetzung.* Konzept: [konzept-papierkorb-protokoll.md](konzept-papierkorb-protokoll.md). Wer hat wann was angelegt, geändert,
+15. ~~**Event Log**~~ — ✅ erledigt (30.09.2026). Konzept: [konzept-papierkorb-protokoll.md](konzept-papierkorb-protokoll.md). Wer hat wann was angelegt, geändert,
     verliehen, gelöscht.
 16. ~~**Allgemeines Suchfeld**~~ — ✅ erledigt (30.09.2026). Konzept: [konzept-allgemeine-suche.md](konzept-allgemeine-suche.md).
     Eine Suche über alle Bereiche statt nur pro Liste.

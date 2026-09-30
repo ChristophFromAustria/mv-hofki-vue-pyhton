@@ -51,6 +51,7 @@ from mv_hofki.models.musician import Musician
 from mv_hofki.models.register import Register, musician_registers
 from mv_hofki.models.retired_inventory_number import RetiredInventoryNumber
 from mv_hofki.schemas.inventory_item import CATEGORY_PREFIXES, format_display_nr
+from mv_hofki.services import audit
 from mv_hofki.services.general_item_category import delete_links_for_items
 from mv_hofki.services.inventory_item import next_inventory_nr
 
@@ -1128,6 +1129,17 @@ async def wipe_inventory(db: AsyncSession) -> dict[str, int]:
     ):
         result = await db.execute(delete(model))
         counts[model.__tablename__] = result.rowcount or 0  # type: ignore[attr-defined]
+    audit.record(
+        db,
+        entity_type="import",
+        entity_id=None,
+        entity_label="Inventar",
+        action="wiped",
+        summary=(
+            f"Bestand für Neu-Import geleert: {counts.get('inventory_items', 0)} "
+            f"Gegenstände, {counts.get('musicians', 0)} Musiker"
+        ),
+    )
     return counts
 
 
@@ -1316,4 +1328,12 @@ async def apply_plan(db: AsyncSession, plan: Plan, uploads: Path) -> dict[str, A
             )
         )
     await db.flush()
+    audit.record(
+        db,
+        entity_type="import",
+        entity_id=None,
+        entity_label="Inventar-Import",
+        action="imported",
+        summary=f"{len(report_items)} Gegenstände angelegt",
+    )
     return {"items": report_items, "files": [str(p) for p in written]}

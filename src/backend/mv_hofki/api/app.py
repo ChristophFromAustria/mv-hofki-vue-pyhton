@@ -14,6 +14,7 @@ from mv_hofki.api.routes.ai_import import router as ai_import_router
 from mv_hofki.api.routes.clothing_types import router as clothing_types_router
 from mv_hofki.api.routes.currencies import router as currencies_router
 from mv_hofki.api.routes.dashboard import router as dashboard_router
+from mv_hofki.api.routes.events import router as events_router
 from mv_hofki.api.routes.general_item_categories import (
     router as general_item_categories_router,
 )
@@ -39,6 +40,7 @@ from mv_hofki.api.routes.symbol_library import router as symbol_library_router
 from mv_hofki.core.config import settings
 from mv_hofki.db.engine import async_session_factory
 from mv_hofki.db.seed import seed_data
+from mv_hofki.services.audit import AuditActorMiddleware, audit_context
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -46,7 +48,8 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with async_session_factory() as session:
-        await seed_data(session)
+        with audit_context(enabled=False):
+            await seed_data(session)
         # Reset any scans stuck in "processing" from a previous crash
         await _reset_stale_processing(session)
     yield
@@ -93,8 +96,11 @@ app = FastAPI(
     root_path=settings.BASE_PATH if settings.BASE_PATH != "/" else "",
     lifespan=lifespan,
 )
+# Who made a change (Cloudflare Access e-mail) for the event log.
+app.add_middleware(AuditActorMiddleware)
 
 app.include_router(search_router)
+app.include_router(events_router)
 app.include_router(health_router)
 app.include_router(currencies_router)
 app.include_router(instrument_types_router)

@@ -4,12 +4,15 @@ import { useRouter } from "vue-router";
 import { get } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
+import EventList from "../components/EventList.vue";
 
 const router = useRouter();
 const stats = ref(null);
 const email = ref(null);
 const loading = ref(true);
 const error = ref(null);
+const latest = ref([]);
+const latestError = ref("");
 
 function categoryRoute(category) {
   return CATEGORIES[category]?.routeBase || "/";
@@ -19,9 +22,19 @@ function goToCategory(category) {
   router.push(categoryRoute(category));
 }
 
+async function loadLatest() {
+  latestError.value = "";
+  try {
+    latest.value = (await get("/events?limit=10")).items;
+  } catch (e) {
+    latestError.value = e.message;
+  }
+}
+
 async function load() {
   loading.value = true;
   error.value = null;
+  loadLatest();
   try {
     const [dashboardData, meData] = await Promise.all([get("/dashboard"), get("/me")]);
     stats.value = dashboardData;
@@ -103,6 +116,18 @@ onMounted(load);
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section class="page-section">
+        <div class="section-header">
+          <h2>Letzte Änderungen</h2>
+          <router-link to="/protokoll" class="btn-sm">Ganzes Protokoll →</router-link>
+        </div>
+        <p v-if="latestError" class="form-error" role="alert">
+          Protokoll konnte nicht geladen werden: {{ latestError }}
+        </p>
+        <p v-else-if="!latest.length" class="empty-note">Noch keine Änderungen protokolliert.</p>
+        <EventList v-else :events="latest" />
       </section>
     </template>
   </div>

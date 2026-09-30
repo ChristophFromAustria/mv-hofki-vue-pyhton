@@ -30,6 +30,7 @@ from pathlib import Path
 
 from mv_hofki.core.config import settings
 from mv_hofki.db.engine import async_session_factory
+from mv_hofki.services import audit
 from mv_hofki.services.inventar_import import (
     Plan,
     PlannedItem,
@@ -209,6 +210,7 @@ async def main() -> int:
     if args.ersetzen and args.ergaenzen:
         ap.error("--ersetzen und --ergaenzen schließen sich aus")
 
+    audit.source_var.set("import")  # events of this run: source "import"
     async with async_session_factory() as db:
         plan = build_plan(
             args.quelle,

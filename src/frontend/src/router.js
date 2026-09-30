@@ -132,6 +132,16 @@ const routes = [
     component: () => import("./pages/CurrencyListPage.vue"),
   },
   {
+    path: "/protokoll",
+    name: "event-log",
+    component: () => import("./pages/EventLogPage.vue"),
+  },
+  {
+    path: "/inventar/:id",
+    name: "inventory-redirect",
+    component: () => import("./pages/InventoryRedirectPage.vue"),
+  },
+  {
     path: "/suche",
     name: "search",
     component: () => import("./pages/SearchPage.vue"),

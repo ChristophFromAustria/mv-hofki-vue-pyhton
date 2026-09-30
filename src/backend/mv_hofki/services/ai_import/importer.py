@@ -24,6 +24,7 @@ from mv_hofki.models.item_image import ItemImage
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
 from mv_hofki.schemas.inventory_item import format_display_nr
+from mv_hofki.services import audit
 from mv_hofki.services import item_image as item_image_service
 
 from .pages import crop
@@ -204,6 +205,18 @@ async def run_import(db: AsyncSession, session: ImportSession) -> dict[str, Any]
             "loans": len(result["loans"]),
             "images": len(result["images"]),
         }
+        c = result["counts"]
+        audit.record(
+            db,
+            entity_type="import",
+            entity_id=session.id,
+            entity_label=f"KI-Import {session.id}",
+            action="imported",
+            summary=(
+                f"{c['items']} Gegenstände, {c['musicians']} Musiker, "
+                f"{c['loans']} Leihen, {c['images']} Bilder angelegt"
+            ),
+        )
         session.status = "imported"
         session.import_result_json = json.dumps(result, ensure_ascii=False)
         await db.commit()

@@ -21,6 +21,7 @@ from mv_hofki.schemas.pagination import PaginatedResponse
 from mv_hofki.services.ai_import import importer
 from mv_hofki.services.ai_import import session as session_service
 from mv_hofki.services.ai_import.llm_client import LlmClient
+from mv_hofki.services.audit import audit_context
 
 router = APIRouter(prefix="/api/v1/import", tags=["ki-import"])
 
@@ -84,7 +85,8 @@ async def update_draft(
 async def run_import(session_id: int, db: AsyncSession = Depends(get_db)):
     """Write the validated draft into the inventory (all or nothing)."""
     session = await session_service.get_by_id(db, session_id)
-    await importer.run_import(db, session)
+    with audit_context(source="ki-import"):
+        await importer.run_import(db, session)
     return await session_service.read_with_validation(db, session)
 
 
