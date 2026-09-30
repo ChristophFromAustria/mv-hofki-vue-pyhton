@@ -8,9 +8,10 @@ from sqlalchemy import Boolean, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mv_hofki.db.base import Base
+from mv_hofki.db.soft_delete import SoftDeleteMixin
 
 
-class ItemImage(Base):
+class ItemImage(SoftDeleteMixin, Base):
     __tablename__ = "item_images"
 
     id: Mapped[int] = mapped_column(primary_key=True)

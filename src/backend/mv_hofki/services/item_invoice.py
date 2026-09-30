@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from mv_hofki.core.config import settings
+from mv_hofki.db.soft_delete import utcnow
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.item_invoice import ItemInvoice
 from mv_hofki.schemas.item_invoice import ItemInvoiceCreate, ItemInvoiceUpdate
@@ -161,10 +162,15 @@ async def delete_file(
 
 
 async def delete(session: AsyncSession, item_id: int, invoice_id: int) -> None:
+    """To the trash; the file stays until the invoice is deleted for good."""
     invoice = await get_by_id(session, item_id, invoice_id)
-    if invoice.filename:
-        file_path = _invoice_dir(item_id) / invoice.filename
-        if file_path.exists():
-            file_path.unlink()
-    await session.delete(invoice)
+    invoice.deleted_at = utcnow()
     await session.commit()
+
+
+def invoice_file(invoice: ItemInvoice) -> Path | None:
+    return (
+        UPLOAD_DIR / str(invoice.item_id) / invoice.filename
+        if invoice.filename
+        else None
+    )

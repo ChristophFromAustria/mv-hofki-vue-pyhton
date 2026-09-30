@@ -6,6 +6,7 @@ from sqlalchemy import Column, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mv_hofki.db.base import Base
+from mv_hofki.db.soft_delete import SoftDeleteMixin
 
 # Many-to-many: a general item can carry several categories. SQLite runs without
 # PRAGMA foreign_keys, so the services delete links explicitly.
@@ -27,7 +28,7 @@ general_item_category_links = Table(
 )
 
 
-class GeneralItemCategory(Base):
+class GeneralItemCategory(SoftDeleteMixin, Base):
     __tablename__ = "general_item_categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)

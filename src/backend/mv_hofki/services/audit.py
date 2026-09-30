@@ -98,15 +98,27 @@ class AuditActorMiddleware:
 # ---------------------------------------------------------------------------
 
 
+# Labels are looked up also for rows in the trash (events about them).
+_WITH_DELETED = {"include_deleted": True}
+
+
 def item_label(session: Session, item_id: int | None) -> str:
-    item = session.get(InventoryItem, item_id) if item_id is not None else None
+    item = (
+        session.get(InventoryItem, item_id, execution_options=_WITH_DELETED)
+        if item_id is not None
+        else None
+    )
     if item is None:
         return f"Gegenstand {item_id}"
     return f"{format_display_nr(item.number_prefix, item.inventory_nr)} {item.label}"
 
 
 def musician_label(session: Session, musician_id: int | None) -> str:
-    m = session.get(Musician, musician_id) if musician_id is not None else None
+    m = (
+        session.get(Musician, musician_id, execution_options=_WITH_DELETED)
+        if musician_id is not None
+        else None
+    )
     return f"{m.first_name} {m.last_name}" if m else f"Musiker {musician_id}"
 
 
@@ -114,7 +126,7 @@ def _label_of(model: Any, attr: str = "label") -> Callable[[Session, Any], Any]:
     def resolve(session: Session, value: Any) -> Any:
         if value is None:
             return None
-        row = session.get(model, value)
+        row = session.get(model, value, execution_options=_WITH_DELETED)
         return getattr(row, attr) if row is not None else value
 
     return resolve
@@ -411,12 +423,17 @@ def _collect(session: Session) -> None:
     for obj in session.deleted:
         spec = SPECS.get(type(obj))
         if spec is not None and not spec.detail:
-            add(obj, spec, "deleted", None)
+            # Deleting a row that can go to the trash is deleting it for good.
+            add(obj, spec, "purged" if hasattr(obj, "deleted_at") else "deleted", None)
     for obj in session.dirty:
         spec = SPECS.get(type(obj))
         if spec is None or obj in session.new or obj in session.deleted:
             continue
         if not session.is_modified(obj, include_collections=True):
+            continue
+        trash = _trash_action(obj)
+        if trash is not None:
+            add(obj, spec, trash, None)
             continue
         changes = _column_changes(session, obj, spec)
         if not changes:
@@ -432,6 +449,22 @@ def _collect(session: Session) -> None:
             elif not any(c["field"] == "caption" for c in changes):
                 continue  # the old profile picture losing its flag
         add(obj, spec, action, changes)
+
+
+def _trash_action(obj: Any) -> str | None:
+    """ "trashed" / "restored" when this flush moved obj into / out of the trash."""
+    if not hasattr(obj, "deleted_at"):
+        return None
+    hist = inspect(obj).attrs["deleted_at"].history
+    if not hist.has_changes():
+        return None
+    old = hist.deleted[0] if hist.deleted else None
+    new = hist.added[0] if hist.added else None
+    if old is None and new is not None:
+        return "trashed"
+    if old is not None and new is None:
+        return "restored"
+    return None
 
 
 def _final_rows(pending: dict[tuple, dict[str, Any]]) -> list[dict[str, Any]]:

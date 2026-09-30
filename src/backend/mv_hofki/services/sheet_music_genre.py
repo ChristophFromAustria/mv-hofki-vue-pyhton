@@ -6,12 +6,14 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.db.soft_delete import utcnow
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
 from mv_hofki.models.sheet_music_genre import SheetMusicGenre
 from mv_hofki.schemas.sheet_music_genre import (
     SheetMusicGenreCreate,
     SheetMusicGenreUpdate,
 )
+from mv_hofki.services.lookup_names import ensure_label_free
 
 
 async def get_all(session: AsyncSession) -> list[SheetMusicGenre]:
@@ -29,6 +31,7 @@ async def get_by_id(session: AsyncSession, genre_id: int) -> SheetMusicGenre:
 
 
 async def create(session: AsyncSession, data: SheetMusicGenreCreate) -> SheetMusicGenre:
+    await ensure_label_free(session, SheetMusicGenre, data.label, what="Gattung")
     obj = SheetMusicGenre(**data.model_dump())
     session.add(obj)
     await session.commit()
@@ -40,6 +43,10 @@ async def update(
     session: AsyncSession, genre_id: int, data: SheetMusicGenreUpdate
 ) -> SheetMusicGenre:
     obj = await get_by_id(session, genre_id)
+    if data.label is not None:
+        await ensure_label_free(
+            session, SheetMusicGenre, data.label, what="Gattung", exclude_id=genre_id
+        )
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(obj, key, value)
     await session.commit()
@@ -57,5 +64,5 @@ async def delete(session: AsyncSession, genre_id: int) -> None:
             status_code=409,
             detail="Genre wird verwendet und kann nicht gelöscht werden",
         )
-    await session.delete(obj)
+    obj.deleted_at = utcnow()  # to the trash
     await session.commit()

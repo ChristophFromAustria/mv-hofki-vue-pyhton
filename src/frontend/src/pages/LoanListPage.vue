@@ -328,7 +328,11 @@ async function returnWithDate(id) {
           {{ row.item.display_nr }}
         </template>
         <template #musician="{ row }">
-          <router-link :to="`/musiker/${row.musician.id}`">
+          <template v-if="row.musician.deleted_at">
+            {{ row.musician.first_name }} {{ row.musician.last_name }}
+            <span class="badge badge-gray">im Papierkorb</span>
+          </template>
+          <router-link v-else :to="`/musiker/${row.musician.id}`">
             {{ row.musician.first_name }} {{ row.musician.last_name }}
           </router-link>
         </template>

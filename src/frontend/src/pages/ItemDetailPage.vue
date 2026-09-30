@@ -20,6 +20,7 @@ import ItemFormModal from "../components/ItemFormModal.vue";
 import MusicianPicker from "../components/MusicianPicker.vue";
 import RecordHistory from "../components/RecordHistory.vue";
 import { isOverdue, loanStatus } from "../lib/loans.js";
+import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
 
 const props = defineProps({
   category: { type: String, required: true },
@@ -37,6 +38,7 @@ const types = ref([]);
 const genres = ref([]);
 const categories = ref([]);
 const showDelete = ref(false);
+const deleteError = ref("");
 const showEditModal = ref(false);
 
 // Loan form state
@@ -232,8 +234,14 @@ watch(
 );
 
 async function remove() {
-  await del(`/items/${props.id}`);
-  router.push(cat.value.routeBase);
+  deleteError.value = "";
+  try {
+    await del(`/items/${props.id}`);
+    router.push(cat.value.routeBase);
+  } catch (e) {
+    showDelete.value = false;
+    deleteError.value = "Löschen nicht möglich: " + e.message;
+  }
 }
 
 function validateLoan() {
@@ -333,7 +341,7 @@ async function handleInvoiceSave(evt) {
 }
 
 async function handleInvoiceDelete(invoiceId) {
-  if (!confirm("Rechnung wirklich löschen?")) return;
+  if (!confirm(`Rechnung in den Papierkorb verschieben? ${TRASH_NOTE}`)) return;
   await del(`/items/${props.id}/invoices/${invoiceId}`);
   showInvoiceModal.value = false;
   await reload();
@@ -353,6 +361,8 @@ async function onEditSave() {
         <button class="btn-danger" @click="showDelete = true">Löschen</button>
       </div>
     </div>
+
+    <div v-if="deleteError" class="alert alert-danger" role="alert">{{ deleteError }}</div>
 
     <CollapsibleSection :scope="category" section="photos" title="Fotos" :summary="photoSummary">
       <div v-if="imageError" class="alert alert-danger image-alert" role="alert">
@@ -614,7 +624,11 @@ async function onEditSave() {
           <tbody>
             <tr v-for="l in loans" :key="l.id">
               <td>
-                <router-link :to="`/musiker/${l.musician.id}`">
+                <template v-if="l.musician.deleted_at">
+                  {{ l.musician.first_name }} {{ l.musician.last_name }}
+                  <span class="badge badge-gray">im Papierkorb</span>
+                </template>
+                <router-link v-else :to="`/musiker/${l.musician.id}`">
                   {{ l.musician.first_name }} {{ l.musician.last_name }}
                 </router-link>
               </td>
@@ -637,15 +651,8 @@ async function onEditSave() {
     <ConfirmDialog
       :open="showDelete"
       :title="cat.labelSingular + ' löschen'"
-      :message="
-        'Soll ' +
-        (category === 'clothing'
-          ? 'diese ' + cat.labelSingular
-          : category === 'sheet_music'
-            ? 'dieses ' + cat.labelSingular
-            : 'dieser ' + cat.labelSingular) +
-        ' wirklich gelöscht werden?'
-      "
+      :message="`„${item.display_nr} ${item.label}“ in den Papierkorb verschieben? ${TRASH_NOTE}`"
+      :confirm-label="TRASH_CONFIRM"
       @confirm="remove"
       @cancel="showDelete = false"
     />

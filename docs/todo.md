@@ -49,7 +49,7 @@ allgemeine Suchfeld (16, größter Wunsch).
     Allgemein sind mehr als 999 Stück pro Typ möglich). Betrifft Anzeige,
     Suche („tr 6“ muss weiter funktionieren) und Import; gespeichert ist die
     Nummer als Zahl, es ist also eine Formatfrage.
-11. **Löschen nicht endgültig** — *groß, in Umsetzung.* Konzept: [konzept-papierkorb-protokoll.md](konzept-papierkorb-protokoll.md). Papierkorb/Archiv mit
+11. **Löschen nicht endgültig** — Papierkorb ✅ erledigt (30.09.2026); „ausgeschieden“ in Arbeit. Konzept: [konzept-papierkorb-protokoll.md](konzept-papierkorb-protokoll.md). Papierkorb/Archiv mit
     Wiederherstellen statt endgültigem Löschen (heute inkl. Bildern und
     Rechnungen auf der Platte). Zusammen mit 15 und 9 betrachten.
 

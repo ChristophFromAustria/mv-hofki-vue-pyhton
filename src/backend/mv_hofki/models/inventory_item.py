@@ -18,17 +18,21 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mv_hofki.db.base import Base
+from mv_hofki.db.soft_delete import SoftDeleteMixin
 
 if TYPE_CHECKING:
     from mv_hofki.models.currency import Currency
 
 
-class InventoryItem(Base):
+class InventoryItem(SoftDeleteMixin, Base):
     __tablename__ = "inventory_items"
     __table_args__ = (
         UniqueConstraint(
             "category", "number_prefix", "inventory_nr", name="uq_inventory_number"
         ),
+        # Never reuse the id of an item deleted for good: its event history and
+        # upload folders are keyed by it.
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -14,6 +14,7 @@ import RecordHistory from "../components/RecordHistory.vue";
 import { useInlineEdit } from "../composables/useInlineEdit.js";
 import { formatDate } from "../lib/format.js";
 import { loanStatus } from "../lib/loans.js";
+import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
 
 const route = useRoute();
 const router = useRouter();
@@ -230,7 +231,8 @@ async function remove() {
     <ConfirmDialog
       :open="showDelete"
       title="Musiker löschen"
-      message="Soll dieser Musiker wirklich gelöscht werden?"
+      :message="`Soll dieser Musiker in den Papierkorb verschoben werden? ${TRASH_NOTE}`"
+      :confirm-label="TRASH_CONFIRM"
       @confirm="remove"
       @cancel="showDelete = false"
     />

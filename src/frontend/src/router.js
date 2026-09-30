@@ -137,6 +137,11 @@ const routes = [
     component: () => import("./pages/EventLogPage.vue"),
   },
   {
+    path: "/papierkorb",
+    name: "trash",
+    component: () => import("./pages/TrashPage.vue"),
+  },
+  {
     path: "/inventar/:id",
     name: "inventory-redirect",
     component: () => import("./pages/InventoryRedirectPage.vue"),

@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.db.soft_delete import utcnow, with_deleted
 from mv_hofki.models.currency import Currency
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.schemas.currency import CurrencyCreate, CurrencyUpdate
@@ -44,8 +45,11 @@ async def update(
 
 async def delete(session: AsyncSession, currency_id: int) -> None:
     currency = await get_by_id(session, currency_id)
+    # Items in the trash count too: they come back with their currency.
     result = await session.execute(
-        select(func.count()).where(InventoryItem.currency_id == currency_id)
+        with_deleted(
+            select(func.count()).where(InventoryItem.currency_id == currency_id)
+        )
     )
     if result.scalar_one() > 0:
         raise HTTPException(
@@ -55,5 +59,5 @@ async def delete(session: AsyncSession, currency_id: int) -> None:
                 " und kann nicht gelöscht werden"
             ),
         )
-    await session.delete(currency)
+    currency.deleted_at = utcnow()  # to the trash
     await session.commit()

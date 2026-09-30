@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -37,9 +38,11 @@ from mv_hofki.api.routes.scans import router as scans_router
 from mv_hofki.api.routes.search import router as search_router
 from mv_hofki.api.routes.sheet_music_genres import router as sheet_music_genres_router
 from mv_hofki.api.routes.symbol_library import router as symbol_library_router
+from mv_hofki.api.routes.trash import router as trash_router
 from mv_hofki.core.config import settings
 from mv_hofki.db.engine import async_session_factory
 from mv_hofki.db.seed import seed_data
+from mv_hofki.services import trash as trash_service
 from mv_hofki.services.audit import AuditActorMiddleware, audit_context
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -52,7 +55,14 @@ async def lifespan(app: FastAPI):
             await seed_data(session)
         # Reset any scans stuck in "processing" from a previous crash
         await _reset_stale_processing(session)
-    yield
+    # Empty the trash of what is older than 90 days, now and then daily.
+    purge_task = asyncio.create_task(
+        trash_service.run_daily_purge(async_session_factory)
+    )
+    try:
+        yield
+    finally:
+        purge_task.cancel()
 
 
 async def _reset_stale_processing(session):
@@ -101,6 +111,7 @@ app.add_middleware(AuditActorMiddleware)
 
 app.include_router(search_router)
 app.include_router(events_router)
+app.include_router(trash_router)
 app.include_router(health_router)
 app.include_router(currencies_router)
 app.include_router(instrument_types_router)

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from mv_hofki.core.config import settings
+from mv_hofki.db.soft_delete import utcnow, with_deleted
 from mv_hofki.filters.base import ListPage, PageParams, fetch_page
 from mv_hofki.filters.inventory_item import ItemFilter
 from mv_hofki.models.clothing_detail import ClothingDetail
@@ -204,10 +205,13 @@ async def highest_inventory_nr(
 ) -> int:
     """Highest number ever given out in the sequence of ``prefix``: in use or
     retired (freed by deleting/renumbering). 0 for a new sequence."""
+    # Items in the trash keep their numbers (with_deleted).
     in_use = await session.scalar(
-        select(func.max(InventoryItem.inventory_nr)).where(
-            InventoryItem.category == category,
-            InventoryItem.number_prefix == prefix,
+        with_deleted(
+            select(func.max(InventoryItem.inventory_nr)).where(
+                InventoryItem.category == category,
+                InventoryItem.number_prefix == prefix,
+            )
         )
     )
     retired = await session.scalar(
@@ -443,13 +447,27 @@ async def update(
 
 
 async def delete(session: AsyncSession, item_id: int) -> None:
-    result = await session.execute(
-        select(InventoryItem).where(InventoryItem.id == item_id)
-    )
-    item = result.scalar_one_or_none()
+    """Move the item to the trash (with its images, invoices and loans; they
+    come back when it is restored). Items on loan can't be deleted."""
+    item = await session.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
+    open_loan = await session.scalar(
+        select(func.count()).where(Loan.item_id == item_id, Loan.end_date.is_(None))
+    )
+    if open_loan:
+        raise HTTPException(
+            status_code=409,
+            detail="Gegenstand ist ausgeliehen und kann nicht gelöscht werden",
+        )
+    item.deleted_at = utcnow()
+    await session.commit()
 
+
+async def purge_item(session: AsyncSession, item: InventoryItem) -> list[Path]:
+    """Delete an item for good (from the trash). Returns the upload folders
+    to remove once the transaction is committed."""
+    item_id = item.id
     # SQLite runs without PRAGMA foreign_keys, so ON DELETE CASCADE does not
     # fire: remove dependent rows explicitly. Otherwise a new item that gets
     # the same id (SQLite reuses the highest rowid) would inherit them.
@@ -462,10 +480,12 @@ async def delete(session: AsyncSession, item_id: int) -> None:
         await session.execute(sa_delete(model).where(model.item_id == item_id))
     await retire_inventory_nr(session, item)
     await session.delete(item)
-    await session.commit()
+    return [UPLOADS_ROOT / subdir / str(item_id) for subdir in ("images", "invoices")]
 
-    # Clean up upload directories
-    for subdir in ("images", "invoices"):
-        item_dir = UPLOADS_ROOT / subdir / str(item_id)
-        if item_dir.exists():
-            shutil.rmtree(item_dir)
+
+def remove_paths(paths: list[Path]) -> None:
+    for path in paths:
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        elif path.exists():
+            path.unlink(missing_ok=True)

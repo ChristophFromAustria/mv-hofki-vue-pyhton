@@ -6,9 +6,11 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.db.soft_delete import utcnow
 from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.schemas.instrument_type import InstrumentTypeCreate, InstrumentTypeUpdate
+from mv_hofki.services.lookup_names import ensure_label_free
 
 
 async def get_all(session: AsyncSession) -> list[InstrumentType]:
@@ -26,6 +28,7 @@ async def get_by_id(session: AsyncSession, type_id: int) -> InstrumentType:
 
 
 async def create(session: AsyncSession, data: InstrumentTypeCreate) -> InstrumentType:
+    await ensure_label_free(session, InstrumentType, data.label, what="Instrumententyp")
     instrument_type = InstrumentType(**data.model_dump())
     session.add(instrument_type)
     await session.commit()
@@ -37,6 +40,14 @@ async def update(
     session: AsyncSession, type_id: int, data: InstrumentTypeUpdate
 ) -> InstrumentType:
     instrument_type = await get_by_id(session, type_id)
+    if data.label is not None:
+        await ensure_label_free(
+            session,
+            InstrumentType,
+            data.label,
+            what="Instrumententyp",
+            exclude_id=type_id,
+        )
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(instrument_type, key, value)
     await session.commit()
@@ -57,5 +68,5 @@ async def delete(session: AsyncSession, type_id: int) -> None:
                 " und kann nicht gelöscht werden"
             ),
         )
-    await session.delete(instrument_type)
+    instrument_type.deleted_at = utcnow()  # to the trash
     await session.commit()

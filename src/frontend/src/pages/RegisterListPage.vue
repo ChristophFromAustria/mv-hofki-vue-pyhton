@@ -4,6 +4,7 @@ import { get, post, put, del } from "../lib/api.js";
 import { sortRegisters, reorderUpdates, nextSortOrder } from "../lib/registers.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
+import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
 
 const items = ref([]);
 const loading = ref(true);
@@ -18,7 +19,7 @@ const deleteTarget = ref(null);
 
 const deleteMessage = computed(() =>
   deleteTarget.value
-    ? `Soll das Register „${deleteTarget.value.label}“ wirklich gelöscht werden?`
+    ? `Soll das Register „${deleteTarget.value.label}“ in den Papierkorb verschoben werden? ${TRASH_NOTE}`
     : "",
 );
 
@@ -288,6 +289,7 @@ async function remove() {
     </template>
 
     <ConfirmDialog
+      :confirm-label="TRASH_CONFIRM"
       :open="!!deleteTarget"
       title="Register löschen"
       :message="deleteMessage"

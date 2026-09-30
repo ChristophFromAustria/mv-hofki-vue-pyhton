@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from mv_hofki.db.soft_delete import with_deleted
 from mv_hofki.filters.base import ListPage, PageParams, fetch_page
 from mv_hofki.filters.loan import LoanFilter
 from mv_hofki.models.inventory_item import InventoryItem
@@ -22,21 +23,26 @@ LOANABLE_CATEGORIES = {"instrument", "clothing", "general_item"}
 async def get_list(
     session: AsyncSession, flt: LoanFilter, page: PageParams
 ) -> ListPage:
-    query = (
+    # Loans of musicians in the trash stay visible (marked in the UI); loans
+    # of items in the trash go with their item.
+    query = with_deleted(
         select(Loan)
         .join(InventoryItem, Loan.item_id == InventoryItem.id)
         .join(Musician, Loan.musician_id == Musician.id)
+        .where(InventoryItem.deleted_at.is_(None))
     )
     return await fetch_page(session, flt, query, page)
 
 
 async def get_by_id(session: AsyncSession, loan_id: int) -> Loan:
     result = await session.execute(
-        select(Loan)
-        .options(joinedload(Loan.item), joinedload(Loan.musician))
-        .where(Loan.id == loan_id)
+        with_deleted(
+            select(Loan)
+            .options(joinedload(Loan.item), joinedload(Loan.musician))
+            .where(Loan.id == loan_id)
+        )
     )
-    loan = result.unique().scalar_one_or_none()
+    loan: Loan | None = result.unique().scalar_one_or_none()
     if not loan:
         raise HTTPException(status_code=404, detail="Leihe nicht gefunden")
     return loan
@@ -50,6 +56,8 @@ async def create(session: AsyncSession, data: LoanCreate) -> Loan:
     item = item_result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
+    if await session.get(Musician, data.musician_id) is None:
+        raise HTTPException(status_code=404, detail="Musiker nicht gefunden")
     if item.category not in LOANABLE_CATEGORIES:
         raise HTTPException(
             status_code=400,

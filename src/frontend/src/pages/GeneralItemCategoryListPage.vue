@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from "vue";
 import { get, post, put, del } from "../lib/api.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
 
 const items = ref([]);
 const loading = ref(true);
@@ -64,9 +65,11 @@ async function save() {
 const deleteMessage = computed(() => {
   const t = deleteTarget.value;
   if (!t) return "";
-  if (t.item_count === 0) return `Soll die Kategorie „${t.label}“ gelöscht werden?`;
+  if (t.item_count === 0) {
+    return `Soll die Kategorie „${t.label}“ in den Papierkorb verschoben werden? ${TRASH_NOTE}`;
+  }
   const n = t.item_count === 1 ? "einem Gegenstand" : `${t.item_count} Gegenständen`;
-  return `Die Kategorie „${t.label}“ wird von ${n} entfernt und gelöscht.`;
+  return `Die Kategorie „${t.label}“ verschwindet bei ${n} und wird in den Papierkorb verschoben. Wiederhergestellt (innerhalb von 90 Tagen) ist sie dort wieder zugeordnet.`;
 });
 
 async function remove() {
@@ -170,6 +173,7 @@ async function remove() {
     </div>
 
     <ConfirmDialog
+      :confirm-label="TRASH_CONFIRM"
       :open="!!deleteTarget"
       title="Kategorie löschen"
       :message="deleteMessage"

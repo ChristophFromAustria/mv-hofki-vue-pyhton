@@ -165,14 +165,14 @@ async def test_delete_and_filters(client):
     tr, _, item = await _setup(client)
     await client.delete(f"/api/v1/items/{item['id']}", headers=ME)
     deleted = (await _events(client, item_id=item["id"]))[0]
-    assert deleted["action"] == "deleted"
+    assert deleted["action"] == "trashed"
     assert deleted["entity_label"] == "TR-0001 Trompete"
 
     assert {e["entity_type"] for e in await _events(client, area="master_data")} == {
         "instrument_type"
     }
     mine = await _events(client, actor="zeugwart@mv-hofkirchen.at")
-    assert {e["action"] for e in mine} == {"created", "deleted"}
+    assert {e["action"] for e in mine} == {"created", "trashed"}
     unknown = await _events(client, actor="unknown")
     assert all(e["actor"] is None for e in unknown) and unknown
     actors = (await client.get(f"{URL}/actors")).json()

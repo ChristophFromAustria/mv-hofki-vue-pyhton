@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.db.soft_delete import utcnow
 from mv_hofki.filters.base import ListPage, PageParams, fetch_page
 from mv_hofki.filters.musician import MusicianFilter
 from mv_hofki.models.loan import Loan
@@ -64,5 +65,5 @@ async def delete(session: AsyncSession, musician_id: int) -> None:
             status_code=409,
             detail="Musiker hat aktive Leihen und kann nicht gelöscht werden",
         )
-    await session.delete(musician)
+    musician.deleted_at = utcnow()  # to the trash, with their loan history
     await session.commit()

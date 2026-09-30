@@ -9,12 +9,13 @@ from sqlalchemy import Date, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mv_hofki.db.base import Base
+from mv_hofki.db.soft_delete import SoftDeleteMixin
 
 if TYPE_CHECKING:
     from mv_hofki.models.currency import Currency
 
 
-class ItemInvoice(Base):
+class ItemInvoice(SoftDeleteMixin, Base):
     __tablename__ = "item_invoices"
 
     id: Mapped[int] = mapped_column(primary_key=True)

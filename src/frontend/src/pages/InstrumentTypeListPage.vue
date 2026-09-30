@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { get, post, put, del } from "../lib/api.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
 
 const items = ref([]);
 const editing = ref(null);
@@ -110,7 +111,8 @@ async function remove() {
     <ConfirmDialog
       :open="!!deleteTarget"
       title="Typ löschen"
-      message="Soll dieser Instrumententyp wirklich gelöscht werden?"
+      :message="`Soll dieser Instrumententyp in den Papierkorb verschoben werden? ${TRASH_NOTE}`"
+      :confirm-label="TRASH_CONFIRM"
       @confirm="remove"
       @cancel="deleteTarget = null"
     />

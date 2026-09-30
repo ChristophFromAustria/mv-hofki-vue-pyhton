@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.db.soft_delete import with_deleted
 from mv_hofki.models.currency import Currency
 from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
@@ -100,11 +101,16 @@ async def load_context(db: AsyncSession) -> Context:
     types = (await db.execute(select(InstrumentType))).scalars().all()
     musicians = (await db.execute(select(Musician))).scalars().all()
     currencies = (await db.execute(select(Currency))).scalars().all()
+    # Items in the trash keep their numbers, so they count as taken.
     rows = (
         await db.execute(
-            select(InventoryItem, InstrumentDetail.serial_nr)
-            .outerjoin(InstrumentDetail, InstrumentDetail.item_id == InventoryItem.id)
-            .where(InventoryItem.category == "instrument")
+            with_deleted(
+                select(InventoryItem, InstrumentDetail.serial_nr)
+                .outerjoin(
+                    InstrumentDetail, InstrumentDetail.item_id == InventoryItem.id
+                )
+                .where(InventoryItem.category == "instrument")
+            )
         )
     ).all()
     retired: dict[str, set[int]] = {}

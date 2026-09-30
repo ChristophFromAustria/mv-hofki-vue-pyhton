@@ -66,6 +66,8 @@ class MusicianRead(BaseModel):
     notes: str | None
     registers: list[RegisterRef] = []
     created_at: datetime
+    # Set while the musician is in the trash (seen in loans of their history).
+    deleted_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

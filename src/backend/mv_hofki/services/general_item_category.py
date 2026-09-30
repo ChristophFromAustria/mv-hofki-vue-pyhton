@@ -7,6 +7,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.db.soft_delete import utcnow
 from mv_hofki.models.general_item_category import (
     GeneralItemCategory,
 )
@@ -20,6 +21,7 @@ from mv_hofki.schemas.general_item_category import (
 )
 from mv_hofki.schemas.inventory_item import format_display_nr
 from mv_hofki.services import audit
+from mv_hofki.services.lookup_names import ensure_label_free
 
 
 def _sort_key(label: str) -> str:
@@ -40,8 +42,10 @@ async def _get(session: AsyncSession, category_id: int) -> GeneralItemCategory:
 async def _item_count(session: AsyncSession, category_id: int) -> int:
     return (
         await session.scalar(
+            # Only items in stock: the join hides items in the trash.
             select(func.count())
             .select_from(links)
+            .join(InventoryItem, InventoryItem.id == links.c.item_id)
             .where(links.c.category_id == category_id)
         )
         or 0
@@ -51,14 +55,9 @@ async def _item_count(session: AsyncSession, category_id: int) -> int:
 async def _ensure_unique(
     session: AsyncSession, label: str, exclude_id: int | None = None
 ) -> None:
-    # Compared in Python: SQLite's lower() leaves umlauts alone.
-    rows = await session.execute(
-        select(GeneralItemCategory.id, GeneralItemCategory.label)
+    await ensure_label_free(
+        session, GeneralItemCategory, label, what="Kategorie", exclude_id=exclude_id
     )
-    wanted = label.casefold()
-    for other_id, other_label in rows.all():
-        if other_id != exclude_id and other_label.casefold() == wanted:
-            raise HTTPException(status_code=409, detail="Kategorie existiert bereits")
 
 
 async def get_all(session: AsyncSession) -> list[dict]:
@@ -98,9 +97,10 @@ async def update(
 
 
 async def delete(session: AsyncSession, category_id: int) -> None:
+    """To the trash. Its links stay (hidden with it) and come back when it is
+    restored; deleting it for good removes them."""
     obj = await _get(session, category_id)
-    await session.execute(sa_delete(links).where(links.c.category_id == category_id))
-    await session.delete(obj)
+    obj.deleted_at = utcnow()
     await session.commit()
 
 

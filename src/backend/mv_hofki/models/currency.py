@@ -6,9 +6,10 @@ from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mv_hofki.db.base import Base
+from mv_hofki.db.soft_delete import SoftDeleteMixin
 
 
-class Currency(Base):
+class Currency(SoftDeleteMixin, Base):
     __tablename__ = "currencies"
 
     id: Mapped[int] = mapped_column(primary_key=True)

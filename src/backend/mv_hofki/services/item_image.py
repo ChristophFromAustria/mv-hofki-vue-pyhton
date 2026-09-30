@@ -10,6 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.core.config import settings
+from mv_hofki.db.soft_delete import utcnow
 from mv_hofki.models.item_image import ItemImage
 
 UPLOAD_DIR = Path(settings.PROJECT_ROOT) / "data" / "uploads" / "images"
@@ -82,13 +83,10 @@ async def delete(session: AsyncSession, item_id: int, image_id: int) -> None:
     if not image or image.item_id != item_id:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden")
 
-    # Delete file
-    file_path = _item_dir(item_id) / image.filename
-    if file_path.exists():
-        file_path.unlink()
-
+    # To the trash; the file stays until the image is deleted for good.
     was_profile = image.is_profile
-    await session.delete(image)
+    image.deleted_at = utcnow()
+    image.is_profile = False
     await session.commit()
 
     # If deleted image was profile, promote next image
@@ -97,3 +95,7 @@ async def delete(session: AsyncSession, item_id: int, image_id: int) -> None:
         if remaining:
             remaining[0].is_profile = True
             await session.commit()
+
+
+def image_file(image: ItemImage) -> Path:
+    return UPLOAD_DIR / str(image.item_id) / image.filename

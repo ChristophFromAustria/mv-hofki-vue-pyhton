@@ -6,6 +6,7 @@ from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mv_hofki.db.base import Base
+from mv_hofki.db.soft_delete import SoftDeleteMixin
 
 musician_registers = Table(
     "musician_registers",
@@ -23,7 +24,7 @@ musician_registers = Table(
 )
 
 
-class Register(Base):
+class Register(SoftDeleteMixin, Base):
     __tablename__ = "registers"
 
     id: Mapped[int] = mapped_column(primary_key=True)

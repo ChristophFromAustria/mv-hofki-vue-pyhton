@@ -8,11 +8,14 @@ from sqlalchemy import Boolean, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mv_hofki.db.base import Base
+from mv_hofki.db.soft_delete import SoftDeleteMixin
 from mv_hofki.models.register import Register, musician_registers
 
 
-class Musician(Base):
+class Musician(SoftDeleteMixin, Base):
     __tablename__ = "musicians"
+    # Never reuse the id of a musician deleted for good (event history).
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)

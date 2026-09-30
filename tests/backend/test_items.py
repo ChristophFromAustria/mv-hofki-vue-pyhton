@@ -307,8 +307,8 @@ async def test_number_of_deleted_item_is_never_reused(client):
 
 
 async def test_new_item_does_not_inherit_rows_of_a_deleted_one(client):
-    """SQLite reuses the id of the deleted last row; its loans and detail row
-    must be gone by then."""
+    """SQLite reuses the id of the deleted (for good) last row; its loans and
+    detail row must be gone by then."""
     tuba = await _itype(client, "Tuba", "TU")
     old = await _instrument(client, tuba, "Alt")
     musician = (
@@ -316,15 +316,22 @@ async def test_new_item_does_not_inherit_rows_of_a_deleted_one(client):
             "/api/v1/musicians", json={"first_name": "Anna", "last_name": "Maier"}
         )
     ).json()
-    await client.post(
-        "/api/v1/loans",
-        json={
-            "item_id": old["id"],
-            "musician_id": musician["id"],
-            "start_date": "2026-01-01",
-        },
-    )
-    await client.delete(f"/api/v1/items/{old['id']}")
+    loan = (
+        await client.post(
+            "/api/v1/loans",
+            json={
+                "item_id": old["id"],
+                "musician_id": musician["id"],
+                "start_date": "2026-01-01",
+            },
+        )
+    ).json()
+    # On loan it can't be deleted; returned, it goes to the trash.
+    assert (await client.delete(f"/api/v1/items/{old['id']}")).status_code == 409
+    await client.put(f"/api/v1/loans/{loan['id']}/return", json={})
+    assert (await client.delete(f"/api/v1/items/{old['id']}")).status_code == 204
+    purged = await client.delete(f"/api/v1/trash/item/{old['id']}")
+    assert purged.status_code == 204
 
     new = await _instrument(client, tuba, "Neu")
     assert new["label"] == "Neu"

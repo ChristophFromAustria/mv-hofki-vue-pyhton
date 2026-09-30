@@ -6,9 +6,11 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mv_hofki.db.soft_delete import utcnow
 from mv_hofki.models.clothing_detail import ClothingDetail
 from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.schemas.clothing_type import ClothingTypeCreate, ClothingTypeUpdate
+from mv_hofki.services.lookup_names import ensure_label_free
 
 
 async def get_all(session: AsyncSession) -> list[ClothingType]:
@@ -24,6 +26,7 @@ async def get_by_id(session: AsyncSession, type_id: int) -> ClothingType:
 
 
 async def create(session: AsyncSession, data: ClothingTypeCreate) -> ClothingType:
+    await ensure_label_free(session, ClothingType, data.label, what="Kleidungstyp")
     obj = ClothingType(**data.model_dump())
     session.add(obj)
     await session.commit()
@@ -35,6 +38,10 @@ async def update(
     session: AsyncSession, type_id: int, data: ClothingTypeUpdate
 ) -> ClothingType:
     obj = await get_by_id(session, type_id)
+    if data.label is not None:
+        await ensure_label_free(
+            session, ClothingType, data.label, what="Kleidungstyp", exclude_id=type_id
+        )
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(obj, key, value)
     await session.commit()
@@ -52,5 +59,5 @@ async def delete(session: AsyncSession, type_id: int) -> None:
             status_code=409,
             detail="Bekleidungstyp wird verwendet und kann nicht gelöscht werden",
         )
-    await session.delete(obj)
+    obj.deleted_at = utcnow()  # to the trash
     await session.commit()
