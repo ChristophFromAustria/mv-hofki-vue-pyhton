@@ -316,7 +316,7 @@ const baseColumns = computed(() => {
         },
         { key: "owner", label: "Eigentümer" },
         { key: "status_label", label: "Status" },
-        { key: "borrower", label: "Ausgeliehen an", hideEmptyInCard: true },
+        { key: "borrower", label: "Ausgeliehen an", sortKey: "borrower", hideEmptyInCard: true },
       ];
     case "clothing":
       return [
@@ -326,7 +326,7 @@ const baseColumns = computed(() => {
         { key: "gender", label: "Geschlecht" },
         { key: "owner", label: "Eigentümer" },
         { key: "status_label", label: "Status" },
-        { key: "borrower", label: "Ausgeliehen an", hideEmptyInCard: true },
+        { key: "borrower", label: "Ausgeliehen an", sortKey: "borrower", hideEmptyInCard: true },
       ];
     case "sheet_music":
       return [
@@ -350,7 +350,7 @@ const baseColumns = computed(() => {
         { key: "manufacturer", label: "Hersteller" },
         { key: "owner", label: "Eigentümer" },
         { key: "status_label", label: "Status" },
-        { key: "borrower", label: "Ausgeliehen an", hideEmptyInCard: true },
+        { key: "borrower", label: "Ausgeliehen an", sortKey: "borrower", hideEmptyInCard: true },
       ];
     default:
       return [];
@@ -424,7 +424,13 @@ function onModalSave() {
     </div>
 
     <div class="toolbar">
-      <SearchBar v-model="state.search" placeholder="Suche (Bezeichnung, Nummer …)" class="grow" />
+      <SearchBar
+        v-model="state.search"
+        :placeholder="
+          cat.hasLoans ? 'Suche (Bezeichnung, Nummer, Person …)' : 'Suche (Bezeichnung, Nummer …)'
+        "
+        class="grow"
+      />
       <GroupSelect
         :options="GROUP_OPTIONS[category]"
         :model-value="state.group_by"

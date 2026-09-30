@@ -94,6 +94,71 @@ async def test_instrument_filters(client, refs):
     ) == ["Tuba 2"]
 
 
+async def test_search_and_sort_by_borrower(client, refs):
+    base = "category=instrument"
+    names = [("Anna", "Maier"), ("Bernd", "Huber"), ("Clara", "Zach")]
+    for i, (first, last) in enumerate(names):
+        item = await _item(
+            client,
+            category="instrument",
+            label=f"Tuba {i + 1}",
+            instrument_type_id=refs["tuba"],
+        )
+        musician = (
+            await client.post(
+                "/api/v1/musicians", json={"first_name": first, "last_name": last}
+            )
+        ).json()
+        await client.post(
+            "/api/v1/loans",
+            json={
+                "item_id": item["id"],
+                "musician_id": musician["id"],
+                "start_date": "2026-01-01",
+            },
+        )
+    await _item(
+        client,
+        category="instrument",
+        label="Tuba frei",
+        instrument_type_id=refs["tuba"],
+    )
+
+    assert await _labels(client, f"{base}&search=huber") == ["Tuba 2"]
+    assert await _labels(client, f"{base}&search=anna maier") == ["Tuba 1"]
+    assert await _labels(client, f"{base}&order_by=borrower") == [
+        "Tuba 2",
+        "Tuba 1",
+        "Tuba 3",
+        "Tuba frei",
+    ]
+    assert await _labels(client, f"{base}&order_by=-borrower") == [
+        "Tuba 3",
+        "Tuba 1",
+        "Tuba 2",
+        "Tuba frei",
+    ]
+
+
+async def test_returned_loan_is_not_the_borrower(client, refs):
+    item = await _item(
+        client, category="clothing", label="Hut 1", clothing_type_id=refs["hat"]
+    )
+    loan = (
+        await client.post(
+            "/api/v1/loans",
+            json={
+                "item_id": item["id"],
+                "musician_id": await _musician(client),
+                "start_date": "2026-01-01",
+            },
+        )
+    ).json()
+    resp = await client.put(f"/api/v1/loans/{loan['id']}/return", json={})
+    assert resp.status_code == 200, resp.text
+    assert await _labels(client, "category=clothing&search=maier") == []
+
+
 async def test_instrument_sorting(client, refs):
     await _item(
         client,

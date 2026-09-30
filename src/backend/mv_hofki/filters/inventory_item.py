@@ -29,6 +29,7 @@ from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.loan import Loan
+from mv_hofki.models.musician import Musician
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
 from mv_hofki.models.sheet_music_genre import SheetMusicGenre
 
@@ -61,10 +62,10 @@ _CATEGORY_FIELDS = {
     },
 }
 _CATEGORY_SORTS = {
-    "instrument": {"number", "type", "manufacturer", "construction_year"},
-    "clothing": {"number", "type", "size"},
+    "instrument": {"number", "type", "manufacturer", "construction_year", "borrower"},
+    "clothing": {"number", "type", "size", "borrower"},
     "sheet_music": {"number", "label", "composer"},
-    "general_item": {"number", "label", "storage_location"},
+    "general_item": {"number", "label", "storage_location", "borrower"},
 }
 
 
@@ -79,6 +80,29 @@ _ROOM = func.nullif(
     "",
 )
 _OPEN_LOAN = exists().where(Loan.item_id == InventoryItem.id, Loan.end_date.is_(None))
+
+
+def _borrower_column(column: Any) -> Any:
+    """``column`` of the musician holding the item's open loan (NULL if none)."""
+    return (
+        select(column)
+        .join(Loan, Loan.musician_id == Musician.id)
+        .where(Loan.item_id == InventoryItem.id, Loan.end_date.is_(None))
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+def _borrower_matches(pattern: str) -> ColumnElement[bool]:
+    return (
+        exists()
+        .where(
+            Loan.item_id == InventoryItem.id,
+            Loan.end_date.is_(None),
+            Loan.musician_id == Musician.id,
+        )
+        .where((Musician.first_name + " " + Musician.last_name).ilike(pattern))
+    )
 
 
 def _join_genre(query: Select) -> Select:
@@ -149,6 +173,11 @@ class ItemFilter(ListFilter):
             "label": [InventoryItem.label],
             "composer": [SheetMusicDetail.composer],
             "storage_location": [InventoryItem.storage_location],
+            # Last name first, like the musician list; available items last.
+            "borrower": [
+                _borrower_column(Musician.last_name),
+                _borrower_column(Musician.first_name),
+            ],
         }
         default_sort = ["number"]
         group_fields = {
@@ -238,6 +267,7 @@ class ItemFilter(ListFilter):
             InventoryItem.label.ilike(pattern),
             InventoryItem.manufacturer.ilike(pattern),
             InventoryItem.notes.ilike(pattern),
+            _borrower_matches(pattern),
         ]
         nr = display_nr_condition(value)
         if nr is not None:
