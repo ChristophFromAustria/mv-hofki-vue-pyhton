@@ -294,6 +294,33 @@ async def test_changing_type_to_other_code_renumbers(client):
     assert resp.json()["display_nr"] == "TR-0002"
 
 
+async def test_new_item_does_not_inherit_rows_of_a_deleted_one(client):
+    """SQLite reuses the id of the deleted last row; its loans and detail row
+    must be gone by then."""
+    tuba = await _itype(client, "Tuba", "TU")
+    old = await _instrument(client, tuba, "Alt")
+    musician = (
+        await client.post(
+            "/api/v1/musicians", json={"first_name": "Anna", "last_name": "Maier"}
+        )
+    ).json()
+    await client.post(
+        "/api/v1/loans",
+        json={
+            "item_id": old["id"],
+            "musician_id": musician["id"],
+            "start_date": "2026-01-01",
+        },
+    )
+    await client.delete(f"/api/v1/items/{old['id']}")
+
+    new = await _instrument(client, tuba, "Neu")
+    assert new["label"] == "Neu"
+    assert new["active_loan"] is None
+    loans = (await client.get(f"/api/v1/loans?item_id={new['id']}")).json()
+    assert loans["total"] == 0
+
+
 async def test_changing_type_within_code_keeps_number(client):
     b = await _itype(client, "Klarinette in B", "KL")
     es = await _itype(client, "Klarinette in Es", "KL")

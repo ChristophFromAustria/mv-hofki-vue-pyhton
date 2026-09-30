@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -20,6 +21,7 @@ from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.item_image import ItemImage
+from mv_hofki.models.item_invoice import ItemInvoice
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
@@ -406,7 +408,16 @@ async def delete(session: AsyncSession, item_id: int) -> None:
     if not item:
         raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
 
+    # SQLite runs without PRAGMA foreign_keys, so ON DELETE CASCADE does not
+    # fire: remove dependent rows explicitly. Otherwise a new item that gets
+    # the same id (SQLite reuses the highest rowid) would inherit them.
     await category_service.delete_links_for_items(session, [item_id])
+    detail_model, _ = CATEGORY_DETAIL_MAP[item.category]
+    dependents: list[Any] = [ItemImage, ItemInvoice, Loan]
+    if detail_model is not None:
+        dependents.append(detail_model)
+    for model in dependents:
+        await session.execute(sa_delete(model).where(model.item_id == item_id))
     await session.delete(item)
     await session.commit()
 
