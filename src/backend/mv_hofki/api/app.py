@@ -33,6 +33,7 @@ from mv_hofki.api.routes.scan_projects import router as scan_projects_router
 from mv_hofki.api.routes.scanner_config import router as scanner_config_router
 from mv_hofki.api.routes.scans import flat_router as scans_flat_router
 from mv_hofki.api.routes.scans import router as scans_router
+from mv_hofki.api.routes.search import router as search_router
 from mv_hofki.api.routes.sheet_music_genres import router as sheet_music_genres_router
 from mv_hofki.api.routes.symbol_library import router as symbol_library_router
 from mv_hofki.core.config import settings
@@ -93,6 +94,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(search_router)
 app.include_router(health_router)
 app.include_router(currencies_router)
 app.include_router(instrument_types_router)

@@ -88,7 +88,7 @@ def _split_fields(
     return base_fields, detail_fields
 
 
-async def _enrich(session: AsyncSession, items: list[InventoryItem]) -> None:
+async def enrich_items(session: AsyncSession, items: list[InventoryItem]) -> None:
     """Add active_loan and profile_image_url to items."""
     if not items:
         return
@@ -284,7 +284,7 @@ async def create(session: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
 
     await session.refresh(item)
     detail = await _get_detail(session, item.id, category)
-    await _enrich(session, [item])
+    await enrich_items(session, [item])
     return _build_read_dict(item, detail)
 
 
@@ -339,7 +339,7 @@ async def get_list(
         options=[joinedload(InventoryItem.currency)],
     )
     unique_items = list({i.id: i for i in lp.rows}.values())
-    await _enrich(session, unique_items)
+    await enrich_items(session, unique_items)
     details = await _get_details(session, [i.id for i in unique_items], category)
     lp.rows = [_build_read_dict(i, details.get(i.id)) for i in lp.rows]
     return lp
@@ -383,7 +383,7 @@ async def get_by_id(session: AsyncSession, item_id: int) -> dict[str, Any]:
     if not item:
         raise HTTPException(status_code=404, detail="Gegenstand nicht gefunden")
 
-    await _enrich(session, [item])
+    await enrich_items(session, [item])
     detail = await _get_detail(session, item.id, item.category)
     return _build_read_dict(item, detail)
 
@@ -438,7 +438,7 @@ async def update(
     await session.commit()
     await session.refresh(item)
     detail = await _get_detail(session, item.id, item.category)
-    await _enrich(session, [item])
+    await enrich_items(session, [item])
     return _build_read_dict(item, detail)
 
 
