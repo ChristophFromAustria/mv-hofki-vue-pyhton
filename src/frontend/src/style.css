@@ -349,6 +349,11 @@ input[type="range"] {
   font-size: 0.8125rem;
 }
 
+/* The global search is full screen on phones: keep the page behind still. */
+body.global-search-open {
+  overflow: hidden;
+}
+
 /* Search hits */
 mark {
   background: var(--color-highlight-bg);

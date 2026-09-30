@@ -70,7 +70,7 @@ allgemeine Suchfeld (16, größter Wunsch).
     E-Mail der angemeldeten Person mit.
 15. **Event Log** — *groß, Brainstorming.* Wer hat wann was angelegt, geändert,
     verliehen, gelöscht.
-16. **Allgemeines Suchfeld** — *groß, in Umsetzung.* Konzept: [konzept-allgemeine-suche.md](konzept-allgemeine-suche.md).
+16. ~~**Allgemeines Suchfeld**~~ — ✅ erledigt (30.09.2026). Konzept: [konzept-allgemeine-suche.md](konzept-allgemeine-suche.md).
     Eine Suche über alle Bereiche statt nur pro Liste.
 
 ## Organisatorisch

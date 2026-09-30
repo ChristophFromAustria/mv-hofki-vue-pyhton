@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { RouterLink } from "vue-router";
+import GlobalSearch from "./GlobalSearch.vue";
 
 const settingsOpen = ref(false);
 const isDark = ref(false);
@@ -44,6 +45,8 @@ onMounted(() => {
         <img src="/logo-64.png" alt="MVH" class="brand-logo" />
         MV Hofkirchen
       </RouterLink>
+
+      <GlobalSearch />
 
       <button
         class="theme-toggle"

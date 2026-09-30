@@ -1,6 +1,7 @@
 # Konzept: Allgemeines Suchfeld
 
-Todo-Punkt 16 (`docs/todo.md`). Ergebnis des Brainstormings vom 30.09.2026.
+Todo-Punkt 16 (`docs/todo.md`). Ergebnis des Brainstormings vom 30.09.2026;
+umgesetzt am selben Tag (`GlobalSearch.vue`, `SearchPage.vue`, `GET /api/v1/search`).
 
 ## Bedienung
 

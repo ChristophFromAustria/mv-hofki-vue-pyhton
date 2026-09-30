@@ -132,6 +132,11 @@ const routes = [
     component: () => import("./pages/CurrencyListPage.vue"),
   },
   {
+    path: "/suche",
+    name: "search",
+    component: () => import("./pages/SearchPage.vue"),
+  },
+  {
     path: "/einstellungen/zugriff",
     name: "access-settings",
     component: () => import("./pages/AccessSettingsPage.vue"),
