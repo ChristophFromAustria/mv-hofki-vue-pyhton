@@ -91,7 +91,7 @@ watch(
 
 // Focus follows the UI back to whatever the person can now act on: the
 // "Weiter bearbeiten" button when the discard prompt appears, the textarea
-// when editing resumes (via "Weiter bearbeiten" or the Vorschau→Bearbeiten tab).
+// when editing resumes (via "Weiter bearbeiten" or by switching the Vorschau toggle off).
 watch(showDiscardConfirm, async (shown) => {
   if (!shown) return;
   await nextTick();
@@ -268,50 +268,57 @@ async function keepEditing() {
       <h2>{{ title }}</h2>
 
       <template v-if="!showDiscardConfirm">
-        <div class="notes-toolbar" role="toolbar" aria-label="Formatierung">
+        <div class="notes-toolbar-row">
+          <div class="notes-toolbar" role="toolbar" aria-label="Formatierung">
+            <button
+              v-for="btn in toolbarButtons"
+              :key="btn.key"
+              type="button"
+              class="notes-toolbar-btn"
+              :aria-label="btn.label"
+              :title="btn.hint"
+              :disabled="tab === 'preview'"
+              @click="btn.action"
+            >
+              <svg
+                v-if="btn.svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" />
+                <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.36-1.36" />
+              </svg>
+              <template v-else>{{ btn.glyph }}</template>
+            </button>
+          </div>
           <button
-            v-for="btn in toolbarButtons"
-            :key="btn.key"
             type="button"
-            class="notes-toolbar-btn"
-            :aria-label="btn.label"
-            :title="btn.hint"
-            :disabled="tab === 'preview'"
-            @click="btn.action"
+            class="notes-toolbar-btn notes-preview-toggle"
+            :class="{ 'btn-active': tab === 'preview' }"
+            aria-label="Vorschau"
+            title="Vorschau"
+            :aria-pressed="tab === 'preview'"
+            @click="tab = tab === 'preview' ? 'edit' : 'preview'"
           >
             <svg
-              v-if="btn.svg"
-              width="16"
-              height="16"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
               aria-hidden="true"
             >
-              <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5" />
-              <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.36-1.36" />
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
             </svg>
-            <template v-else>{{ btn.glyph }}</template>
-          </button>
-        </div>
-
-        <div class="view-toggle notes-tabs">
-          <button
-            type="button"
-            :class="{ active: tab === 'edit' }"
-            :aria-pressed="tab === 'edit'"
-            @click="tab = 'edit'"
-          >
-            Bearbeiten
-          </button>
-          <button
-            type="button"
-            :class="{ active: tab === 'preview' }"
-            :aria-pressed="tab === 'preview'"
-            @click="tab = 'preview'"
-          >
-            Vorschau
           </button>
         </div>
 
@@ -421,16 +428,37 @@ async function keepEditing() {
   cursor: pointer;
 }
 
-.notes-toolbar-btn:hover {
+.notes-toolbar-btn:hover:not(.btn-active) {
   background: var(--color-bg-soft);
 }
 
-.notes-tabs {
-  align-self: flex-start;
+.notes-toolbar-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
-.notes-tabs button {
-  min-height: 44px;
+.notes-toolbar-row .notes-toolbar {
+  flex: 1;
+  min-width: 0;
+}
+
+.notes-preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notes-preview-toggle.btn-active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border-color: var(--color-primary);
+}
+
+.notes-preview-toggle.btn-active:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 .notes-content {

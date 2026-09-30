@@ -51,13 +51,14 @@ describe("NotesEditorDialog", () => {
     expect(w.find("textarea").element.value).toBe("**hallo** welt");
   });
 
-  it("toggles between Bearbeiten and Vorschau", async () => {
+  it("the Vorschau button toggles between editing and preview", async () => {
     const w = mountDialog({ value: "**fett**" });
+    const toggle = w.find('button[aria-label="Vorschau"]');
     expect(w.find("textarea").exists()).toBe(true);
-    await w.findAll("button").find((b) => b.text() === "Vorschau").trigger("click");
+    await toggle.trigger("click");
     expect(w.find("textarea").exists()).toBe(false);
     expect(w.find(".markdown-text").html()).toContain("<strong>fett</strong>");
-    await w.findAll("button").find((b) => b.text() === "Bearbeiten").trigger("click");
+    await toggle.trigger("click");
     expect(w.find("textarea").exists()).toBe(true);
   });
 
@@ -163,22 +164,23 @@ describe("NotesEditorDialog", () => {
     expect(dirtyDialogEl.hasAttribute("open")).toBe(true);
   });
 
-  it("returning to Bearbeiten from Vorschau focuses the textarea", async () => {
+  it("switching the Vorschau off focuses the textarea", async () => {
     const w = mountDialog({ value: "abc" });
-    await w.findAll("button").find((b) => b.text() === "Vorschau").trigger("click");
-    await w.findAll("button").find((b) => b.text() === "Bearbeiten").trigger("click");
+    const toggle = w.find('button[aria-label="Vorschau"]');
+    await toggle.trigger("click");
+    await toggle.trigger("click");
     await nextTick();
     expect(document.activeElement).toBe(w.find("textarea").element);
   });
 
-  it("the Bearbeiten/Vorschau toggle exposes aria-pressed and no redundant aria-label", async () => {
+  it("the Vorschau toggle is a single icon button exposing aria-pressed", async () => {
     const w = mountDialog({ value: "abc" });
-    const edit = w.findAll("button").find((b) => b.text() === "Bearbeiten");
-    const preview = w.findAll("button").find((b) => b.text() === "Vorschau");
-    expect(edit.attributes("aria-pressed")).toBe("true");
-    expect(edit.attributes("aria-label")).toBeUndefined();
-    expect(preview.attributes("aria-pressed")).toBe("false");
-    expect(preview.attributes("aria-label")).toBeUndefined();
+    const toggle = w.find('button[aria-label="Vorschau"]');
+    expect(toggle.text()).toBe("");
+    expect(toggle.attributes("aria-pressed")).toBe("false");
+    await toggle.trigger("click");
+    expect(toggle.attributes("aria-pressed")).toBe("true");
+    expect(w.find('button[aria-label="Fett"]').attributes("disabled")).toBeDefined();
   });
 
   it("shows a server error inline and keeps the dialog open with the typed text", async () => {
