@@ -94,7 +94,9 @@ async def run_import(db: AsyncSession, session: ImportSession) -> dict[str, Any]
             fields = row["fields"]
 
             prefix = fields["number_prefix"]
-            used = used_numbers.setdefault(prefix, ctx.used_numbers(prefix))
+            used = used_numbers.setdefault(
+                prefix, ctx.used_numbers(prefix) | ctx.retired_numbers(prefix)
+            )
             nr = fields.get("inventory_nr")
             if nr is None:
                 nr = (max(used) if used else 0) + 1

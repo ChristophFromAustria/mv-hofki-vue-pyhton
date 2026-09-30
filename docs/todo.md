@@ -39,7 +39,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 8. **Inventar-Items kopieren** — *mittel.* Bestehenden Gegenstand als Vorlage
    nehmen; per Checkbox-Menü wählen, welche Werte übernommen werden. Die
    Nummer ist immer neu.
-9. **Freigewordene Nummern nie wieder vergeben** — *klein.* Heute ist die
+9. ~~**Freigewordene Nummern nie wieder vergeben**~~ — ✅ erledigt (30.09.2026). *klein.* Heute ist die
    nächste Nummer „höchste vorhandene + 1“ (`next_inventory_nr`): Lücken in der
    Mitte bleiben frei, aber nach dem Löschen des Stücks mit der *höchsten*
    Nummer (oder dessen Umnummerierung) wird genau diese Nummer wieder vergeben.

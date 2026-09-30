@@ -18,6 +18,7 @@ from mv_hofki.models.item_invoice import ItemInvoice
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
 from mv_hofki.models.register import Register
+from mv_hofki.models.retired_inventory_number import RetiredInventoryNumber
 from mv_hofki.models.scan_part import ScanPart
 from mv_hofki.models.scan_project import ScanProject
 from mv_hofki.models.scanner_config_entry import ScannerConfigEntry
@@ -44,6 +45,7 @@ __all__ = [
     "ItemImage",
     "ItemInvoice",
     "Loan",
+    "RetiredInventoryNumber",
     "Musician",
     "Register",
     "ScanPart",

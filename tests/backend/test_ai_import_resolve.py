@@ -218,6 +218,18 @@ def test_inventory_numbers_are_checked_per_short_code():
     assert conflict["suggestion"] == {"next_free": 13}
 
 
+def test_retired_number_is_an_error_and_skipped_by_next_free():
+    v = validate_draft(
+        {"instruments": [row(inventory_nr="14", instrument_type="Trompete")]},
+        ctx(retired={"TR": {13, 14}}),
+    )
+    issue = next(i for i in v["rows"][0]["issues"] if i["field"] == "inventory_nr")
+    assert issue["level"] == "error"
+    assert "wird nicht wieder verwendet" in issue["message"]
+    assert issue["suggestion"] == {"next_free": 15}
+    assert ctx(retired={"TR": {13, 14}}).next_free_number("TR") == 15
+
+
 def test_missing_number_is_info_and_auto_assigned():
     v = validate_draft({"instruments": [row(inventory_nr=None)]}, ctx())
     assert v["rows"][0]["fields"]["inventory_nr"] is None

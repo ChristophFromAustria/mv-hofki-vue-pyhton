@@ -35,7 +35,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.models.clothing_detail import ClothingDetail
@@ -49,8 +49,10 @@ from mv_hofki.models.item_invoice import ItemInvoice
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
 from mv_hofki.models.register import Register, musician_registers
+from mv_hofki.models.retired_inventory_number import RetiredInventoryNumber
 from mv_hofki.schemas.inventory_item import CATEGORY_PREFIXES, format_display_nr
 from mv_hofki.services.general_item_category import delete_links_for_items
+from mv_hofki.services.inventory_item import next_inventory_nr
 
 CLUB_OWNER = "MV Hofkirchen"
 UNCLEAR_OWNER = "Eigentum unklar"
@@ -1110,7 +1112,8 @@ async def load_short_codes(db: AsyncSession) -> dict[str, str]:
 
 async def wipe_inventory(db: AsyncSession) -> dict[str, int]:
     """Delete all items (every category), musicians, loans, invoices and image
-    rows. Upload files are the caller's business (move them aside first)."""
+    rows. Upload files are the caller's business (move them aside first).
+    A wipe is a fresh start, so retired numbers are forgotten as well."""
     counts = {}
     await db.execute(delete(musician_registers))
     await delete_links_for_items(db, None)
@@ -1121,6 +1124,7 @@ async def wipe_inventory(db: AsyncSession) -> dict[str, int]:
         InstrumentDetail,
         InventoryItem,
         Musician,
+        RetiredInventoryNumber,
     ):
         result = await db.execute(delete(model))
         counts[model.__tablename__] = result.rowcount or 0  # type: ignore[attr-defined]
@@ -1150,13 +1154,7 @@ async def restrict_to_folder(db: AsyncSession, plan: Plan, folder: str) -> Plan:
             continue
         slot = (item.category, item.prefix)
         if slot not in next_nr:
-            current = await db.scalar(
-                select(func.max(InventoryItem.inventory_nr)).where(
-                    InventoryItem.category == item.category,
-                    InventoryItem.number_prefix == item.prefix,
-                )
-            )
-            next_nr[slot] = (current or 0) + 1
+            next_nr[slot] = await next_inventory_nr(db, item.category, item.prefix)
         item.inventory_nr = next_nr[slot]
         next_nr[slot] += 1
         out.items.append(item)

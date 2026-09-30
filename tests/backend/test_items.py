@@ -294,6 +294,18 @@ async def test_changing_type_to_other_code_renumbers(client):
     assert resp.json()["display_nr"] == "TR-0002"
 
 
+async def test_number_of_deleted_item_is_never_reused(client):
+    tuba = await _itype(client, "Tuba", "TU")
+    await _instrument(client, tuba)
+    last = await _instrument(client, tuba)
+    assert last["display_nr"] == "TU-0002"
+
+    resp = await client.delete(f"/api/v1/items/{last['id']}")
+    assert resp.status_code == 204
+    again = await _instrument(client, tuba)
+    assert again["display_nr"] == "TU-0003"
+
+
 async def test_new_item_does_not_inherit_rows_of_a_deleted_one(client):
     """SQLite reuses the id of the deleted last row; its loans and detail row
     must be gone by then."""
@@ -319,6 +331,43 @@ async def test_new_item_does_not_inherit_rows_of_a_deleted_one(client):
     assert new["active_loan"] is None
     loans = (await client.get(f"/api/v1/loans?item_id={new['id']}")).json()
     assert loans["total"] == 0
+
+
+async def test_number_freed_by_renumbering_is_never_reused(client):
+    tuba = await _itype(client, "Tuba", "TU")
+    trompete = await _itype(client, "Trompete", "TR")
+    item = await _instrument(client, tuba)
+    await client.put(
+        f"/api/v1/items/{item['id']}", json={"instrument_type_id": trompete}
+    )
+
+    assert (await _instrument(client, tuba))["display_nr"] == "TU-0002"
+    # Moving back gets a new number too, not the old TU-0001.
+    resp = await client.put(
+        f"/api/v1/items/{item['id']}", json={"instrument_type_id": tuba}
+    )
+    assert resp.json()["display_nr"] == "TU-0003"
+
+
+async def test_retired_numbers_are_per_category(client):
+    hat = (await client.post("/api/v1/clothing-types", json={"label": "Hut"})).json()
+    first = (
+        await client.post(
+            "/api/v1/items",
+            json={
+                "category": "clothing",
+                "label": "Hut",
+                "clothing_type_id": hat["id"],
+            },
+        )
+    ).json()
+    await client.delete(f"/api/v1/items/{first['id']}")
+    general = (
+        await client.post(
+            "/api/v1/items", json={"category": "general_item", "label": "Tisch"}
+        )
+    ).json()
+    assert general["display_nr"] == "A-0001"
 
 
 async def test_changing_type_within_code_keeps_number(client):

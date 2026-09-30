@@ -30,6 +30,7 @@ from mv_hofki.models.instrument_detail import InstrumentDetail
 from mv_hofki.models.instrument_type import InstrumentType
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.musician import Musician
+from mv_hofki.models.retired_inventory_number import RetiredInventoryNumber
 from mv_hofki.schemas.inventory_item import format_display_nr
 
 DEFAULT_OWNER = "MV Hofkirchen"
@@ -79,15 +80,20 @@ class Context:
     musicians: list[MusicianRef] = field(default_factory=list)
     currencies: list[CurrencyRef] = field(default_factory=list)
     instruments: list[ExistingItem] = field(default_factory=list)
+    # Numbers of deleted/renumbered instruments per short code: never reused.
+    retired: dict[str, set[int]] = field(default_factory=dict)
     today: date = field(default_factory=date.today)
 
     def used_numbers(self, prefix: str) -> set[int]:
         """Numbers already taken in the sequence of one short code."""
         return {i.inventory_nr for i in self.instruments if i.number_prefix == prefix}
 
+    def retired_numbers(self, prefix: str) -> set[int]:
+        return self.retired.get(prefix, set())
+
     def next_free_number(self, prefix: str) -> int:
-        used = self.used_numbers(prefix)
-        return (max(used) if used else 0) + 1
+        given_out = self.used_numbers(prefix) | self.retired_numbers(prefix)
+        return (max(given_out) if given_out else 0) + 1
 
 
 async def load_context(db: AsyncSession) -> Context:
@@ -101,6 +107,16 @@ async def load_context(db: AsyncSession) -> Context:
             .where(InventoryItem.category == "instrument")
         )
     ).all()
+    retired: dict[str, set[int]] = {}
+    for prefix, nr in (
+        await db.execute(
+            select(
+                RetiredInventoryNumber.number_prefix,
+                RetiredInventoryNumber.inventory_nr,
+            ).where(RetiredInventoryNumber.category == "instrument")
+        )
+    ).all():
+        retired.setdefault(prefix, set()).add(nr)
     return Context(
         instrument_types=[TypeRef(t.id, t.label, t.label_short) for t in types],
         musicians=[MusicianRef(m.id, m.first_name, m.last_name) for m in musicians],
@@ -111,6 +127,7 @@ async def load_context(db: AsyncSession) -> Context:
             )
             for item, serial in rows
         ],
+        retired=retired,
     )
 
 
@@ -497,6 +514,22 @@ def validate_row(
                 "inventory_nr",
                 "error",
                 f"Inventarnummer {display} ist bereits vergeben ({existing.label})",
+                {
+                    "next_free": max(
+                        ctx.next_free_number(prefix),
+                        max(reserved_here, default=0) + 1,
+                    )
+                },
+            )
+        )
+    elif nr in ctx.retired_numbers(prefix):
+        reserved_here = {n for p, n in reserved if p == prefix}
+        issues.append(
+            _issue(
+                "inventory_nr",
+                "error",
+                f"Inventarnummer {display} war schon vergeben (gelöschter oder "
+                "umnummerierter Gegenstand) und wird nicht wieder verwendet",
                 {
                     "next_free": max(
                         ctx.next_free_number(prefix),

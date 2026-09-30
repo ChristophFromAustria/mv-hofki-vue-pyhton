@@ -24,6 +24,7 @@ from mv_hofki.models.item_image import ItemImage
 from mv_hofki.models.item_invoice import ItemInvoice
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
+from mv_hofki.models.retired_inventory_number import RetiredInventoryNumber
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
 from mv_hofki.schemas.inventory_item import (
     CATEGORY_PREFIXES,
@@ -196,15 +197,53 @@ async def instrument_prefix(session: AsyncSession, instrument_type_id: int) -> s
     return short.strip().upper()
 
 
-async def next_inventory_nr(session: AsyncSession, category: str, prefix: str) -> int:
-    """Next free number in the sequence of ``prefix`` (numbers are not reused)."""
-    max_nr = await session.scalar(
+async def highest_inventory_nr(
+    session: AsyncSession, category: str, prefix: str
+) -> int:
+    """Highest number ever given out in the sequence of ``prefix``: in use or
+    retired (freed by deleting/renumbering). 0 for a new sequence."""
+    in_use = await session.scalar(
         select(func.max(InventoryItem.inventory_nr)).where(
             InventoryItem.category == category,
             InventoryItem.number_prefix == prefix,
         )
     )
-    return (max_nr or 0) + 1
+    retired = await session.scalar(
+        select(func.max(RetiredInventoryNumber.inventory_nr)).where(
+            RetiredInventoryNumber.category == category,
+            RetiredInventoryNumber.number_prefix == prefix,
+        )
+    )
+    return max(in_use or 0, retired or 0)
+
+
+async def next_inventory_nr(session: AsyncSession, category: str, prefix: str) -> int:
+    """Next number in the sequence of ``prefix``. Numbers are never reused:
+    not after deleting the item with the highest number either."""
+    return await highest_inventory_nr(session, category, prefix) + 1
+
+
+async def retired_inventory_nrs(
+    session: AsyncSession, category: str, prefix: str
+) -> set[int]:
+    result = await session.execute(
+        select(RetiredInventoryNumber.inventory_nr).where(
+            RetiredInventoryNumber.category == category,
+            RetiredInventoryNumber.number_prefix == prefix,
+        )
+    )
+    return set(result.scalars())
+
+
+async def retire_inventory_nr(session: AsyncSession, item: InventoryItem) -> None:
+    """Remember the item's current number so it is never given out again."""
+    await session.merge(
+        RetiredInventoryNumber(
+            category=item.category,
+            number_prefix=item.number_prefix,
+            inventory_nr=item.inventory_nr,
+        )
+    )
 
 
 async def create(session: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
@@ -371,6 +410,7 @@ async def update(
     if item.category == "instrument" and new_type_id is not None:
         prefix = await instrument_prefix(session, new_type_id)
         if prefix != item.number_prefix:
+            await retire_inventory_nr(session, item)
             item.inventory_nr = await next_inventory_nr(session, item.category, prefix)
             item.number_prefix = prefix
 
@@ -418,6 +458,7 @@ async def delete(session: AsyncSession, item_id: int) -> None:
         dependents.append(detail_model)
     for model in dependents:
         await session.execute(sa_delete(model).where(model.item_id == item_id))
+    await retire_inventory_nr(session, item)
     await session.delete(item)
     await session.commit()
 
