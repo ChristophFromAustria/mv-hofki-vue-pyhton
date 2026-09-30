@@ -39,6 +39,9 @@ defineEmits(["toggle-select"]);
       <span class="item-card-meta">
         {{ item.display_nr }}{{ item.manufacturer ? " · " + item.manufacturer : "" }}
       </span>
+      <span v-if="hasLoans && item.active_loan" class="item-card-borrower">
+        <span class="sr-only">Ausgeliehen an </span>{{ item.active_loan.musician_name }}
+      </span>
       <CategoryChips v-if="item.categories?.length" :categories="item.categories" />
     </span>
     <span v-if="hasLoans" class="item-card-status">
@@ -127,6 +130,14 @@ defineEmits(["toggle-select"]);
 .item-card-meta {
   font-size: 0.8rem;
   color: var(--color-muted);
+}
+
+.item-card-borrower {
+  font-size: 0.8rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .item-card-status {

@@ -31,6 +31,15 @@ describe("ItemCard", () => {
     expect(w.emitted("toggle-select")).toHaveLength(1);
   });
 
+  it("shows the borrower's name for an active loan", () => {
+    const loaned = { ...item, active_loan: { loan_id: 1, musician_id: 3, musician_name: "Anna Huber", is_extern: false, start_date: "2026-01-01" } };
+    const w = mountCard({ item: loaned });
+    expect(w.find(".item-card-borrower").text()).toBe("Ausgeliehen an Anna Huber");
+    expect(w.find(".badge").text()).toBe("Ausgeliehen");
+    expect(mountCard({}).find(".item-card-borrower").exists()).toBe(false);
+    expect(mountCard({ item: loaned, hasLoans: false }).find(".item-card-borrower").exists()).toBe(false);
+  });
+
   it("shows the profile image", () => {
     const w = mountCard({ item: { ...item, profile_image_url: "/x.jpg" } });
     expect(w.find("img").attributes("src")).toBe("/x.jpg");
