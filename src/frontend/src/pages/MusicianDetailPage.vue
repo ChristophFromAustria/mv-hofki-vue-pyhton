@@ -113,17 +113,18 @@ async function remove() {
           :editing="inline.editingKey.value === f.key"
           :saving="inline.savingKey.value === f.key"
           :saved="inline.savedKey.value === f.key"
-          :error="inline.editingKey.value === f.key ? inline.error.value : ''"
+          :error="
+            inline.editingKey.value === f.key || inline.failedKey.value === f.key
+              ? inline.error.value
+              : ''
+          "
+          :on-text="f.onText"
+          :off-text="f.offText"
           @start="inline.start(f.key)"
           @cancel="inline.cancel()"
           @save="(v) => inline.commit(f.key, f.toPatch(v))"
         >
-          <template v-if="f.key === 'is_active'" #display>
-            <span :class="musician.is_active === false ? 'badge badge-gray' : 'badge badge-green'">
-              {{ musician.is_active === false ? "Inaktiv" : "Aktiv" }}
-            </span>
-          </template>
-          <template v-else-if="f.key === 'registers'" #display>
+          <template v-if="f.key === 'registers'" #display>
             {{ registerLabels(musician) }}
           </template>
         </InlineField>

@@ -22,7 +22,10 @@ describe("musicianFieldDefs", () => {
     const plz = d.contact.find((f) => f.key === "postal_code");
     expect(plz.type).toBe("number");
     expect(d.contact.find((f) => f.key === "first_name").required).toBe(true);
-    expect(d.membership.find((f) => f.key === "is_active").label).toBe("Status");
+    const status = d.membership.find((f) => f.key === "is_active");
+    expect(status.label).toBe("Status");
+    expect(status.type).toBe("switch");
+    expect([status.onText, status.offText]).toEqual(["Aktiv", "Inaktiv"]);
   });
 
   it("marks notes as a block field with a character limit", () => {

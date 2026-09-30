@@ -15,6 +15,16 @@ describe("useInlineEdit", () => {
     expect(e.editingKey.value).toBe(null);
   });
 
+  it("remembers which key failed, also without an edit mode", async () => {
+    const e = useInlineEdit(vi.fn().mockRejectedValue(new Error("Netzwerkfehler")));
+    await e.commit("is_active", { is_active: false });
+    expect(e.editingKey.value).toBe(null);
+    expect(e.failedKey.value).toBe("is_active");
+    expect(e.error.value).toBe("Netzwerkfehler");
+    e.start("notes");
+    expect(e.failedKey.value).toBe(null);
+  });
+
   it("commits, closes and flags saved for 2 s", async () => {
     vi.useFakeTimers();
     const save = vi.fn().mockResolvedValue({});

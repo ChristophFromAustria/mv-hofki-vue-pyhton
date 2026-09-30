@@ -252,3 +252,37 @@ describe("InlineField editing", () => {
     expect(w.find("input").element.value).toBe("neu");
   });
 });
+
+describe("InlineField switch", () => {
+  const switchProps = { fieldKey: "is_active", label: "Status", type: "switch", onText: "Aktiv", offText: "Inaktiv" };
+
+  it("is a named switch without an edit button", () => {
+    const w = mountField({ ...switchProps, value: true });
+    const sw = w.find('[role="switch"]');
+    expect(sw.attributes("aria-label")).toBe("Status");
+    expect(sw.attributes("aria-checked")).toBe("true");
+    expect(sw.text()).toBe("Aktiv");
+    expect(w.find(".inline-edit-btn").exists()).toBe(false);
+    expect(mountField({ ...switchProps, value: false }).find('[role="switch"]').text()).toBe("Inaktiv");
+  });
+
+  it("saves the flipped value on click and shows it until the save settles", async () => {
+    const w = mountField({ ...switchProps, value: true });
+    await w.find('[role="switch"]').trigger("click");
+    expect(w.emitted("save")).toEqual([[false]]);
+    await w.setProps({ saving: true });
+    const sw = w.find('[role="switch"]');
+    expect(sw.attributes("aria-checked")).toBe("false");
+    expect(sw.attributes("disabled")).toBeDefined();
+    expect(w.find('[role="status"]').text()).toBe("Speichert …");
+  });
+
+  it("falls back to the stored value and shows the error when saving fails", async () => {
+    const w = mountField({ ...switchProps, value: true });
+    await w.find('[role="switch"]').trigger("click");
+    await w.setProps({ saving: true });
+    await w.setProps({ saving: false, error: "Speichern fehlgeschlagen." });
+    expect(w.find('[role="switch"]').attributes("aria-checked")).toBe("true");
+    expect(w.find('[role="alert"]').text()).toBe("Speichern fehlgeschlagen.");
+  });
+});

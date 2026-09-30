@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import TagSelect from "./TagSelect.vue";
+import ToggleSwitch from "./ToggleSwitch.vue";
 import { formatDate, formatMoney } from "../lib/format.js";
 
 const props = defineProps({
@@ -20,6 +21,9 @@ const props = defineProps({
   saving: Boolean,
   saved: Boolean,
   error: { type: String, default: "" },
+  // type "switch": texts next to the switch for on/off.
+  onText: { type: String, default: "Ja" },
+  offText: { type: String, default: "Nein" },
 });
 const emit = defineEmits(["start", "cancel", "save"]);
 
@@ -152,6 +156,23 @@ function toggleMulti(value, checked) {
 }
 
 const shownError = computed(() => localError.value || props.error);
+
+// type "switch" has no edit mode: a click saves right away. Until the save
+// settles the switch already shows the new position; on error it falls back.
+const pendingSwitch = ref(null);
+const switchChecked = computed(() => pendingSwitch.value ?? !!props.value);
+
+function toggleSwitch() {
+  pendingSwitch.value = !props.value;
+  emit("save", pendingSwitch.value);
+}
+
+watch(
+  () => props.saving,
+  (saving) => {
+    if (!saving) pendingSwitch.value = null;
+  },
+);
 </script>
 
 <template>
@@ -162,7 +183,25 @@ const shownError = computed(() => localError.value || props.error);
     <template v-else>{{ label }}</template>
   </dt>
   <dd class="inline-field" :class="{ 'is-editing': editing }">
-    <template v-if="!editing">
+    <template v-if="type === 'switch'">
+      <ToggleSwitch
+        :checked="switchChecked"
+        :label="label"
+        :on-text="onText"
+        :off-text="offText"
+        :disabled="saving"
+        @toggle="toggleSwitch"
+      />
+      <span
+        class="inline-status"
+        :class="{ 'inline-saved': saved }"
+        role="status"
+        aria-live="polite"
+        >{{ saving ? "Speichert …" : saved ? "Gespeichert" : "" }}</span
+      >
+      <p v-if="error" class="form-error inline-switch-error" role="alert">{{ error }}</p>
+    </template>
+    <template v-else-if="!editing">
       <span class="inline-value" :class="{ 'text-pre-line': type === 'textarea' }">
         <slot name="display" :value="value">{{ display }}</slot>
       </span>
@@ -324,6 +363,11 @@ dt {
 
 .inline-saved {
   color: var(--color-success);
+}
+
+.inline-switch-error {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .inline-editor {

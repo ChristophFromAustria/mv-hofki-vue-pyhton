@@ -27,7 +27,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 5. **Suchumfang umschaltbar** — *klein.* In Personen-Suchfeldern direkt
    umstellen können: nur aktive / alle Musiker. Heute sucht das Auswahlfeld
    beim Ausleihen fest nur aktive (`fetchMusicianOptions`, `activeOnly`).
-6. **Status-Schalter auf der Detailseite** — *klein.* Die Checkbox „Status“
+6. ~~**Status-Schalter auf der Detailseite**~~ — ✅ erledigt (30.09.2026). *klein.* Die Checkbox „Status“
    (unklar, ob gesetzt = aktiv) wird ein Umschalter „Aktiv/Inaktiv“, direkt in
    der Detailansicht bedienbar und sofort gespeichert, ohne Bearbeiten-Modus.
 

@@ -7,7 +7,9 @@ export function musicianFieldDefs(registers = []) {
       {
         key: "is_active",
         label: "Status",
-        type: "bool",
+        type: "switch",
+        onText: "Aktiv",
+        offText: "Inaktiv",
         value: (m) => m.is_active !== false,
         toPatch: (v) => ({ is_active: v }),
       },
