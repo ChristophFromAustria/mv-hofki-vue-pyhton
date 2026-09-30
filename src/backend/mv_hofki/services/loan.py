@@ -78,6 +78,11 @@ async def update(session: AsyncSession, loan_id: int, data: LoanUpdate) -> Loan:
     loan = await get_by_id(session, loan_id)
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(loan, key, value)
+    if loan.due_date is not None and loan.due_date < loan.start_date:
+        raise HTTPException(
+            status_code=422,
+            detail="Die geplante Rückgabe liegt vor dem Ausleihdatum",
+        )
     await session.commit()
     return await get_by_id(session, loan_id)
 

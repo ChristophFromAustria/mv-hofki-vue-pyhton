@@ -33,6 +33,7 @@ class ActiveLoanInfo(BaseModel):
     musician_name: str
     is_extern: bool
     start_date: date
+    due_date: date | None = None
     notes: str | None = None
 
 

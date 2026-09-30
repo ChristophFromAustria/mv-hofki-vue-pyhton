@@ -12,6 +12,7 @@ import InlineField from "../components/InlineField.vue";
 import NotesBlock from "../components/NotesBlock.vue";
 import { useInlineEdit } from "../composables/useInlineEdit.js";
 import { formatDate } from "../lib/format.js";
+import { loanStatus } from "../lib/loans.js";
 
 const route = useRoute();
 const router = useRouter();
@@ -208,9 +209,7 @@ async function remove() {
               <td>{{ formatDate(l.start_date) }}</td>
               <td>{{ l.end_date ? formatDate(l.end_date) : "—" }}</td>
               <td>
-                <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
-                  {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
-                </span>
+                <span :class="loanStatus(l).badge">{{ loanStatus(l).label }}</span>
               </td>
               <td class="loan-note">{{ l.notes || "" }}</td>
             </tr>

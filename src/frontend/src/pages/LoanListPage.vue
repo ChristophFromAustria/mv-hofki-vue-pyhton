@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { get, post, put } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
 import { formatDate } from "../lib/format.js";
+import { loanStatus } from "../lib/loans.js";
 import { fetchLoanableItemOptions, fetchMusicianOptions, MUSICIAN_SCOPES } from "../lib/pickers.js";
 import { useListQuery } from "../composables/useListQuery.js";
 import { useGroupCollapse } from "../composables/useGroupCollapse.js";
@@ -21,7 +22,7 @@ const GROUP_OPTIONS = [
 ];
 
 const showForm = ref(false);
-const form = ref({ item_id: null, musician_id: null, start_date: "", notes: "" });
+const form = ref({ item_id: null, musician_id: null, start_date: "", due_date: "", notes: "" });
 const formErrors = ref({});
 const formError = ref("");
 const returningLoanId = ref(null);
@@ -52,6 +53,7 @@ const {
   filters: {
     search: { type: "string", default: "", debounce: true },
     active: { type: "bool", default: true },
+    overdue: { type: "bool", default: null },
     item_category: { type: "string", default: "" },
     musician_id: { type: "number", default: null },
     group_by: { type: "string", default: "" },
@@ -79,6 +81,7 @@ const filterDefs = computed(() => [
       { value: null, label: "Alle" },
     ],
   },
+  { key: "overdue", label: "Nur überfällige", type: "toggle" },
   {
     key: "item_category",
     label: "Inventar-Art",
@@ -98,6 +101,12 @@ const columns = [
   { key: "musician", label: "Musiker" },
   { key: "start_date", label: "Von", sortKey: "start_date" },
   { key: "end_date", label: "Bis", sortKey: "end_date" },
+  {
+    key: "due_date",
+    label: "Rückgabe geplant",
+    sortKey: "due_date",
+    hideEmptyInCard: true,
+  },
   { key: "status", label: "Status" },
   { key: "notes", label: "Notiz", hideEmptyInCard: true },
   { key: "actions", label: "" },
@@ -136,6 +145,8 @@ function validateForm() {
   if (!form.value.item_id) formErrors.value.item_id = "Pflichtfeld";
   if (!form.value.musician_id) formErrors.value.musician_id = "Pflichtfeld";
   if (!form.value.start_date) formErrors.value.start_date = "Pflichtfeld";
+  if (form.value.due_date && form.value.start_date && form.value.due_date < form.value.start_date)
+    formErrors.value.due_date = "Liegt vor dem Ausleihdatum";
   return Object.keys(formErrors.value).length === 0;
 }
 
@@ -143,9 +154,9 @@ async function createLoan() {
   formError.value = "";
   if (!validateForm()) return;
   try {
-    await post("/loans", form.value);
+    await post("/loans", { ...form.value, due_date: form.value.due_date || null });
     showForm.value = false;
-    form.value = { item_id: null, musician_id: null, start_date: "", notes: "" };
+    form.value = { item_id: null, musician_id: null, start_date: "", due_date: "", notes: "" };
     formErrors.value = {};
     await reload();
   } catch (e) {
@@ -214,6 +225,16 @@ async function returnWithDate(id) {
             <label>Datum *</label>
             <input v-model="form.start_date" type="date" />
             <span v-if="formErrors.start_date" class="form-error">{{ formErrors.start_date }}</span>
+          </div>
+          <div class="form-group" :class="{ error: formErrors.due_date }">
+            <label for="new-loan-due">Rückgabe geplant</label>
+            <input
+              id="new-loan-due"
+              v-model="form.due_date"
+              type="date"
+              :min="form.start_date || undefined"
+            />
+            <span v-if="formErrors.due_date" class="form-error">{{ formErrors.due_date }}</span>
           </div>
         </div>
         <div class="form-group">
@@ -322,13 +343,14 @@ async function returnWithDate(id) {
         <template #end_date="{ row }">
           {{ row.end_date ? formatDate(row.end_date) : "—" }}
         </template>
+        <template #due_date="{ row }">
+          {{ row.due_date ? formatDate(row.due_date) : "" }}
+        </template>
         <template #notes="{ row }">
           <span class="loan-note">{{ row.notes || "" }}</span>
         </template>
         <template #status="{ row }">
-          <span :class="row.end_date ? 'badge badge-gray' : 'badge badge-green'">
-            {{ row.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
-          </span>
+          <span :class="loanStatus(row).badge">{{ loanStatus(row).label }}</span>
         </template>
         <template #actions="{ row }">
           <template v-if="!row.end_date">

@@ -50,6 +50,12 @@ describe("ItemCard", () => {
     expect(hinted.find(".search-hint mark").text()).toBe("Markus");
   });
 
+  it("shows an overdue loan as Überfällig", () => {
+    const overdue = { ...item, active_loan: { loan_id: 1, musician_id: 3, musician_name: "Anna Huber", is_extern: false, start_date: "2020-01-01", due_date: "2020-02-01" } };
+    expect(mountCard({ item: overdue }).find(".badge").text()).toBe("Überfällig");
+    expect(mountCard({ item: overdue }).find(".badge").classes()).toContain("badge-warning");
+  });
+
   it("shows the profile image", () => {
     const w = mountCard({ item: { ...item, profile_image_url: "/x.jpg" } });
     expect(w.find("img").attributes("src")).toBe("/x.jpg");

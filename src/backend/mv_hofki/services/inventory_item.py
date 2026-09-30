@@ -108,6 +108,7 @@ async def _enrich(session: AsyncSession, items: list[InventoryItem]) -> None:
             musician_name=f"{musician.first_name} {musician.last_name}",
             is_extern=musician.is_extern,
             start_date=loan.start_date,
+            due_date=loan.due_date,
             notes=loan.notes,
         )
 

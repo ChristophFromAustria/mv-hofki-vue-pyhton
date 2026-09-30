@@ -25,6 +25,8 @@ class Loan(Base):
     musician_id: Mapped[int] = mapped_column(ForeignKey("musicians.id"), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date | None] = mapped_column(Date)
+    # Planned return; a loan is overdue while open after this day.
+    due_date: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

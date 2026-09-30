@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from mv_hofki.schemas.inventory_item import ItemRead
 from mv_hofki.schemas.musician import MusicianRead
@@ -24,14 +24,22 @@ class LoanCreate(BaseModel):
     item_id: int
     musician_id: int
     start_date: date
+    due_date: date | None = None
     notes: str | None = Field(None, max_length=LOAN_NOTES_MAX)
 
     _notes = field_validator("notes")(_blank_to_none)
+
+    @model_validator(mode="after")
+    def due_not_before_start(self):
+        if self.due_date is not None and self.due_date < self.start_date:
+            raise ValueError("Die geplante Rückgabe liegt vor dem Ausleihdatum")
+        return self
 
 
 class LoanUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
+    due_date: date | None = None
     notes: str | None = Field(None, max_length=LOAN_NOTES_MAX)
 
     _notes = field_validator("notes")(_blank_to_none)
@@ -47,6 +55,7 @@ class LoanRead(BaseModel):
     musician_id: int
     start_date: date
     end_date: date | None
+    due_date: date | None = None
     notes: str | None = None
     created_at: datetime
     item: ItemRead

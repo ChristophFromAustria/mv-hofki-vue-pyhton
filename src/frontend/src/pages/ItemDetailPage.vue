@@ -19,6 +19,7 @@ import InvoiceModal from "../components/InvoiceModal.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
 import RemotePicker from "../components/RemotePicker.vue";
 import { fetchMusicianOptions, MUSICIAN_SCOPES } from "../lib/pickers.js";
+import { isOverdue, loanStatus } from "../lib/loans.js";
 
 const props = defineProps({
   category: { type: String, required: true },
@@ -39,7 +40,7 @@ const showDelete = ref(false);
 const showEditModal = ref(false);
 
 // Loan form state
-const loanForm = ref({ musician_id: null, start_date: "", notes: "" });
+const loanForm = ref({ musician_id: null, start_date: "", due_date: "", notes: "" });
 const loanSaving = ref(false);
 const loanErrors = ref({});
 const loanError = ref("");
@@ -139,7 +140,7 @@ const masterSummary = computed(() =>
 );
 const loanSummary = computed(() =>
   activeLoan.value
-    ? `an ${activeLoan.value.musician.first_name} ${activeLoan.value.musician.last_name} seit ${formatDate(activeLoan.value.start_date)}`
+    ? `an ${activeLoan.value.musician.first_name} ${activeLoan.value.musician.last_name} seit ${formatDate(activeLoan.value.start_date)}${isOverdue(activeLoan.value) ? " · überfällig" : ""}`
     : "verfügbar",
 );
 const invoiceSummary = computed(() => {
@@ -234,6 +235,8 @@ function validateLoan() {
   loanErrors.value = {};
   if (!loanForm.value.musician_id) loanErrors.value.musician_id = "Pflichtfeld";
   if (!loanForm.value.start_date) loanErrors.value.start_date = "Pflichtfeld";
+  const { start_date: start, due_date: due } = loanForm.value;
+  if (due && start && due < start) loanErrors.value.due_date = "Liegt vor dem Ausleihdatum";
   return Object.keys(loanErrors.value).length === 0;
 }
 
@@ -245,8 +248,9 @@ async function createLoan() {
     await post("/loans", {
       item_id: parseInt(props.id),
       ...loanForm.value,
+      due_date: loanForm.value.due_date || null,
     });
-    loanForm.value = { musician_id: null, start_date: "", notes: "" };
+    loanForm.value = { musician_id: null, start_date: "", due_date: "", notes: "" };
     loanErrors.value = {};
     await reload();
   } catch (e) {
@@ -441,8 +445,22 @@ async function onEditSave() {
             >
           </router-link>
           seit {{ formatDate(activeLoan.start_date) }}
+          <span v-if="isOverdue(activeLoan)" class="badge badge-warning">Überfällig</span>
         </p>
         <dl class="detail-grid loan-details">
+          <InlineField
+            field-key="loan-due"
+            label="Rückgabe geplant"
+            type="date"
+            :value="activeLoan.due_date"
+            :editing="loanInline.editingKey.value === 'due_date'"
+            :saving="loanInline.savingKey.value === 'due_date'"
+            :saved="loanInline.savedKey.value === 'due_date'"
+            :error="loanInline.editingKey.value === 'due_date' ? loanInline.error.value : ''"
+            @start="loanInline.start('due_date')"
+            @cancel="loanInline.cancel()"
+            @save="(v) => loanInline.commit('due_date', { due_date: v || null })"
+          />
           <InlineField
             field-key="loan-notes"
             label="Notiz"
@@ -496,6 +514,17 @@ async function onEditSave() {
             <label>Datum</label>
             <input v-model="loanForm.start_date" type="date" class="input-narrow" />
             <span v-if="loanErrors.start_date" class="form-error">{{ loanErrors.start_date }}</span>
+          </div>
+          <div class="form-group" :class="{ error: loanErrors.due_date }">
+            <label for="loan-due">Rückgabe geplant</label>
+            <input
+              id="loan-due"
+              v-model="loanForm.due_date"
+              type="date"
+              class="input-narrow"
+              :min="loanForm.start_date || undefined"
+            />
+            <span v-if="loanErrors.due_date" class="form-error">{{ loanErrors.due_date }}</span>
           </div>
           <div class="form-group loan-notes-field">
             <label for="loan-notes">Notiz</label>
@@ -588,9 +617,7 @@ async function onEditSave() {
               <td>{{ formatDate(l.start_date) }}</td>
               <td>{{ l.end_date ? formatDate(l.end_date) : "—" }}</td>
               <td>
-                <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
-                  {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
-                </span>
+                <span :class="loanStatus(l).badge">{{ loanStatus(l).label }}</span>
               </td>
               <td class="loan-note">{{ l.notes || "" }}</td>
             </tr>

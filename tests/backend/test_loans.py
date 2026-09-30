@@ -290,3 +290,90 @@ async def test_loan_notes_length_is_limited(client, setup_data):
         json={**setup_data, "start_date": "2026-03-01", "notes": "x" * 1001},
     )
     assert resp.status_code == 422
+
+
+async def _due_loans(client):
+    """Three open loans: overdue (due 2020), due in the future, no due date."""
+    itype = (
+        await client.post(
+            "/api/v1/instrument-types", json={"label": "Horn", "label_short": "HR"}
+        )
+    ).json()
+    musician = (
+        await client.post(
+            "/api/v1/musicians", json={"first_name": "Anna", "last_name": "Maier"}
+        )
+    ).json()
+    loans = {}
+    for label, due in (("alt", "2020-02-01"), ("neu", "2999-01-01"), ("ohne", None)):
+        item = (
+            await client.post(
+                "/api/v1/items",
+                json={
+                    "category": "instrument",
+                    "label": label,
+                    "instrument_type_id": itype["id"],
+                },
+            )
+        ).json()
+        resp = await client.post(
+            "/api/v1/loans",
+            json={
+                "item_id": item["id"],
+                "musician_id": musician["id"],
+                "start_date": "2020-01-01",
+                "due_date": due,
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        loans[label] = resp.json()
+    return loans
+
+
+async def test_due_date_overdue_filter_group_and_sort(client):
+    loans = await _due_loans(client)
+    assert loans["alt"]["due_date"] == "2020-02-01"
+
+    def labels(body):
+        return [row["item"]["label"] for row in body["items"]]
+
+    overdue = (await client.get("/api/v1/loans?overdue=true")).json()
+    assert labels(overdue) == ["alt"]
+    not_overdue = (await client.get("/api/v1/loans?overdue=false")).json()
+    assert sorted(labels(not_overdue)) == ["neu", "ohne"]
+
+    by_due = (await client.get("/api/v1/loans?order_by=due_date")).json()
+    assert labels(by_due) == ["alt", "neu", "ohne"]
+
+    grouped = (await client.get("/api/v1/loans?group_by=status")).json()
+    assert [(g["key"], g["label"], g["count"]) for g in grouped["groups"]] == [
+        ("ueberfaellig", "Überfällig", 1),
+        ("offen", "Offen", 2),
+    ]
+
+    # A returned loan is never overdue.
+    await client.put(f"/api/v1/loans/{loans['alt']['id']}/return", json={})
+    assert labels((await client.get("/api/v1/loans?overdue=true")).json()) == []
+
+
+async def test_due_date_on_item_and_validation(client, setup_data):
+    bad = await client.post(
+        "/api/v1/loans",
+        json={**setup_data, "start_date": "2026-03-01", "due_date": "2026-02-01"},
+    )
+    assert bad.status_code == 422
+    loan = (
+        await client.post(
+            "/api/v1/loans",
+            json={**setup_data, "start_date": "2026-03-01", "due_date": "2026-06-30"},
+        )
+    ).json()
+    item = (await client.get(f"/api/v1/items/{setup_data['item_id']}")).json()
+    assert item["active_loan"]["due_date"] == "2026-06-30"
+
+    moved = await client.put(
+        f"/api/v1/loans/{loan['id']}", json={"due_date": "2026-01-01"}
+    )
+    assert moved.status_code == 422
+    cleared = await client.put(f"/api/v1/loans/{loan['id']}", json={"due_date": None})
+    assert cleared.json()["due_date"] is None

@@ -9,6 +9,7 @@ import { useListQuery } from "../composables/useListQuery.js";
 import { useGroupCollapse } from "../composables/useGroupCollapse.js";
 import { buildSegments } from "../lib/grouping.js";
 import { searchHint } from "../lib/highlight.js";
+import { isOverdue } from "../lib/loans.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
 import FilterBar from "../components/FilterBar.vue";
@@ -398,7 +399,11 @@ function mapItem(i) {
     mapped.categories = i.categories?.length ? i.categories : null;
   }
   if (cat.value.hasLoans) {
-    mapped.status_label = i.active_loan ? "Ausgeliehen" : "Verfügbar";
+    mapped.status_label = !i.active_loan
+      ? "Verfügbar"
+      : isOverdue(i.active_loan)
+        ? "Überfällig"
+        : "Ausgeliehen";
     mapped.borrower = i.active_loan?.musician_name || "";
   }
   return mapped;

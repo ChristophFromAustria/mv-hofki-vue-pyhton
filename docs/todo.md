@@ -16,7 +16,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 2. **Wer hat ausgegeben / zurückgenommen** — *mittel.* Bei Ausgabe und Rückgabe
    festhalten, wer sie erfasst hat. Setzt Benutzer voraus (14), mindestens die
    E-Mail aus Cloudflare Access.
-3. **Geplantes Rückgabedatum** — *klein.* Soll-Rückgabedatum pro Ausleihe;
+3. ~~**Geplantes Rückgabedatum**~~ — ✅ erledigt (30.09.2026). *klein.* Soll-Rückgabedatum pro Ausleihe;
    überfällige Ausleihen sichtbar machen.
 
 ## Musiker
