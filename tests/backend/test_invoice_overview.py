@@ -113,7 +113,7 @@ async def test_list_invoices_with_data(client, setup_invoices):
     first = data["items"][0]
     assert first["title"] == "Kauf"
     assert first["item_category"] == "general_item"
-    assert first["item_display_nr"] == "A-001"
+    assert first["item_display_nr"] == "A-0001"
     assert first["item_label"] == "Mischpult"
     assert first["amount"] == 500.0
     assert first["currency"]["abbreviation"] == "ATS"
@@ -123,7 +123,7 @@ async def test_list_invoices_with_data(client, setup_invoices):
     second = data["items"][1]
     assert second["title"] == "Reparatur"
     assert second["item_category"] == "instrument"
-    assert second["item_display_nr"] == "FL-001"
+    assert second["item_display_nr"] == "FL-0001"
     assert second["item_label"] == "Querflöte"
     assert second["amount"] == 150.0
     assert second["currency"]["abbreviation"] == "€"

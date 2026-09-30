@@ -15,7 +15,7 @@ from mv_hofki.models.general_item_category import GeneralItemCategory
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.services.general_item_category import set_item_categories
 
-# "A-001", "a-1", "A 1" -> ("A", 1)
+# "A-0001", "A-001", "a-1", "A 1" -> ("A", 1)
 _NR_RE = re.compile(r"^\s*([^\W\d_]+)\s*-?\s*0*(\d+)\s*$")
 
 

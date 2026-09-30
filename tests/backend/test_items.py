@@ -63,7 +63,7 @@ async def test_create_instrument(client, setup_refs):
     assert data["inventory_nr"] == 1
     assert data["serial_nr"] == "YM-12345"
     assert data["instrument_type"]["label"] == "Querflöte"
-    assert data["display_nr"] == "FL-001"
+    assert data["display_nr"] == "FL-0001"
 
 
 async def test_list_instruments_paginated(client, instrument):
@@ -141,7 +141,7 @@ async def test_create_clothing_item(client, currency):
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["display_nr"] == "K-001"
+    assert data["display_nr"] == "K-0001"
     assert data["inventory_nr"] == 1
     assert data["clothing_type"]["label"] == "Hut"
     assert data["size"] == "L"
@@ -169,7 +169,7 @@ async def test_create_sheet_music_item(client):
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["display_nr"] == "N-001"
+    assert data["display_nr"] == "N-0001"
     assert data["inventory_nr"] == 1
     assert data["composer"] == "Strauss"
     assert data["arranger"] == "Müller"
@@ -192,7 +192,7 @@ async def test_create_general_item(client):
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["display_nr"] == "A-001"
+    assert data["display_nr"] == "A-0001"
     assert data["inventory_nr"] == 1
     assert data["label"] == "XLR-Kabel 5m"
 
@@ -254,7 +254,7 @@ async def _instrument(client, type_id, label="Inst"):
 
 
 async def test_instrument_numbers_run_per_short_code(client):
-    """Each instrument-type short code has its own sequence (TU-001, TR-001)."""
+    """Each instrument-type short code has its own sequence (TU-0001, TR-0001)."""
     tuba = await _itype(client, "Tuba", "TU")
     trompete = await _itype(client, "Trompete", "TR")
 
@@ -263,9 +263,9 @@ async def test_instrument_numbers_run_per_short_code(client):
     t2 = await _instrument(client, tuba)
 
     assert (t1["display_nr"], r1["display_nr"], t2["display_nr"]) == (
-        "TU-001",
-        "TR-001",
-        "TU-002",
+        "TU-0001",
+        "TR-0001",
+        "TU-0002",
     )
 
 
@@ -276,8 +276,8 @@ async def test_types_sharing_a_short_code_share_the_sequence(client):
     first = await _instrument(client, b)
     second = await _instrument(client, es)
 
-    assert first["display_nr"] == "KL-001"
-    assert second["display_nr"] == "KL-002"
+    assert first["display_nr"] == "KL-0001"
+    assert second["display_nr"] == "KL-0002"
 
 
 async def test_changing_type_to_other_code_renumbers(client):
@@ -291,7 +291,7 @@ async def test_changing_type_to_other_code_renumbers(client):
     )
 
     assert resp.status_code == 200
-    assert resp.json()["display_nr"] == "TR-002"
+    assert resp.json()["display_nr"] == "TR-0002"
 
 
 async def test_changing_type_within_code_keeps_number(client):
@@ -303,7 +303,7 @@ async def test_changing_type_within_code_keeps_number(client):
         f"/api/v1/items/{item['id']}", json={"instrument_type_id": es}
     )
 
-    assert resp.json()["display_nr"] == "KL-001"
+    assert resp.json()["display_nr"] == "KL-0001"
 
 
 async def test_changing_type_refreshes_instrument_type_relationship(client):
@@ -330,7 +330,7 @@ async def test_editing_short_code_keeps_existing_numbers(client):
     await client.put(f"/api/v1/instrument-types/{tuba}", json={"label_short": "TB"})
 
     resp = await client.get(f"/api/v1/items/{item['id']}")
-    assert resp.json()["display_nr"] == "TU-001"
+    assert resp.json()["display_nr"] == "TU-0001"
 
 
 async def test_search_matches_display_number(client):
@@ -340,7 +340,7 @@ async def test_search_matches_display_number(client):
     await _instrument(client, tuba, "Cerveny")
     await _instrument(client, trompete, "Lechner")
 
-    for term in ("TU-002", "tu 2", "TU2"):
+    for term in ("TU-0002", "TU-002", "tu 2", "TU2"):
         resp = await client.get(
             "/api/v1/items", params={"category": "instrument", "search": term}
         )
@@ -357,9 +357,9 @@ async def test_instrument_list_sorted_by_code_then_number(client):
 
     resp = await client.get("/api/v1/items?category=instrument")
     assert [i["display_nr"] for i in resp.json()["items"]] == [
-        "TR-001",
-        "TU-001",
-        "TU-002",
+        "TR-0001",
+        "TU-0001",
+        "TU-0002",
     ]
 
 

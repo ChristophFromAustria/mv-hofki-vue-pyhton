@@ -123,7 +123,7 @@ async def test_create_loan_for_sheet_music_rejected(client, setup_data):
 
 
 async def test_loan_shows_item_display_number(client, loan):
-    assert loan["item"]["display_nr"] == "TR-001"
+    assert loan["item"]["display_nr"] == "TR-0001"
 
 
 async def test_loan_filters_sort_and_search(client):

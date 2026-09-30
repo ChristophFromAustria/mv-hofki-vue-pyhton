@@ -58,5 +58,5 @@ export const CATEGORIES = {
 
 export function formatDisplayNr(category, inventoryNr) {
   const cat = CATEGORIES[category];
-  return `${cat.prefix}-${String(inventoryNr).padStart(3, "0")}`;
+  return `${cat.prefix}-${String(inventoryNr).padStart(4, "0")}`;
 }

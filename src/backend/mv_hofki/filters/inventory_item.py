@@ -33,7 +33,7 @@ from mv_hofki.models.musician import Musician
 from mv_hofki.models.sheet_music_detail import SheetMusicDetail
 from mv_hofki.models.sheet_music_genre import SheetMusicGenre
 
-# "TU-002", "tu 2", "TU2" -> ("TU", 2)
+# "TU-0002", "TU-002", "tu 2", "TU2" -> ("TU", 2)
 _DISPLAY_NR_RE = re.compile(r"^\s*([^\W\d_]+)\s*-?\s*0*(\d+)\s*$")
 
 CATEGORY_LABELS = {
@@ -126,7 +126,7 @@ _CATEGORY_GROUPS = {
 
 
 def display_nr_condition(text: str) -> ColumnElement[bool] | None:
-    """Match an inventory number typed as "TU-002", "tu 2" or "TU2"."""
+    """Match an inventory number typed as "TU-0002", "tu 2" or "TU2"."""
     match = _DISPLAY_NR_RE.match(text)
     if not match:
         return None

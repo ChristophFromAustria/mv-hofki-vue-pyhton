@@ -44,7 +44,7 @@ allgemeine Suchfeld (16, größter Wunsch).
    Mitte bleiben frei, aber nach dem Löschen des Stücks mit der *höchsten*
    Nummer (oder dessen Umnummerierung) wird genau diese Nummer wieder vergeben.
    Braucht einen gespeicherten Höchststand pro Präfix.
-10. **Vierstellige Inventarnummern** — *klein.* Alle Kategorien auf `XX-0000`,
+10. ~~**Vierstellige Inventarnummern**~~ — ✅ erledigt (30.09.2026). *klein.* Alle Kategorien auf `XX-0000`,
     solange das System noch nicht im Vollbetrieb ist (bei Kleidung und
     Allgemein sind mehr als 999 Stück pro Typ möglich). Betrifft Anzeige,
     Suche („tr 6“ muss weiter funktionieren) und Import; gespeichert ist die

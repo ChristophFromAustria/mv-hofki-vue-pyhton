@@ -214,7 +214,7 @@ def test_inventory_numbers_are_checked_per_short_code():
     assert not [i for i in tuba["issues"] if i["field"] == "inventory_nr"]
     assert tuba["fields"]["number_prefix"] == "TU"
     conflict = next(i for i in trompete["issues"] if i["field"] == "inventory_nr")
-    assert "TR-012" in conflict["message"]
+    assert "TR-0012" in conflict["message"]
     assert conflict["suggestion"] == {"next_free": 13}
 
 
@@ -248,7 +248,7 @@ def test_uncertain_type_is_warning():
 def test_duplicate_serial_is_warning():
     v = validate_draft({"instruments": [row(serial_nr="ytr-4335 a")]}, ctx())
     w = issues(v, "serial_nr", "warning")
-    assert w and "Nr. TR-012" in w[0]["message"]
+    assert w and "Nr. TR-0012" in w[0]["message"]
 
 
 def test_acquisition_parsing_and_currency_guess():

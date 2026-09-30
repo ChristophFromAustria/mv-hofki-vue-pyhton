@@ -29,7 +29,7 @@ export function hasMatch(text, term) {
   return highlightParts(text, term).some((p) => p.match);
 }
 
-/** "TU-002" is found by "TU-002", "tu 2" and "TU2" (as in the backend). */
+/** "TU-0002" is found by "TU-0002", "TU-002", "tu 2" and "TU2" (as in the backend). */
 export function displayNrMatches(displayNr, term) {
   const m = DISPLAY_NR_RE.exec(term || "");
   const nr = DISPLAY_NR_RE.exec(displayNr || "");

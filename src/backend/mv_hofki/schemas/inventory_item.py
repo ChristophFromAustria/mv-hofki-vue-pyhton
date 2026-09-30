@@ -24,7 +24,7 @@ CATEGORY_PREFIXES = {
 
 
 def format_display_nr(number_prefix: str, inventory_nr: int) -> str:
-    return f"{number_prefix}-{inventory_nr:03d}"
+    return f"{number_prefix}-{inventory_nr:04d}"
 
 
 class ActiveLoanInfo(BaseModel):

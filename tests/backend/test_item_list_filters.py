@@ -278,7 +278,7 @@ async def test_search_keeps_display_number_match(client, refs):
     )
     assert await _labels(client, "category=instrument&search=tu 2") == ["Tuba"]
     resp = await client.get(f"{URL}?category=instrument&search=tu-002")
-    assert [i["display_nr"] for i in resp.json()["items"]] == ["TU-002"]
+    assert [i["display_nr"] for i in resp.json()["items"]] == ["TU-0002"]
 
 
 async def test_filter_not_for_category_is_422(client):

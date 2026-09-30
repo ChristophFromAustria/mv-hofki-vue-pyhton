@@ -28,6 +28,8 @@ describe("displayNrParts", () => {
     expect(marked(displayNrParts("TU-002", "tu 2"))).toEqual(["TU-002"]);
     expect(marked(displayNrParts("TU-002", "TU2"))).toEqual(["TU-002"]);
     expect(marked(displayNrParts("TU-012", "tu 2"))).toEqual([]);
+    expect(marked(displayNrParts("TU-0002", "tu 2"))).toEqual(["TU-0002"]);
+    expect(marked(displayNrParts("TU-0002", "TU-002"))).toEqual(["TU-0002"]);
   });
 });
 

@@ -148,7 +148,7 @@ async def test_import_creates_items_musicians_loans_and_images(client, storage_r
     nrs = {i["row_key"]: i["inventory_nr"] for i in res["items"]}
     # r1 keeps 12, r3 keeps 30, r2 gets max+1 = 13 (12 already claimed in this run)
     assert nrs == {"r1": 12, "r2": 13, "r3": 30}
-    assert res["items"][0]["display_nr"] == "TR-012"
+    assert res["items"][0]["display_nr"] == "TR-0012"
     assert res["musicians"][0]["name"] == "Karl Maier"  # created once for r2 and r3
 
     # database state via the regular API

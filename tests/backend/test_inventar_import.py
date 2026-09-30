@@ -105,9 +105,9 @@ def test_paper_numbers_kept_and_gaps_filled_per_code(tmp_path):
 
     nrs = {i.key: i.display_nr for i in plan.items}
     assert nrs == {
-        "Tuba/TU 2": "TU-002",
-        "Tuba/TU-X01": "TU-003",
-        "Klarinette/KL-01": "KL-001",
+        "Tuba/TU 2": "TU-0002",
+        "Tuba/TU-X01": "TU-0003",
+        "Klarinette/KL-01": "KL-0001",
     }
     tu2 = next(i for i in plan.items if i.key == "Tuba/TU 2")
     assert "Inventarnummer auf Papier: TU 2" in tu2.notes
@@ -306,18 +306,18 @@ def test_room_list_objects_get_category_prefix_quantity_and_owner(tmp_path):
     by_key = {i.key: i for i in plan.items}
     fridge = by_key["Allgemeines_Inventar/AI-001"]
     assert (fridge.display_nr, fridge.quantity, fridge.storage_location) == (
-        "A-001",
+        "A-0001",
         3,
         "Stüberl/Küche",
     )
     coat = by_key["Allgemeines_Inventar/AI-002"]
     assert (coat.category, coat.display_nr, coat.clothing_type) == (
         "clothing",
-        "K-001",
+        "K-0001",
         "Mantel",
     )
     assert by_key["Allgemeines_Inventar/AI-003"].owner == "Landesmusikschule"
-    assert by_key["Allgemeines_Inventar/AI-004"].display_nr == "TU-001"
+    assert by_key["Allgemeines_Inventar/AI-004"].display_nr == "TU-0001"
     assert any("Getränkekisten" in s["text"] for s in plan.skipped)
 
 
@@ -358,7 +358,7 @@ async def test_adding_a_folder_numbers_after_existing_and_is_repeatable(
     plan = await restrict_to_folder(
         db_session, build_plan(tmp_path, CODES), "Allgemeines_Inventar"
     )
-    assert [i.display_nr for i in plan.items] == ["A-006"]
+    assert [i.display_nr for i in plan.items] == ["A-0006"]
     await apply_plan(db_session, plan, tmp_path / "uploads")
     await db_session.commit()
 
