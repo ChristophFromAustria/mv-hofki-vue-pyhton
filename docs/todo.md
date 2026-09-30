@@ -12,7 +12,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 
 ## Leihregister
 
-1. **Notizen auf Leihregister** — *klein.* Freitextfeld pro Ausleihe.
+1. ~~**Notizen auf Leihregister**~~ — ✅ erledigt (30.09.2026). *klein.* Freitextfeld pro Ausleihe.
 2. **Wer hat ausgegeben / zurückgenommen** — *mittel.* Bei Ausgabe und Rückgabe
    festhalten, wer sie erfasst hat. Setzt Benutzer voraus (14), mindestens die
    E-Mail aus Cloudflare Access.

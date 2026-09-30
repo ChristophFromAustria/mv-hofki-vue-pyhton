@@ -340,6 +340,15 @@ input[type="range"] {
   white-space: pre-line;
 }
 
+/* Loan note in tables: keeps line breaks, never widens the table much. */
+.loan-note {
+  display: inline-block;
+  max-width: 32ch;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-size: 0.8125rem;
+}
+
 /* Search hits */
 mark {
   background: var(--color-highlight-bg);

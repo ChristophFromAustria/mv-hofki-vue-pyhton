@@ -257,3 +257,36 @@ async def test_loans_group_by_musician_category_status(client):
     body = (await client.get("/api/v1/loans?group_by=status")).json()
     assert body["groups"] == [{"key": "offen", "label": "Offen", "count": 3}]
     assert all(row["group_key"] == "offen" for row in body["items"])
+
+
+async def test_loan_notes_create_edit_clear_and_search(client, setup_data):
+    resp = await client.post(
+        "/api/v1/loans",
+        json={**setup_data, "start_date": "2026-03-01", "notes": "  mit Koffer  "},
+    )
+    assert resp.status_code == 201
+    loan = resp.json()
+    assert loan["notes"] == "mit Koffer"
+
+    item = (await client.get(f"/api/v1/items/{setup_data['item_id']}")).json()
+    assert item["active_loan"]["notes"] == "mit Koffer"
+
+    found = (await client.get("/api/v1/loans?search=koffer&active=true")).json()
+    assert [row["id"] for row in found["items"]] == [loan["id"]]
+
+    edited = await client.put(
+        f"/api/v1/loans/{loan['id']}", json={"notes": "Mundstück fehlt"}
+    )
+    assert edited.json()["notes"] == "Mundstück fehlt"
+    assert edited.json()["start_date"] == "2026-03-01"
+
+    cleared = await client.put(f"/api/v1/loans/{loan['id']}", json={"notes": "   "})
+    assert cleared.json()["notes"] is None
+
+
+async def test_loan_notes_length_is_limited(client, setup_data):
+    resp = await client.post(
+        "/api/v1/loans",
+        json={**setup_data, "start_date": "2026-03-01", "notes": "x" * 1001},
+    )
+    assert resp.status_code == 422

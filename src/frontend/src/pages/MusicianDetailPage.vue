@@ -11,6 +11,7 @@ import CollapsibleSection from "../components/CollapsibleSection.vue";
 import InlineField from "../components/InlineField.vue";
 import NotesBlock from "../components/NotesBlock.vue";
 import { useInlineEdit } from "../composables/useInlineEdit.js";
+import { formatDate } from "../lib/format.js";
 
 const route = useRoute();
 const router = useRouter();
@@ -191,6 +192,7 @@ async function remove() {
               <th>Von</th>
               <th>Bis</th>
               <th>Status</th>
+              <th>Notiz</th>
             </tr>
           </thead>
           <tbody>
@@ -203,13 +205,14 @@ async function remove() {
                 </router-link>
               </td>
               <td>{{ l.item.display_nr }}</td>
-              <td>{{ l.start_date }}</td>
-              <td>{{ l.end_date || "—" }}</td>
+              <td>{{ formatDate(l.start_date) }}</td>
+              <td>{{ l.end_date ? formatDate(l.end_date) : "—" }}</td>
               <td>
                 <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
                   {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
                 </span>
               </td>
+              <td class="loan-note">{{ l.notes || "" }}</td>
             </tr>
           </tbody>
         </table>

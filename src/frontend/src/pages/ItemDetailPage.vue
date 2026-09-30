@@ -39,9 +39,10 @@ const showDelete = ref(false);
 const showEditModal = ref(false);
 
 // Loan form state
-const loanForm = ref({ musician_id: null, start_date: "" });
+const loanForm = ref({ musician_id: null, start_date: "", notes: "" });
 const loanSaving = ref(false);
 const loanErrors = ref({});
+const loanError = ref("");
 
 // Return state
 const showReturnDatePicker = ref(false);
@@ -74,6 +75,12 @@ const fields = computed(() =>
 // NotesBlock with a dialog editor, below the <dl>, instead of inline.
 const inlineFields = computed(() => fields.value.filter((f) => !f.block));
 const blockFields = computed(() => fields.value.filter((f) => f.block));
+
+// Fields of the current loan (e.g. its note), saved to the loan itself.
+const loanInline = useInlineEdit(async (patch) => {
+  await put(`/loans/${activeLoan.value.id}`, patch);
+  await reload();
+});
 
 const inline = useInlineEdit(async (patch) => {
   item.value = await put(`/items/${props.id}`, patch);
@@ -231,6 +238,7 @@ function validateLoan() {
 }
 
 async function createLoan() {
+  loanError.value = "";
   if (!validateLoan()) return;
   loanSaving.value = true;
   try {
@@ -238,11 +246,11 @@ async function createLoan() {
       item_id: parseInt(props.id),
       ...loanForm.value,
     });
-    loanForm.value = { musician_id: null, start_date: "" };
+    loanForm.value = { musician_id: null, start_date: "", notes: "" };
     loanErrors.value = {};
     await reload();
   } catch (e) {
-    alert("Fehler: " + e.message);
+    loanError.value = "Ausleihen fehlgeschlagen: " + e.message;
   } finally {
     loanSaving.value = false;
   }
@@ -432,8 +440,24 @@ async function onEditSave() {
               >{{ activeLoan.musician.first_name }} {{ activeLoan.musician.last_name }}</strong
             >
           </router-link>
-          seit {{ activeLoan.start_date }}
+          seit {{ formatDate(activeLoan.start_date) }}
         </p>
+        <dl class="detail-grid loan-details">
+          <InlineField
+            field-key="loan-notes"
+            label="Notiz"
+            type="textarea"
+            :value="activeLoan.notes"
+            placeholder="z. B. mit Koffer, Mundstück fehlt …"
+            :editing="loanInline.editingKey.value === 'notes'"
+            :saving="loanInline.savingKey.value === 'notes'"
+            :saved="loanInline.savedKey.value === 'notes'"
+            :error="loanInline.editingKey.value === 'notes' ? loanInline.error.value : ''"
+            @start="loanInline.start('notes')"
+            @cancel="loanInline.cancel()"
+            @save="(v) => loanInline.commit('notes', { notes: v })"
+          />
+        </dl>
         <div v-if="!showReturnDatePicker" class="cluster">
           <button class="btn-primary" @click="returnToday">Heute zurückgeben</button>
           <button class="btn" @click="showReturnDatePicker = true">Datum wählen</button>
@@ -473,8 +497,19 @@ async function onEditSave() {
             <input v-model="loanForm.start_date" type="date" class="input-narrow" />
             <span v-if="loanErrors.start_date" class="form-error">{{ loanErrors.start_date }}</span>
           </div>
+          <div class="form-group loan-notes-field">
+            <label for="loan-notes">Notiz</label>
+            <textarea
+              id="loan-notes"
+              v-model="loanForm.notes"
+              rows="2"
+              maxlength="1000"
+              placeholder="optional, z. B. mit Koffer"
+            />
+          </div>
           <button type="submit" class="btn-primary" :disabled="loanSaving">Ausleihen</button>
         </form>
+        <p v-if="loanError" class="form-error" role="alert">{{ loanError }}</p>
       </div>
     </CollapsibleSection>
 
@@ -540,6 +575,7 @@ async function onEditSave() {
               <th>Von</th>
               <th>Bis</th>
               <th>Status</th>
+              <th>Notiz</th>
             </tr>
           </thead>
           <tbody>
@@ -549,13 +585,14 @@ async function onEditSave() {
                   {{ l.musician.first_name }} {{ l.musician.last_name }}
                 </router-link>
               </td>
-              <td>{{ l.start_date }}</td>
-              <td>{{ l.end_date || "—" }}</td>
+              <td>{{ formatDate(l.start_date) }}</td>
+              <td>{{ l.end_date ? formatDate(l.end_date) : "—" }}</td>
               <td>
                 <span :class="l.end_date ? 'badge badge-gray' : 'badge badge-green'">
                   {{ l.end_date ? "Zurückgegeben" : "Ausgeliehen" }}
                 </span>
               </td>
+              <td class="loan-note">{{ l.notes || "" }}</td>
             </tr>
           </tbody>
         </table>
@@ -615,6 +652,18 @@ async function onEditSave() {
 </template>
 
 <style scoped>
+.loan-details {
+  margin: 0 0 var(--space-3);
+}
+
+.loan-notes-field {
+  flex-basis: 100%;
+}
+
+.loan-notes-field textarea {
+  width: 100%;
+}
+
 .image-alert {
   margin-bottom: var(--space-3);
 }

@@ -71,6 +71,7 @@ class LoanFilter(ListFilter):
             InventoryItem.label.ilike(pattern),
             Musician.first_name.ilike(pattern),
             Musician.last_name.ilike(pattern),
+            Loan.notes.ilike(pattern),
         ]
         nr = display_nr_condition(value)
         if nr is not None:

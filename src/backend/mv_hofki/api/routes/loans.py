@@ -49,6 +49,7 @@ def _loan_to_read(loan) -> LoanRead:
         musician_id=loan.musician_id,
         start_date=loan.start_date,
         end_date=loan.end_date,
+        notes=loan.notes,
         created_at=loan.created_at,
         item=item_read,
         musician=loan.musician,

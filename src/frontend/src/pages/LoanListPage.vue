@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { get, post, put } from "../lib/api.js";
 import { CATEGORIES } from "../lib/categories.js";
+import { formatDate } from "../lib/format.js";
 import { fetchLoanableItemOptions, fetchMusicianOptions, MUSICIAN_SCOPES } from "../lib/pickers.js";
 import { useListQuery } from "../composables/useListQuery.js";
 import { useGroupCollapse } from "../composables/useGroupCollapse.js";
@@ -20,7 +21,7 @@ const GROUP_OPTIONS = [
 ];
 
 const showForm = ref(false);
-const form = ref({ item_id: null, musician_id: null, start_date: "" });
+const form = ref({ item_id: null, musician_id: null, start_date: "", notes: "" });
 const formErrors = ref({});
 const formError = ref("");
 const returningLoanId = ref(null);
@@ -98,6 +99,7 @@ const columns = [
   { key: "start_date", label: "Von", sortKey: "start_date" },
   { key: "end_date", label: "Bis", sortKey: "end_date" },
   { key: "status", label: "Status" },
+  { key: "notes", label: "Notiz", hideEmptyInCard: true },
   { key: "actions", label: "" },
 ];
 
@@ -143,7 +145,7 @@ async function createLoan() {
   try {
     await post("/loans", form.value);
     showForm.value = false;
-    form.value = { item_id: null, musician_id: null, start_date: "" };
+    form.value = { item_id: null, musician_id: null, start_date: "", notes: "" };
     formErrors.value = {};
     await reload();
   } catch (e) {
@@ -213,6 +215,16 @@ async function returnWithDate(id) {
             <input v-model="form.start_date" type="date" />
             <span v-if="formErrors.start_date" class="form-error">{{ formErrors.start_date }}</span>
           </div>
+        </div>
+        <div class="form-group">
+          <label for="new-loan-notes">Notiz</label>
+          <textarea
+            id="new-loan-notes"
+            v-model="form.notes"
+            rows="2"
+            maxlength="1000"
+            placeholder="optional, z. B. mit Koffer"
+          />
         </div>
         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem">
           <button type="submit" class="btn-primary">Ausleihen</button>
@@ -304,8 +316,14 @@ async function returnWithDate(id) {
             {{ row.musician.first_name }} {{ row.musician.last_name }}
           </router-link>
         </template>
+        <template #start_date="{ row }">
+          {{ formatDate(row.start_date) }}
+        </template>
         <template #end_date="{ row }">
-          {{ row.end_date || "—" }}
+          {{ row.end_date ? formatDate(row.end_date) : "—" }}
+        </template>
+        <template #notes="{ row }">
+          <span class="loan-note">{{ row.notes || "" }}</span>
         </template>
         <template #status="{ row }">
           <span :class="row.end_date ? 'badge badge-gray' : 'badge badge-green'">
