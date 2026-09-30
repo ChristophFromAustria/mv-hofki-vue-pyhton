@@ -49,7 +49,7 @@ allgemeine Suchfeld (16, größter Wunsch).
     Allgemein sind mehr als 999 Stück pro Typ möglich). Betrifft Anzeige,
     Suche („tr 6“ muss weiter funktionieren) und Import; gespeichert ist die
     Nummer als Zahl, es ist also eine Formatfrage.
-11. **Löschen nicht endgültig** — *groß, Brainstorming.* Papierkorb/Archiv mit
+11. **Löschen nicht endgültig** — *groß, in Umsetzung.* Konzept: [konzept-papierkorb-protokoll.md](konzept-papierkorb-protokoll.md). Papierkorb/Archiv mit
     Wiederherstellen statt endgültigem Löschen (heute inkl. Bildern und
     Rechnungen auf der Platte). Zusammen mit 15 und 9 betrachten.
 
@@ -68,7 +68,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 14. **Berechtigungssystem** — *groß, Brainstorming.* Rollen (z. B. Zeugwart,
     Notenwart, nur lesen). Heute keine Benutzer; Cloudflare Access liefert die
     E-Mail der angemeldeten Person mit.
-15. **Event Log** — *groß, Brainstorming.* Wer hat wann was angelegt, geändert,
+15. **Event Log** — *groß, in Umsetzung.* Konzept: [konzept-papierkorb-protokoll.md](konzept-papierkorb-protokoll.md). Wer hat wann was angelegt, geändert,
     verliehen, gelöscht.
 16. ~~**Allgemeines Suchfeld**~~ — ✅ erledigt (30.09.2026). Konzept: [konzept-allgemeine-suche.md](konzept-allgemeine-suche.md).
     Eine Suche über alle Bereiche statt nur pro Liste.
