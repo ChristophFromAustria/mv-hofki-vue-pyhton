@@ -23,8 +23,10 @@ from typing import Any, cast
 from fastapi import Query
 from fastapi_filter.contrib.sqlalchemy import Filter
 from pydantic import ValidationInfo, field_validator
-from sqlalchemy import ColumnElement, Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from mv_hofki.filters.text_search import words_clause
 
 MAX_LIMIT = 200
 
@@ -140,11 +142,12 @@ class ListFilter(Filter):
         return self.Constants.sort_fields[key]
 
     def search_clause(self, value: str) -> ColumnElement[bool] | None:
-        value = value.strip()
+        """Every word in one of ``Constants.search_model_fields`` (tolerant,
+        see ``filters/text_search.py``)."""
         fields = getattr(self.Constants, "search_model_fields", [])
-        if not value or not fields:
+        if not fields:
             return None
-        return or_(*(self.column(f).ilike(f"%{value}%") for f in fields))
+        return words_clause(value, [self.column(f) for f in fields])
 
     def filter(self, query: Select) -> Select:  # type: ignore[override]
         for name, value in self.filtering_fields:

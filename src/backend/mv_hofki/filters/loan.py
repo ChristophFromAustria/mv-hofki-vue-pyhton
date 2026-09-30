@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from sqlalchemy import ColumnElement, Select, and_, case, literal, or_
+from sqlalchemy import ColumnElement, Select, and_, case, literal
 
 from mv_hofki.filters.base import GroupSpec, ListFilter
-from mv_hofki.filters.inventory_item import display_nr_condition
+from mv_hofki.filters.inventory_item import number_or_words
+from mv_hofki.filters.text_search import words_clause
 from mv_hofki.models.inventory_item import InventoryItem
 from mv_hofki.models.loan import Loan
 from mv_hofki.models.musician import Musician
@@ -91,17 +92,15 @@ class LoanFilter(ListFilter):
         )
 
     def search_clause(self, value: str) -> ColumnElement[bool] | None:
-        value = value.strip()
-        if not value:
-            return None
-        pattern = f"%{value}%"
-        conditions: list[ColumnElement[bool]] = [
-            InventoryItem.label.ilike(pattern),
-            Musician.first_name.ilike(pattern),
-            Musician.last_name.ilike(pattern),
-            Loan.notes.ilike(pattern),
-        ]
-        nr = display_nr_condition(value)
-        if nr is not None:
-            conditions.append(nr)
-        return or_(*conditions)
+        return number_or_words(
+            value,
+            words_clause(
+                value,
+                [
+                    InventoryItem.label,
+                    Musician.first_name,
+                    Musician.last_name,
+                    Loan.notes,
+                ],
+            ),
+        )

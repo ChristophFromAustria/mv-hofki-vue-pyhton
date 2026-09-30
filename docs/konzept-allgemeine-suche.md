@@ -18,7 +18,7 @@ Todo-Punkt 16 (`docs/todo.md`). Ergebnis des Brainstormings vom 30.09.2026.
 |---|---|
 | Inventar (Instrumente, Kleidung, Allgemein, Noten) | Bezeichnung, Hersteller, Notizen, Inv.-Nr., Person der laufenden Ausleihe |
 | Musiker | Vorname, Nachname, E-Mail, Ort — inaktive werden gefunden und markiert |
-| Rechnungen | Titel, Aussteller, Rechnungsnummer |
+| Rechnungen | Titel, Aussteller (die Rechnungsnummer zählt pro Gegenstand 1, 2, 3 … und wäre als globaler Treffer nur Rauschen) |
 
 Noten-Scans sind vorerst nicht dabei.
 

@@ -19,8 +19,10 @@ from sqlalchemy import (
     or_,
     select,
 )
+from sqlalchemy.orm import aliased
 
 from mv_hofki.filters.base import GroupSpec, ListFilter
+from mv_hofki.filters.text_search import folded_contains, words_clause
 from mv_hofki.models.clothing_detail import ClothingDetail
 from mv_hofki.models.clothing_type import ClothingType
 from mv_hofki.models.general_item_category import GeneralItemCategory
@@ -93,7 +95,9 @@ def _borrower_column(column: Any) -> Any:
     )
 
 
-def _borrower_matches(pattern: str) -> ColumnElement[bool]:
+def borrower_matches(word: str) -> ColumnElement[bool]:
+    """The musician holding the item's open loan has ``word`` (folded) in
+    their name."""
     return (
         exists()
         .where(
@@ -101,7 +105,38 @@ def _borrower_matches(pattern: str) -> ColumnElement[bool]:
             Loan.end_date.is_(None),
             Loan.musician_id == Musician.id,
         )
-        .where((Musician.first_name + " " + Musician.last_name).ilike(pattern))
+        .where(folded_contains(Musician.first_name + " " + Musician.last_name, word))
+    )
+
+
+ITEM_SEARCH_COLUMNS = (
+    InventoryItem.label,
+    InventoryItem.manufacturer,
+    InventoryItem.notes,
+)
+
+
+def number_or_words(
+    value: str, words: ColumnElement[bool] | None
+) -> ColumnElement[bool] | None:
+    """A search text that is an existing inventory number ("TR 6") finds just
+    that item; otherwise the word condition applies ("Tuba 2" has no item
+    TUBA-0002, so it searches for "tuba" and "2")."""
+    nr = display_nr_condition(value)
+    if nr is None:
+        return words
+    if words is None:
+        return nr
+    other_nr = display_nr_condition(value, aliased(InventoryItem))
+    assert other_nr is not None  # same text as nr
+    return or_(nr, and_(~exists().where(other_nr), words))
+
+
+def item_search_clause(value: str) -> ColumnElement[bool] | None:
+    """Every word in label, manufacturer, notes or the borrower's name; or the
+    whole text as an inventory number ("TU-0002", "tu 2")."""
+    return number_or_words(
+        value, words_clause(value, ITEM_SEARCH_COLUMNS, extra=(borrower_matches,))
     )
 
 
@@ -125,14 +160,17 @@ _CATEGORY_GROUPS = {
 }
 
 
-def display_nr_condition(text: str) -> ColumnElement[bool] | None:
-    """Match an inventory number typed as "TU-0002", "tu 2" or "TU2"."""
+def display_nr_condition(
+    text: str, item: Any = InventoryItem
+) -> ColumnElement[bool] | None:
+    """Match an inventory number typed as "TU-0002", "tu 2" or "TU2" (on
+    ``item``, InventoryItem or an alias of it)."""
     match = _DISPLAY_NR_RE.match(text)
     if not match:
         return None
     return and_(
-        func.upper(InventoryItem.number_prefix) == match[1].upper(),
-        InventoryItem.inventory_nr == int(match[2]),
+        func.upper(item.number_prefix) == match[1].upper(),
+        item.inventory_nr == int(match[2]),
     )
 
 
@@ -259,20 +297,7 @@ class ItemFilter(ListFilter):
         return super().group_spec()
 
     def search_clause(self, value: str) -> ColumnElement[bool] | None:
-        value = value.strip()
-        if not value:
-            return None
-        pattern = f"%{value}%"
-        conditions: list[ColumnElement[bool]] = [
-            InventoryItem.label.ilike(pattern),
-            InventoryItem.manufacturer.ilike(pattern),
-            InventoryItem.notes.ilike(pattern),
-            _borrower_matches(pattern),
-        ]
-        nr = display_nr_condition(value)
-        if nr is not None:
-            conditions.append(nr)
-        return or_(*conditions)
+        return item_search_clause(value)
 
     def filter_status(self, query: Select, value: str) -> Select:
         open_loan = exists().where(

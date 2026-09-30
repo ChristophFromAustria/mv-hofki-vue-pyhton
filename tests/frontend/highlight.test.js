@@ -16,8 +16,8 @@ describe("highlightParts", () => {
     expect(joined(parts)).toBe("Markus und markus");
   });
 
-  it("treats the term literally and as a whole", () => {
-    expect(marked(highlightParts("Anna Maier", "anna maier"))).toEqual(["Anna Maier"]);
+  it("marks every search word and treats words literally", () => {
+    expect(marked(highlightParts("Anna Maier", "maier anna"))).toEqual(["Anna", "Maier"]);
     expect(marked(highlightParts("a.b axb", "a.b"))).toEqual(["a.b"]);
     expect(marked(highlightParts("Tuba", ""))).toEqual([]);
   });
@@ -71,5 +71,37 @@ describe("searchHint", () => {
     expect(searchHint(row, "yamaha", ["manufacturer"])).toBeNull();
     expect(searchHint(row, "tr 6", ["display_nr"])).toBeNull();
     expect(searchHint(row, "", ["label"])).toBeNull();
+  });
+});
+
+describe("tolerant matching (like the backend's fold())", () => {
+  it("folds case, umlauts, ue-spellings and ß", async () => {
+    const { fold, searchWords } = await import("../../src/frontend/src/lib/highlight.js");
+    expect(fold("MÜLLER")).toBe("muller");
+    expect(fold("Mueller")).toBe("muller");
+    expect(fold("Straße")).toBe("strasse");
+    expect(fold("Crème")).toBe("creme");
+    expect(searchWords("  Trompete YAMAHA trompete ")).toEqual(["trompete", "yamaha"]);
+  });
+
+  it("marks the original characters, also when spellings differ in length", () => {
+    expect(marked(highlightParts("Jürgen Müller", "mueller"))).toEqual(["Müller"]);
+    expect(marked(highlightParts("Josef Mueller", "müller"))).toEqual(["Mueller"]);
+    expect(marked(highlightParts("FLÜGELHORN", "flügel"))).toEqual(["FLÜGEL"]);
+    expect(marked(highlightParts("Große Trommel", "grosse"))).toEqual(["Große"]);
+    expect(joined(highlightParts("Jürgen Müller", "mueller"))).toBe("Jürgen Müller");
+  });
+
+  it("merges overlapping hits of several words", () => {
+    expect(marked(highlightParts("Trompetenkoffer", "trompete kofFer"))).toEqual(["Trompetenkoffer".slice(0, 8), "koffer"]);
+    expect(marked(highlightParts("abc", "ab bc"))).toEqual(["abc"]);
+  });
+
+  it("hints at the hidden field of a word no visible field shows", () => {
+    const row = { display_nr: "TR-0006", label: "Trompete", manufacturer: "Yamaha", notes: "Spieler Lackinger Markus" };
+    const hint = searchHint(row, "yamaha markus", ["display_nr", "manufacturer"]);
+    expect(hint.label).toBe("Notizen");
+    expect(marked(hint.parts)).toEqual(["Markus"]);
+    expect(searchHint(row, "yamaha", ["manufacturer"])).toBeNull();
   });
 });
