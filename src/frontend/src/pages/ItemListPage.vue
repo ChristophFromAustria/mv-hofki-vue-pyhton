@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { get, post } from "../lib/api.js";
-import { CATEGORIES } from "../lib/categories.js";
+import { CATEGORIES, itemPath } from "../lib/categories.js";
 import { hasMultipleQuantities, quantityCell, quantityLabel } from "../lib/quantity.js";
 import { toggleId, mergeIds } from "../lib/bulkSelection.js";
 import { useListQuery } from "../composables/useListQuery.js";
@@ -434,7 +434,7 @@ onMounted(async () => {
 
 function goTo(row) {
   if (selecting.value) toggleSelect(row);
-  else router.push(cat.value.routeBase + "/" + row.id);
+  else router.push(itemPath(row));
 }
 
 function onModalSave() {
@@ -567,7 +567,7 @@ function onModalSave() {
               v-else
               :item="seg.row"
               :has-loans="cat.hasLoans"
-              :to="`${cat.routeBase}/${seg.row.id}`"
+              :to="itemPath(seg.row)"
               :selecting="selecting"
               :selected="selectedIds.includes(seg.row.id)"
               :term="searchTerm"

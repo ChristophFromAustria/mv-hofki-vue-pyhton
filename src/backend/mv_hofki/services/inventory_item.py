@@ -381,6 +381,28 @@ async def get_facets(session: AsyncSession, category: str) -> dict[str, list[str
     return out
 
 
+async def get_by_number(
+    session: AsyncSession, category: str, display_nr: str
+) -> dict[str, Any]:
+    """The item with this inventory number ("TR-0006", also "tr 6") in a
+    category — for URLs that carry the number instead of the id."""
+    from mv_hofki.filters.inventory_item import display_nr_condition
+
+    condition = display_nr_condition(display_nr)
+    item_id = None
+    if condition is not None:
+        item_id = await session.scalar(
+            select(InventoryItem.id).where(
+                InventoryItem.category == category, condition
+            )
+        )
+    if item_id is None:
+        raise HTTPException(
+            status_code=404, detail=f"Inventarnummer {display_nr} nicht gefunden"
+        )
+    return await get_by_id(session, item_id)
+
+
 async def get_by_id(session: AsyncSession, item_id: int) -> dict[str, Any]:
     result = await session.execute(
         select(InventoryItem)

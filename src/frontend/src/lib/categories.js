@@ -56,6 +56,15 @@ export const CATEGORIES = {
   },
 };
 
+/**
+ * The page of an item: /instrumente/TR-0006. Takes an item or anything with
+ * category + display_nr (+ id as fallback while the number is unknown).
+ */
+export function itemPath(item) {
+  const base = CATEGORIES[item.category]?.routeBase || "/instrumente";
+  return `${base}/${encodeURIComponent(item.display_nr || item.id)}`;
+}
+
 export function formatDisplayNr(category, inventoryNr) {
   const cat = CATEGORIES[category];
   return `${cat.prefix}-${String(inventoryNr).padStart(4, "0")}`;

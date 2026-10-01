@@ -9,10 +9,12 @@ function categoryRoutes(category, pathBase) {
       props: () => ({ category }),
     },
     {
-      path: `${pathBase}/:id`,
+      // :nr is the inventory number (TR-0006); an id (old links) also works
+      // and is replaced by the number.
+      path: `${pathBase}/:nr`,
       name: `${category}-detail`,
       component: () => import("./pages/ItemDetailPage.vue"),
-      props: (route) => ({ category, id: route.params.id }),
+      props: (route) => ({ category, nr: String(route.params.nr) }),
     },
   ];
 }

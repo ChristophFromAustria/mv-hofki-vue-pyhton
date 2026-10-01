@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { get } from "../lib/api.js";
-import { CATEGORIES } from "../lib/categories.js";
+import { CATEGORIES, itemPath } from "../lib/categories.js";
 import { useListQuery } from "../composables/useListQuery.js";
 import DataTable from "../components/DataTable.vue";
 import SearchBar from "../components/SearchBar.vue";
@@ -96,8 +96,9 @@ onMounted(async () => {
 });
 
 function goToItem(inv) {
-  const cat = CATEGORIES[inv.item_category];
-  if (cat) router.push(cat.routeBase + "/" + inv.item_id);
+  router.push(
+    itemPath({ category: inv.item_category, display_nr: inv.item_display_nr, id: inv.item_id }),
+  );
 }
 </script>
 

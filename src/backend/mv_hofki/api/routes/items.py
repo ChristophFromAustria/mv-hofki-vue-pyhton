@@ -124,6 +124,13 @@ async def create_item(body: dict[str, Any], db: AsyncSession = Depends(get_db)):
     return _to_read(result)
 
 
+@router.get("/by-number/{display_nr}")
+async def get_item_by_number(
+    display_nr: str, category: str, db: AsyncSession = Depends(get_db)
+):
+    return _to_read(await item_service.get_by_number(db, category, display_nr))
+
+
 @router.get("/{item_id}")
 async def get_item(item_id: int, db: AsyncSession = Depends(get_db)):
     result = await item_service.get_by_id(db, item_id)

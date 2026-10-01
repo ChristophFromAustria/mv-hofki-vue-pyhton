@@ -851,3 +851,27 @@ async def test_particularities_max_length_on_create_and_update(client, setup_ref
         f"/api/v1/items/{item_id}", json={"particularities": "y" * 501}
     )
     assert update_too_long.status_code == 422
+
+
+async def test_get_item_by_inventory_number(client):
+    tuba = await _itype(client, "Tuba", "TU")
+    await _instrument(client, tuba, "Erste")
+    second = await _instrument(client, tuba, "Zweite")
+    url = "/api/v1/items/by-number"
+
+    resp = await client.get(f"{url}/TU-0002", params={"category": "instrument"})
+    assert resp.status_code == 200
+    assert resp.json()["id"] == second["id"]
+    assert (await client.get(f"{url}/tu 2", params={"category": "instrument"})).json()[
+        "id"
+    ] == second["id"]
+    # The number is looked up within the category of the URL.
+    missing = await client.get(f"{url}/TU-0002", params={"category": "clothing"})
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Inventarnummer TU-0002 nicht gefunden"
+    assert (
+        await client.get(f"{url}/TU-0009", params={"category": "instrument"})
+    ).status_code == 404
+    assert (
+        await client.get(f"{url}/Quatsch", params={"category": "instrument"})
+    ).status_code == 404

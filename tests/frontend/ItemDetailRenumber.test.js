@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 
-vi.mock("vue-router", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("vue-router", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 
 vi.mock("../../src/frontend/src/lib/api.js", () => ({
   get: vi.fn(),
@@ -52,6 +52,9 @@ beforeEach(() => {
   del.mockReset();
 
   get.mockImplementation(async (path) => {
+    // The page resolves the URL's inventory number to the id first.
+    if (path === "/items/by-number/TU-001?category=instrument") return { id: 1 };
+    if (path === "/items/by-number/TU-002?category=instrument") return { id: 2 };
     if (path === "/items/1") return baseItem();
     if (path === "/items/2") return { ...baseItem(), id: 2, display_nr: "TU-002" };
     if (path === "/items/1/images" || path === "/items/2/images") return [];
@@ -66,7 +69,7 @@ beforeEach(() => {
 
 async function mountPage() {
   const w = mount(ItemDetailPage, {
-    props: { category: "instrument", id: 1 },
+    props: { category: "instrument", nr: "TU-001" },
     attachTo: document.body,
   });
   await flushPromises();
@@ -89,7 +92,7 @@ function renumberDialog(w) {
 describe("ItemDetailPage: Typwechsel mit anderem Kürzel", () => {
   it("asks for confirmation before renumbering; cancel sends nothing and keeps editing", async () => {
     const w = mount(ItemDetailPage, {
-      props: { category: "instrument", id: 1 },
+      props: { category: "instrument", nr: "TU-001" },
       attachTo: document.body,
     });
     await flushPromises();
@@ -141,7 +144,7 @@ describe("ItemDetailPage: navigating away while editing", () => {
     await chooseTypeAndSave(w, 2);
     expect(renumberDialog(w)).toBeTruthy();
 
-    await w.setProps({ id: 2 });
+    await w.setProps({ nr: "TU-002" });
     await flushPromises();
 
     expect(renumberDialog(w)).toBeFalsy();

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { useRouter } from "vue-router";
 import { get, getAll, post, put, del } from "../lib/api.js";
-import { CATEGORIES } from "../lib/categories.js";
+import { CATEGORIES, itemPath } from "../lib/categories.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import CategoryChips from "../components/CategoryChips.vue";
 import ImageGallery from "../components/ImageGallery.vue";
@@ -26,8 +26,13 @@ import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
 
 const props = defineProps({
   category: { type: String, required: true },
-  id: { type: [String, Number], required: true },
+  // Inventory number from the URL (TR-0006), or an id from an old link.
+  nr: { type: String, required: true },
 });
+
+// The item's id, resolved from the URL's number (API calls use the id).
+const itemId = ref(null);
+const loadError = ref("");
 
 const router = useRouter();
 const cat = computed(() => CATEGORIES[props.category]);
@@ -94,7 +99,7 @@ const loanInline = useInlineEdit(async (patch) => {
 const historyKey = ref(0);
 
 const inline = useInlineEdit(async (patch) => {
-  item.value = await put(`/items/${props.id}`, patch);
+  item.value = await put(`/items/${itemId.value}`, patch);
   historyKey.value++;
 });
 const pendingRenumber = ref(null); // { key, patch, from, to }
@@ -170,22 +175,46 @@ const historySummary = computed(
   () => `${loans.value.length} ${loans.value.length === 1 ? "Eintrag" : "Einträge"}`,
 );
 
+async function resolveId() {
+  if (/^\d+$/.test(props.nr)) return Number(props.nr);
+  const found = await get(
+    `/items/by-number/${encodeURIComponent(props.nr)}?category=${props.category}`,
+  );
+  return found.id;
+}
+
+// Keep the URL on the item's current number (old id links, renumbering).
+function syncUrl() {
+  if (item.value && props.nr !== item.value.display_nr) {
+    router.replace(itemPath(item.value));
+  }
+}
+
 async function reload() {
   historyKey.value++;
-  item.value = await get(`/items/${props.id}`);
-  images.value = await get(`/items/${props.id}/images`);
+  loadError.value = "";
+  try {
+    if (itemId.value == null) itemId.value = await resolveId();
+    item.value = await get(`/items/${itemId.value}`);
+  } catch (e) {
+    item.value = null;
+    loadError.value = e.message;
+    return;
+  }
+  syncUrl();
+  images.value = await get(`/items/${itemId.value}/images`);
   if (cat.value.hasLoans) {
-    loans.value = await getAll(`/loans?item_id=${props.id}`);
+    loans.value = await getAll(`/loans?item_id=${itemId.value}`);
   }
   if (cat.value.hasInvoices) {
-    invoices.value = await get(`/items/${props.id}/invoices`);
+    invoices.value = await get(`/items/${itemId.value}/invoices`);
   }
 }
 
 async function uploadImage(file) {
   const formData = new FormData();
   formData.append("file", file);
-  await fetch(`/api/v1/items/${props.id}/images`, {
+  await fetch(`/api/v1/items/${itemId.value}/images`, {
     method: "POST",
     body: formData,
   });
@@ -195,7 +224,7 @@ async function uploadImage(file) {
 async function setProfile(imageId) {
   imageError.value = "";
   try {
-    await put(`/items/${props.id}/images/${imageId}/profile`);
+    await put(`/items/${itemId.value}/images/${imageId}/profile`);
     await reload();
   } catch (e) {
     imageError.value = "Profilbild konnte nicht gesetzt werden: " + e.message;
@@ -205,7 +234,7 @@ async function setProfile(imageId) {
 async function deleteImage(imageId) {
   imageError.value = "";
   try {
-    await del(`/items/${props.id}/images/${imageId}`);
+    await del(`/items/${itemId.value}/images/${imageId}`);
     await reload();
   } catch (e) {
     imageError.value = "Bild konnte nicht gelöscht werden: " + e.message;
@@ -230,13 +259,17 @@ onMounted(async () => {
 // in-progress inline edit / pending renumber first — they belong to the item
 // we're leaving, and would otherwise show or act on the wrong item's data.
 watch(
-  () => props.id,
-  () => {
+  () => props.nr,
+  (nr) => {
+    // Our own URL fix (syncUrl) needs no reload.
+    if (item.value && (nr === item.value.display_nr || nr === String(item.value.id))) return;
     inline.cancel();
     pendingRenumber.value = null;
+    itemId.value = null;
     reload();
   },
 );
+watch(() => item.value?.display_nr, syncUrl);
 
 async function onRetired() {
   showRetire.value = false;
@@ -247,7 +280,7 @@ async function reinstate() {
   reinstating.value = true;
   reinstateError.value = "";
   try {
-    await post(`/items/${props.id}/reinstate`, {});
+    await post(`/items/${itemId.value}/reinstate`, {});
     await reload();
   } catch (e) {
     reinstateError.value = "Wieder in Bestand nicht möglich: " + e.message;
@@ -259,7 +292,7 @@ async function reinstate() {
 async function remove() {
   deleteError.value = "";
   try {
-    await del(`/items/${props.id}`);
+    await del(`/items/${itemId.value}`);
     router.push(cat.value.routeBase);
   } catch (e) {
     showDelete.value = false;
@@ -282,7 +315,7 @@ async function createLoan() {
   loanSaving.value = true;
   try {
     await post("/loans", {
-      item_id: parseInt(props.id),
+      item_id: itemId.value,
       ...loanForm.value,
       due_date: loanForm.value.due_date || null,
     });
@@ -322,7 +355,7 @@ function newInvoice() {
 }
 
 async function handleInvoiceSave(evt) {
-  const base = `/items/${props.id}/invoices`;
+  const base = `/items/${itemId.value}/invoices`;
   try {
     if (evt.isFileUpload) {
       await fetch(`/api/v1${base}/${evt.id}/file`, {
@@ -365,7 +398,7 @@ async function handleInvoiceSave(evt) {
 
 async function handleInvoiceDelete(invoiceId) {
   if (!confirm(`Rechnung in den Papierkorb verschieben? ${TRASH_NOTE}`)) return;
-  await del(`/items/${props.id}/invoices/${invoiceId}`);
+  await del(`/items/${itemId.value}/invoices/${invoiceId}`);
   showInvoiceModal.value = false;
   await reload();
 }
@@ -376,7 +409,11 @@ async function onEditSave() {
 </script>
 
 <template>
-  <div v-if="item">
+  <div v-if="loadError" class="alert alert-danger" role="alert">
+    {{ cat.labelSingular }} konnte nicht geladen werden: {{ loadError }}
+    <RouterLink :to="cat.routeBase">Zur Liste</RouterLink>
+  </div>
+  <div v-else-if="item">
     <div class="page-header">
       <h1>{{ item.display_nr }} — {{ item.label }}</h1>
       <div class="cluster">

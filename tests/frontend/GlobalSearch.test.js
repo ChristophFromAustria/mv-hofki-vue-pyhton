@@ -55,7 +55,7 @@ describe("GlobalSearch", () => {
     await typeInto(w, "tr 6");
     await w.find("input").trigger("keydown", { key: "Enter" });
     await flushPromises();
-    expect(push).toHaveBeenCalledWith("/instrumente/1");
+    expect(push).toHaveBeenCalledWith("/instrumente/TR-0006");
 
     get.mockResolvedValue(response("trompete"));
     await typeInto(w, "trompete");
@@ -73,7 +73,7 @@ describe("GlobalSearch", () => {
     await input.trigger("keydown", { key: "ArrowDown" });
     expect(input.attributes("aria-activedescendant")).toMatch(/-opt-1$/);
     await input.trigger("keydown", { key: "Enter" });
-    expect(push).toHaveBeenCalledWith("/instrumente/2");
+    expect(push).toHaveBeenCalledWith("/instrumente/TR-0007");
 
     await typeInto(w, "trompete");
     await input.trigger("keydown", { key: "Escape" });

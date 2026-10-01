@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { get, getAll, put, del } from "../lib/api.js";
-import { CATEGORIES } from "../lib/categories.js";
+import { itemPath } from "../lib/categories.js";
 import { registerLabels } from "../lib/musicians.js";
 import { sortRegisters } from "../lib/registers.js";
 import { musicianFieldDefs } from "../lib/musicianFields.js";
@@ -205,9 +205,7 @@ async function remove() {
           <tbody>
             <tr v-for="l in loans" :key="l.id">
               <td>
-                <router-link
-                  :to="(CATEGORIES[l.item.category]?.routeBase || '/instrumente') + '/' + l.item.id"
-                >
+                <router-link :to="itemPath(l.item)">
                   {{ l.item.label }}
                 </router-link>
               </td>

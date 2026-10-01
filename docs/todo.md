@@ -33,7 +33,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 
 ## Inventar
 
-7. **Inventar-Nr in der URL** — *mittel.* `/instrumente/TR-0006` statt der
+7. ~~**Inventar-Nr in der URL**~~ — ✅ erledigt (01.10.2026). *mittel.* `/instrumente/TR-0006` statt der
    Datenbank-ID. Nach 10 umsetzen; klären, was bei einer Umnummerierung mit
    alten Links passiert.
 8. **Inventar-Items kopieren** — *mittel.* Bestehenden Gegenstand als Vorlage

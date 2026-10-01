@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { get, post, put } from "../lib/api.js";
-import { CATEGORIES } from "../lib/categories.js";
+import { CATEGORIES, itemPath } from "../lib/categories.js";
 import { formatDate } from "../lib/format.js";
 import { loanStatus } from "../lib/loans.js";
 import { fetchLoanableItemOptions, fetchMusicianOptions, MUSICIAN_SCOPES } from "../lib/pickers.js";
@@ -136,10 +136,6 @@ watch(
   },
   { immediate: true },
 );
-
-function itemRouteBase(category) {
-  return CATEGORIES[category]?.routeBase || "/instrumente";
-}
 
 function validateForm() {
   formErrors.value = {};
@@ -320,7 +316,7 @@ async function returnWithDate(id) {
         @toggle-group="toggleGroup"
       >
         <template #item="{ row }">
-          <router-link :to="itemRouteBase(row.item.category) + '/' + row.item.id">
+          <router-link :to="itemPath(row.item)">
             {{ row.item.label }}
           </router-link>
         </template>

@@ -26,12 +26,12 @@ describe("searchSections", () => {
     const sections = searchSections(result);
     expect(sections.map((s) => s.label)).toEqual(["Instrumente", "Kleidung", "Musiker", "Rechnungen"]);
     const [instruments, clothing, musicians, invoices] = sections;
-    expect(instruments.entries[0].to).toBe("/instrumente/119");
+    expect(instruments.entries[0].to).toBe("/instrumente/TR-0006");
     expect(instruments.listTo).toBe("/instrumente?search=markus&bestand=alle");
-    expect(clothing.entries[0].to).toBe("/kleidung/5");
+    expect(clothing.entries[0].to).toBe("/kleidung/K-0001");
     expect(musicians.entries[0]).toMatchObject({ to: "/musiker/71", title: "Markus Lackinger", badges: ["inaktiv", "extern"], muted: true });
     expect(musicians.listTo).toBe("/musiker?search=markus&is_active=alle");
-    expect(invoices.entries[0].to).toBe("/instrumente/119");
+    expect(invoices.entries[0].to).toBe("/instrumente/TR-0006");
     expect(invoices.entries[0].context).toBe("TR-0006 Trompete");
   });
 
@@ -46,7 +46,7 @@ describe("searchSections", () => {
   it("puts an exact inventory number first and doesn't repeat it", () => {
     const exact = searchSections({ ...result, query: "tr 6", exact: tr6 });
     expect(exact[0].label).toBe("Inventarnummer");
-    expect(exact[0].entries[0].to).toBe("/instrumente/119");
+    expect(exact[0].entries[0].to).toBe("/instrumente/TR-0006");
     expect(exact.find((s) => s.key === "instrument")).toBeUndefined();
   });
 

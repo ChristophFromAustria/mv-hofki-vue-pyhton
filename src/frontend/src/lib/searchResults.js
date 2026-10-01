@@ -1,5 +1,5 @@
 /** Turn a GET /search result into ordered sections of entries (popup + page). */
-import { CATEGORIES } from "./categories.js";
+import { CATEGORIES, itemPath } from "./categories.js";
 import { formatDate, formatMoney } from "./format.js";
 import { searchHint } from "./highlight.js";
 import { loanStatus } from "./loans.js";
@@ -8,13 +8,12 @@ import { loanStatus } from "./loans.js";
 const ITEM_VISIBLE = ["label", "display_nr", "manufacturer", "borrower"];
 
 function itemEntry(hit, term) {
-  const cat = CATEGORIES[hit.category];
   const loan = hit.active_loan;
   const row = { ...hit, borrower: loan?.musician_name || "" };
   return {
     key: `item-${hit.id}`,
     kind: "item",
-    to: `${cat?.routeBase || "/instrumente"}/${hit.id}`,
+    to: itemPath(hit),
     title: hit.label,
     displayNr: hit.display_nr,
     meta: hit.manufacturer || "",
@@ -46,11 +45,14 @@ function musicianEntry(hit) {
 }
 
 function invoiceEntry(hit) {
-  const cat = CATEGORIES[hit.item_category];
   return {
     key: `invoice-${hit.id}`,
     kind: "invoice",
-    to: `${cat?.routeBase || "/instrumente"}/${hit.item_id}`,
+    to: itemPath({
+      category: hit.item_category,
+      display_nr: hit.item_display_nr,
+      id: hit.item_id,
+    }),
     title: hit.title,
     meta: [
       hit.invoice_issuer,
