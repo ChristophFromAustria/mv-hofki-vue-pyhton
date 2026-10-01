@@ -105,13 +105,17 @@ MASTER_DATA: dict[str, list[Row]] = {
 # Column widths in pt; the content is CONTENT_WIDTH wide (A4, 15 mm margins).
 KEY_W = 120
 VALUE_W = CONTENT_WIDTH - KEY_W
-QR_W = int(30 * MM)
+QR_SIZE = int(26 * MM)
+# The QR cell: the code, right-aligned, with a little air to its left.
+QR_W = QR_SIZE + 10
+# The profile photo (top left) is as high as the QR code, at most this wide.
+PHOTO_MAX_W = CONTENT_WIDTH - QR_W - 20
 
 CSS = """
 .head td { border: none; padding: 0; }
 .status { margin-top: 3pt; }
 .kv th { width: 120pt; }
-.photo { margin-top: 10pt; }
+.head-text { margin-top: 8pt; }
 """
 
 
@@ -213,13 +217,49 @@ async def _loans(session: AsyncSession, item_id: int) -> list[tuple[Loan, Musici
     return [(loan, m) for loan, m in result.all()]
 
 
-async def _profile_photo(session: AsyncSession, item_id: int) -> bytes | None:
+async def _profile_photo(
+    session: AsyncSession, item_id: int
+) -> tuple[bytes, int, int] | None:
     image = await session.scalar(
         select(ItemImage).where(
             ItemImage.item_id == item_id, ItemImage.is_profile.is_(True)
         )
     )
-    return shrink_image(image_file(image)) if image else None
+    # Printed only QR-high (~26 mm): 600 px are plenty.
+    return shrink_image(image_file(image), max_px=600) if image else None
+
+
+def _head(item: dict[str, Any], photo: tuple[bytes, int, int] | None) -> str:
+    """Number, label and status; the QR code top right. With a photo, the
+    photo takes the top left (as high as the QR code) and the text follows
+    below the two."""
+    qr = (
+        f'<td style="width: {QR_W}pt; text-align: right">'
+        f'<img src="qr.png" width="{QR_SIZE}" height="{QR_SIZE}"/></td>'
+    )
+    text = (
+        f'<p class="muted">{esc(item["display_nr"])}</p>'
+        f"<h1>{esc(item['label'])}</h1>"
+        f'<p class="status">{esc(_status(item))}</p>'
+    )
+    left = CONTENT_WIDTH - QR_W
+    if photo is None:
+        # The head table has no cell padding (CSS), so plain widths.
+        return (
+            f'<table class="head"><tr><td style="width: {left}pt">{text}</td>'
+            f"{qr}</tr></table>"
+        )
+    _, px_w, px_h = photo
+    height = QR_SIZE
+    width = min(PHOTO_MAX_W, round(height * px_w / px_h))
+    if width == PHOTO_MAX_W:  # very wide photo: keep the aspect ratio
+        height = round(width * px_h / px_w)
+    return (
+        f'<table class="head"><tr><td style="width: {left}pt">'
+        f'<img src="photo.jpg" width="{width}" height="{height}"/></td>'
+        f"{qr}</tr></table>"
+        f'<div class="head-text">{text}</div>'
+    )
 
 
 async def add_datasheet(
@@ -227,26 +267,13 @@ async def add_datasheet(
 ) -> None:
     item = await item_service.get_by_id(session, item_id)
     files = {"qr.png": qr_png(item_url(item_id))}
-    parts = [
-        # The head table has no cell padding (CSS), so plain widths.
-        f'<table class="head"><tr><td style="width: {CONTENT_WIDTH - QR_W}pt">'
-        f'<p class="muted">{esc(item["display_nr"])}</p>'
-        f"<h1>{esc(item['label'])}</h1>"
-        f'<p class="status">{esc(_status(item))}</p>'
-        "</td>"
-        f'<td style="width: {QR_W}pt; text-align: right">'
-        f'<img src="qr.png" width="{int(26 * MM)}"/></td></tr></table>',
-    ]
+    photo = await _profile_photo(session, item_id) if "photo" in sections else None
+    if photo is not None:
+        files["photo.jpg"] = photo[0]
+    parts = [_head(item, photo)]
     if item.get("retired_at") and item.get("retired_notes"):
         parts.append(f'<p class="muted">{text_block(item["retired_notes"])}</p>')
     parts.append("<h2>Stammdaten</h2>" + _master_rows(item))
-    if "photo" in sections:
-        photo = await _profile_photo(session, item_id)
-        if photo:
-            files["photo.jpg"] = photo
-            parts.append(
-                f'<p class="photo"><img src="photo.jpg" width="{int(80 * MM)}"/></p>'
-            )
     if "loan" in sections and item["category"] != "sheet_music":
         parts.append(_loan_section(item))
     if "loan_history" in sections and item["category"] != "sheet_music":

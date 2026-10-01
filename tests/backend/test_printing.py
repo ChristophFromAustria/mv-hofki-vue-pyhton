@@ -96,7 +96,16 @@ async def test_datasheet_of_one_item_with_chosen_sections(client):
     assert "Seite 1 von 1" in text
     assert "Datenblatt%20TR-0001.pdf" in resp.headers["content-disposition"]
     doc = pymupdf.open("pdf", resp.content)
-    assert len(doc[0].get_images()) == 2  # QR code + photo
+    page = doc[0]
+    rects = {
+        img[2]: page.get_image_rects(img[0])[0] for img in page.get_images(full=True)
+    }
+    assert len(rects) == 2  # QR code + photo
+    qr, photo = rects[max(rects)], rects[min(rects)]
+    # QR code top right inside the 15 mm margin, photo top left as high as it.
+    assert qr.x1 <= page.rect.width - 15 * 72 / 25.4 + 0.5
+    assert abs(photo.y0 - qr.y0) < 0.5 and photo.x0 < qr.x0
+    assert abs(photo.height - qr.height) < 1
 
 
 async def test_sections_are_optional(client):

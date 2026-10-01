@@ -26,6 +26,8 @@ BASE_CSS = f"""
 @font-face {{ font-family: dm; src: url(DMSans-Bold.ttf); font-weight: bold; }}
 @font-face {{ font-family: dm; src: url(DMSans-Italic.ttf); font-style: italic; }}
 * {{ font-family: dm; }}
+/* MuPDF gives body a default margin; the page margins are set by PdfDocument. */
+html, body {{ margin: 0; padding: 0; }}
 body {{ font-size: 9.5pt; color: {TEXT}; line-height: 1.35; }}
 h1 {{ font-size: 17pt; font-weight: bold; margin: 0 0 2pt 0; }}
 h2 {{ font-size: 11pt; font-weight: bold; margin: 14pt 0 4pt 0; }}
@@ -90,9 +92,9 @@ def qr_png(data: str, scale: int = 8) -> bytes:
     return buf.getvalue()
 
 
-def shrink_image(path: Path, max_px: int = 800) -> bytes | None:
-    """A photo as a JPEG of at most about max_px on the long side (keeps PDFs
-    small; 800 px over 80 mm print width are ~250 dpi)."""
+def shrink_image(path: Path, max_px: int = 800) -> tuple[bytes, int, int] | None:
+    """A photo as (JPEG, width, height) of at most about max_px on the long
+    side, to keep PDFs small."""
     try:
         pix = pymupdf.Pixmap(str(path))
     except Exception:  # missing or unreadable file: leave the photo out
@@ -108,7 +110,7 @@ def shrink_image(path: Path, max_px: int = 800) -> bytes | None:
     if factor > 1:
         pix.shrink(factor.bit_length() - 1)
     data: bytes = pix.tobytes("jpg", jpg_quality=75)
-    return data
+    return data, pix.width, pix.height
 
 
 class PdfDocument:
