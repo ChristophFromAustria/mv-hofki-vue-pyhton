@@ -14,6 +14,7 @@ import segno
 from mv_hofki.core.config import settings
 
 FONT_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
+LOGO = FONT_DIR.parent / "logo.png"
 
 # Colours of the light theme (style.css); paper is always light.
 TEXT = "#1b2735"
@@ -144,13 +145,24 @@ class PdfDocument:
         doc = pymupdf.open("pdf", self._out.getvalue())
         total = doc.page_count
         font = str(FONT_DIR / "DMSans-Regular.ttf")
+        logo_xref = 0
         for number, page in enumerate(doc, start=1):
             page.insert_font(fontname="dm", fontfile=font)
             rect = page.rect
             y = rect.height - 10 * MM
+            # The club logo, small, in front of the footer text (embedded once).
+            box = pymupdf.Rect(15 * MM, y - 6 * MM + 1.5, 15 * MM + 6 * MM, y + 1.5)
+            if logo_xref:
+                page.insert_image(box, xref=logo_xref)
+            else:
+                logo_xref = page.insert_image(box, filename=str(LOGO))
             text = f"{footer} · Seite {number} von {total}"
             page.insert_text(
-                (15 * MM, y), text, fontname="dm", fontsize=7.5, color=(0.36, 0.42, 0.5)
+                (box.x1 + 2 * MM, y),
+                text,
+                fontname="dm",
+                fontsize=7.5,
+                color=(0.36, 0.42, 0.5),
             )
         data: bytes = doc.tobytes(garbage=3, deflate=True)
         doc.close()

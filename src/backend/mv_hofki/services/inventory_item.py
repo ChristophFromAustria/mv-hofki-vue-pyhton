@@ -352,6 +352,16 @@ async def filtered_ids(
     return ids
 
 
+async def display_numbers(session: AsyncSession, ids: list[int]) -> dict[int, str]:
+    """{id: "TR-0006"} for many items in one query."""
+    rows = await session.execute(
+        select(
+            InventoryItem.id, InventoryItem.number_prefix, InventoryItem.inventory_nr
+        ).where(InventoryItem.id.in_(ids))
+    )
+    return {i: format_display_nr(prefix, nr) for i, prefix, nr in rows.all()}
+
+
 async def get_list(
     session: AsyncSession,
     *,

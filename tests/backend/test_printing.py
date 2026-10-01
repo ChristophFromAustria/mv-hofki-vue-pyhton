@@ -97,11 +97,12 @@ async def test_datasheet_of_one_item_with_chosen_sections(client):
     assert "Datenblatt%20TR-0001.pdf" in resp.headers["content-disposition"]
     doc = pymupdf.open("pdf", resp.content)
     page = doc[0]
-    rects = {
-        img[2]: page.get_image_rects(img[0])[0] for img in page.get_images(full=True)
-    }
-    assert len(rects) == 2  # QR code + photo
-    qr, photo = rects[max(rects)], rects[min(rects)]
+    rects = [page.get_image_rects(img[0])[0] for img in page.get_images(full=True)]
+    assert len(rects) == 3  # QR code, photo and the footer logo
+    top = sorted((r for r in rects if r.y0 < 200), key=lambda r: r.x0)
+    photo, qr = top
+    footer = next(r for r in rects if r.y0 > page.rect.height - 100)
+    assert footer.height < 20
     # QR code top right inside the 15 mm margin, photo top left as high as it.
     assert qr.x1 <= page.rect.width - 15 * 72 / 25.4 + 0.5
     assert abs(photo.y0 - qr.y0) < 0.5 and photo.x0 < qr.x0
@@ -143,3 +144,117 @@ async def test_datasheets_of_the_filtered_list(client):
         "/api/v1/print/datasheets", params={"category": "instrument", "search": "xyz"}
     )
     assert none.status_code == 422
+
+
+async def _two_instruments(client):
+    tr = (
+        await client.post(
+            "/api/v1/instrument-types", json={"label": "Tuba", "label_short": "TU"}
+        )
+    ).json()["id"]
+    return [
+        (
+            await client.post(
+                "/api/v1/items",
+                json={
+                    "category": "instrument",
+                    "label": label,
+                    "instrument_type_id": tr,
+                },
+            )
+        ).json()
+        for label in ("Tuba A", "Tuba B")
+    ]
+
+
+async def test_labels_on_a_roll_one_page_each(client):
+    await _two_instruments(client)
+    resp = await client.get(
+        "/api/v1/print/labels",
+        params={"category": "instrument", "template": "roll-62x29"},
+    )
+    assert resp.status_code == 200, resp.text
+    doc = pymupdf.open("pdf", resp.content)
+    assert doc.page_count == 2
+    page = doc[0]
+    assert round(page.rect.width / 72 * 25.4) == 62
+    assert round(page.rect.height / 72 * 25.4) == 29
+    assert "TU-0001" in page.get_text() and "MV Hofkirchen" in page.get_text()
+    assert len(page.get_images()) == 2  # QR code + logo
+    without = await client.get(
+        "/api/v1/print/labels",
+        params={"category": "instrument", "template": "roll-62x29", "logo": "false"},
+    )
+    assert len(pymupdf.open("pdf", without.content)[0].get_images()) == 1
+
+
+async def test_labels_on_a_sheet_start_at_a_position(client):
+    items = await _two_instruments(client)
+    resp = await client.get(
+        "/api/v1/print/labels",
+        params={"category": "instrument", "template": "a4-70x37", "start": 4},
+    )
+    doc = pymupdf.open("pdf", resp.content)
+    assert doc.page_count == 1
+    page = doc[0]
+    # Position 4 is the first label of the second row (3 columns, 37 mm high).
+    nr = page.search_for("TU-0001")[0]
+    assert nr.y0 > 37 * 72 / 25.4 and nr.x0 < 70 * 72 / 25.4
+    assert "Etiketten%20Instrumente.pdf" in resp.headers["content-disposition"]
+    one = await client.get(
+        "/api/v1/print/labels",
+        params={"category": "instrument", "item_id": items[1]["id"]},
+    )
+    assert "Etiketten%20TU-0002.pdf" in one.headers["content-disposition"]
+
+
+async def test_label_layout_checks(client):
+    await _two_instruments(client)
+    base = {"category": "instrument"}
+    too_far = await client.get(
+        "/api/v1/print/labels", params={**base, "template": "a4-70x37", "start": 25}
+    )
+    assert too_far.status_code == 422
+    custom = await client.get(
+        "/api/v1/print/labels",
+        params={
+            **base,
+            "template": "custom",
+            "width": 80,
+            "height": 40,
+            "cols": 3,
+            "rows": 7,
+        },
+    )
+    assert custom.status_code == 422
+    assert "passen nicht auf A4" in custom.json()["detail"]
+    ok = await client.get(
+        "/api/v1/print/labels",
+        params={
+            **base,
+            "template": "custom",
+            "width": 50,
+            "height": 30,
+            "cols": 4,
+            "rows": 9,
+            "margin_left": 5,
+            "margin_top": 10,
+            "gap_x": 1,
+        },
+    )
+    assert ok.status_code == 200
+    info = (await client.get("/api/v1/print/label-presets")).json()
+    assert info["public_url"] == "https://inventar.mvhofki.xyz"
+    presets = info["presets"]
+    assert {p["key"] for p in presets} >= {"roll-62x29", "a4-70x37"}
+    assert next(p for p in presets if p["key"] == "a4-70x37")["per_page"] == 24
+
+
+async def test_datasheet_footer_has_the_logo(client):
+    items = await _two_instruments(client)
+    resp = await client.get(
+        "/api/v1/print/datasheets",
+        params={"category": "instrument", "item_id": items[0]["id"]},
+    )
+    page = pymupdf.open("pdf", resp.content)[0]
+    assert len(page.get_images()) == 2  # QR code + footer logo (no photo)

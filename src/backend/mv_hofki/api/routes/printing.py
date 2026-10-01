@@ -1,4 +1,4 @@
-"""PDF output: data sheets (labels and inventory lists follow)."""
+"""PDF output: data sheets and labels (inventory lists follow)."""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ from fastapi_filter import FilterDepends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mv_hofki.api.deps import get_db
+from mv_hofki.core.config import settings
 from mv_hofki.filters.inventory_item import CATEGORY_LABELS, ItemFilter
 from mv_hofki.services import inventory_item as item_service
-from mv_hofki.services.printing import datasheet
+from mv_hofki.services.printing import datasheet, labels
 
 router = APIRouter(prefix="/api/v1/print", tags=["print"])
 
@@ -59,3 +60,51 @@ async def datasheets(
     ids, name = await _items(db, category, item_id, flt)
     data = await datasheet.render(db, ids, chosen)
     return _pdf(data, f"Datenblatt {name}.pdf")
+
+
+@router.get("/label-presets")
+async def label_presets():
+    """The label formats offered in the print dialog (sizes in mm), and the
+    address the QR codes point to."""
+    return {
+        "public_url": settings.PUBLIC_URL,
+        "presets": [
+            {"key": key, "label": label, **vars(layout), "per_page": layout.per_page}
+            for key, (label, layout) in labels.PRESETS.items()
+        ],
+    }
+
+
+@router.get("/labels")
+async def label_sheet(
+    category: str,
+    item_id: int | None = None,
+    template: str = "roll-62x29",
+    start: int = Query(1, ge=1),
+    logo: bool = True,
+    frame: bool = False,
+    # template=custom: sizes in mm; cols/rows 0 = roll (page = label)
+    width: float = 62,
+    height: float = 29,
+    cols: int = Query(0, ge=0, le=20),
+    rows: int = Query(0, ge=0, le=40),
+    margin_left: float = Query(0, ge=0),
+    margin_top: float = Query(0, ge=0),
+    gap_x: float = Query(0, ge=0),
+    gap_y: float = Query(0, ge=0),
+    flt: ItemFilter = FilterDepends(ItemFilter),
+    db: AsyncSession = Depends(get_db),
+):
+    if template == "custom":
+        layout = labels.custom_layout(
+            width, height, cols, rows, margin_left, margin_top, gap_x, gap_y
+        )
+    elif template in labels.PRESETS:
+        layout = labels.PRESETS[template][1]
+    else:
+        raise HTTPException(status_code=422, detail=f"Unbekanntes Format: {template}")
+    ids, name = await _items(db, category, item_id, flt)
+    numbers = await item_service.display_numbers(db, ids)
+    items = [labels.LabelItem(i, numbers[i]) for i in ids if i in numbers]
+    data = labels.render(items, layout, start=start, logo=logo, frame=frame)
+    return _pdf(data, f"Etiketten {name}.pdf")
