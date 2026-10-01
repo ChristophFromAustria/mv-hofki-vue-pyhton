@@ -6,9 +6,12 @@ import {
   DATASHEET_SECTIONS,
   MAX_PRINT_ITEMS,
   datasheetUrl,
+  inventoryListUrl,
   labelUrl,
+  loadInventoryColumns,
   loadLabelSettings,
   loadSections,
+  saveInventoryColumns,
   saveLabelSettings,
   saveSections,
 } from "../lib/printing.js";
@@ -26,7 +29,10 @@ const props = defineProps({
 const emit = defineEmits(["close"]);
 
 const dialog = ref(null);
-const kind = ref("datasheet"); // datasheet | labels
+const kind = ref("datasheet"); // datasheet | labels | inventory
+const columns = ref([]); // available inventory list columns
+const chosenColumns = ref([]);
+const totals = ref(true);
 const sections = ref(loadSections());
 const label = ref(loadLabelSettings());
 const presets = ref([]);
@@ -37,6 +43,7 @@ const titleId = `print-${Math.random().toString(36).slice(2, 7)}`;
 const tooMany = computed(() => props.count > MAX_PRINT_ITEMS);
 const single = computed(() => props.itemId != null);
 const what = computed(() => {
+  if (kind.value === "inventory") return `Inventarliste mit ${props.count} Gegenständen (A4 quer)`;
   if (kind.value === "labels") return single.value ? "Etikett" : `${props.count} Etiketten`;
   return single.value ? "Datenblatt" : `${props.count} Datenblätter (eines pro Gegenstand)`;
 });
@@ -78,9 +85,26 @@ watch(
   { immediate: true },
 );
 
+async function loadColumns() {
+  if (columns.value.length) return;
+  try {
+    columns.value = await get(`/print/inventory-list/columns?category=${props.category}`);
+    chosenColumns.value = loadInventoryColumns(props.category, columns.value);
+  } catch (e) {
+    error.value = "Spalten konnten nicht geladen werden: " + e.message;
+  }
+}
+
 watch(kind, (value) => {
   if (value === "labels") loadPresets();
+  if (value === "inventory") loadColumns();
 });
+
+function toggleColumn(key, on) {
+  chosenColumns.value = on
+    ? [...chosenColumns.value, key]
+    : chosenColumns.value.filter((k) => k !== key);
+}
 
 function toggle(value, on) {
   sections.value = on ? [...sections.value, value] : sections.value.filter((s) => s !== value);
@@ -103,7 +127,11 @@ function print() {
   }
   const target = { category: props.category, itemId: props.itemId, listParams: props.listParams };
   let url;
-  if (kind.value === "labels") {
+  if (kind.value === "inventory") {
+    const ordered = columns.value.map((c) => c.key).filter((k) => chosenColumns.value.includes(k));
+    saveInventoryColumns(props.category, ordered);
+    url = inventoryListUrl({ ...target, columns: ordered, totals: totals.value });
+  } else if (kind.value === "labels") {
     const start = Number(label.value.start) || 1;
     if (isSheet.value && (start < 1 || start > perPage.value)) {
       error.value = `„Beginnen bei“: 1 bis ${perPage.value}.`;
@@ -152,6 +180,15 @@ function print() {
           >
             Etiketten
           </button>
+          <button
+            v-if="!single"
+            type="button"
+            :class="{ active: kind === 'inventory' }"
+            :aria-pressed="kind === 'inventory' ? 'true' : 'false'"
+            @click="kind = 'inventory'"
+          >
+            Inventarliste
+          </button>
         </div>
 
         <p class="print-lead">
@@ -173,6 +210,31 @@ function print() {
             {{ s.label }}
           </label>
         </fieldset>
+
+        <template v-else-if="kind === 'inventory'">
+          <fieldset class="print-fields print-columns">
+            <legend>Spalten</legend>
+            <label class="print-option print-fixed">
+              <input type="checkbox" checked disabled />
+              Inventarnummer
+            </label>
+            <label v-for="c in columns" :key="c.key" class="print-option">
+              <input
+                type="checkbox"
+                :checked="chosenColumns.includes(c.key)"
+                @change="toggleColumn(c.key, $event.target.checked)"
+              />
+              {{ c.label }}
+            </label>
+          </fieldset>
+          <label class="print-option">
+            <input v-model="totals" type="checkbox" />
+            Summe der Anschaffungskosten (je Währung)
+          </label>
+          <p class="print-hint">
+            Filter, Suche, Sortierung und Gruppierung wie in der Liste; mit Anzahl je Gruppe.
+          </p>
+        </template>
 
         <template v-else>
           <div class="form-group">
@@ -311,6 +373,16 @@ function print() {
   gap: var(--space-2) var(--space-3);
 }
 
+.print-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-3);
+}
+
+.print-columns legend {
+  grid-column: 1 / -1;
+}
+
 .print-custom-field {
   display: flex;
   flex-direction: column;
@@ -346,6 +418,7 @@ function print() {
 }
 
 @media (max-width: 640px) {
+  .print-columns,
   .print-custom {
     grid-template-columns: 1fr;
   }

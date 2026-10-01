@@ -1,4 +1,4 @@
-"""PDF output: data sheets and labels (inventory lists follow)."""
+"""PDF output: data sheets, labels and inventory lists."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from mv_hofki.api.deps import get_db
 from mv_hofki.core.config import settings
 from mv_hofki.filters.inventory_item import CATEGORY_LABELS, ItemFilter
 from mv_hofki.services import inventory_item as item_service
-from mv_hofki.services.printing import datasheet, labels
+from mv_hofki.services.printing import datasheet, inventory_list, labels
 
 router = APIRouter(prefix="/api/v1/print", tags=["print"])
 
@@ -108,3 +108,31 @@ async def label_sheet(
     items = [labels.LabelItem(i, numbers[i]) for i in ids if i in numbers]
     data = labels.render(items, layout, start=start, logo=logo, frame=frame)
     return _pdf(data, f"Etiketten {name}.pdf")
+
+
+@router.get("/inventory-list")
+async def inventory_list_pdf(
+    category: str,
+    columns: str = Query("", description="comma-separated column keys"),
+    totals: bool = False,
+    flt: ItemFilter = FilterDepends(ItemFilter),
+    db: AsyncSession = Depends(get_db),
+):
+    """The items the list shows (its filters, order and grouping) as a table."""
+    data = await inventory_list.render(
+        db,
+        category=category,
+        flt=flt,
+        columns=[c for c in columns.split(",") if c],
+        totals=totals,
+    )
+    return _pdf(data, f"Inventarliste {CATEGORY_LABELS.get(category, category)}.pdf")
+
+
+@router.get("/inventory-list/columns")
+async def inventory_list_columns(category: str):
+    """The columns the dialog offers for a category, in order."""
+    keys = inventory_list.CATEGORY_COLUMNS.get(category)
+    if keys is None:
+        raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {category}")
+    return [{"key": k, "label": inventory_list.column_label(category, k)} for k in keys]

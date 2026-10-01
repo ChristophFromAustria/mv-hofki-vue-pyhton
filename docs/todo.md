@@ -55,11 +55,11 @@ allgemeine Suchfeld (16, größter Wunsch).
 
 ## Druck & Export
 
-12. **Datenblätter drucken / als PDF exportieren** — *groß, in Umsetzung.* Konzept: [konzept-druck-etiketten.md](konzept-druck-etiketten.md).
+12. ~~**Datenblätter drucken / als PDF exportieren**~~ — ✅ erledigt (01.10.2026): Datenblätter und Inventarliste. Konzept: [konzept-druck-etiketten.md](konzept-druck-etiketten.md).
     Allgemeines Feature für Datenblätter von Gegenständen, einzeln und für
     ganze Gruppen (z. B. alle Trompeten, eine gefilterte/gruppierte Liste).
     Offen: welche Felder aufs Datenblatt (Foto, aktuelle Ausleihe, Rechnungen …).
-13. **QR-Codes für Etiketten** — *groß, in Umsetzung.* Konzept: [konzept-druck-etiketten.md](konzept-druck-etiketten.md). QR-Adresse vorerst https://inventar.mvhofki.xyz (Todo 17). QR-Code pro Gegenstand,
+13. ~~**QR-Codes für Etiketten**~~ — ✅ erledigt (01.10.2026). Konzept: [konzept-druck-etiketten.md](konzept-druck-etiketten.md). QR-Adresse vorerst https://inventar.mvhofki.xyz (Todo 17). QR-Code pro Gegenstand,
     als Etikett gedruckt. Hängt an 7 (Linkziel), 10 (Nummernformat) und 12
     (Druck). Offen: Etikettenformat/Drucker, was außer dem QR-Code draufsteht.
 

@@ -139,6 +139,52 @@ class PdfDocument:
             story.draw(device)
             self._writer.end_page()
 
+    def _fits(self, body: str, css: str) -> bool:
+        story = pymupdf.Story(
+            html=body, user_css=BASE_CSS + css, archive=pymupdf.Archive(str(FONT_DIR))
+        )
+        more, _ = story.place(self.where)
+        return not more
+
+    def add_table(
+        self,
+        intro: str,
+        head: str,
+        rows: list[str],
+        css: str = "",
+        *,
+        keep_with_next: set[int] | None = None,
+    ) -> None:
+        """A table over as many pages as needed, its head row repeated on
+        every page (MuPDF doesn't repeat <thead>). intro (title) goes on the
+        first page only; rows in keep_with_next (group headings) never end a
+        page."""
+        keep = keep_with_next or set()
+        start = 0
+        first = True
+        while start < len(rows):
+            prefix = intro if first else ""
+
+            def page_html(n: int) -> str:
+                return (
+                    f"{prefix}<table>{head}{''.join(rows[start : start + n])}</table>"
+                )
+
+            # The most rows that fit on this page (at least one).
+            lo, hi = 1, len(rows) - start
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if self._fits(page_html(mid), css):
+                    lo = mid
+                else:
+                    hi = mid - 1
+            n = lo
+            while n > 1 and start + n < len(rows) and (start + n - 1) in keep:
+                n -= 1
+            self.add_story(page_html(n), css)
+            start += n
+            first = False
+
     def finish(self, footer: str) -> bytes:
         """Close the document and add "<footer> · Seite n von m" to every page."""
         self._writer.close()

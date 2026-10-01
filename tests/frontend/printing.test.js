@@ -69,3 +69,37 @@ describe("labels", async () => {
     expect(loaded.custom.width).toBe(62);
   });
 });
+
+describe("inventory list", async () => {
+  const { inventoryListUrl, loadInventoryColumns, saveInventoryColumns } = await import(
+    "../../src/frontend/src/lib/printing.js"
+  );
+  const available = [
+    { key: "label", label: "Bezeichnung" },
+    { key: "serial_nr", label: "Seriennummer" },
+    { key: "status", label: "Status" },
+  ];
+
+  it("keeps the list's grouping, unlike data sheets and labels", () => {
+    const listParams = new URLSearchParams("search=tuba&group_by=type&limit=50&offset=0");
+    const url = new URL(
+      inventoryListUrl({ category: "instrument", listParams, columns: ["label", "status"], totals: true }),
+      "http://x",
+    );
+    expect(url.pathname).toBe("/api/v1/print/inventory-list");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      search: "tuba",
+      group_by: "type",
+      category: "instrument",
+      columns: "label,status",
+      totals: "true",
+    });
+  });
+
+  it("remembers the columns per category, only ones that exist", () => {
+    expect(loadInventoryColumns("instrument", available)).toEqual(["label", "status"]);
+    saveInventoryColumns("instrument", ["serial_nr", "gone"]);
+    expect(loadInventoryColumns("instrument", available)).toEqual(["serial_nr"]);
+    expect(loadInventoryColumns("clothing", available)).toEqual(["label", "status"]);
+  });
+});

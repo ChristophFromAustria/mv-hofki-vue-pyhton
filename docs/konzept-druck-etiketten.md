@@ -1,6 +1,7 @@
 # Konzept: Druck/PDF und QR-Etiketten
 
-Todo-Punkte 12 und 13 (`docs/todo.md`). Ergebnis des Brainstormings vom 01.10.2026.
+Todo-Punkte 12 und 13 (`docs/todo.md`). Ergebnis des Brainstormings vom 01.10.2026;
+alle drei Phasen am selben Tag umgesetzt.
 
 ## Grundsatz
 

@@ -258,3 +258,100 @@ async def test_datasheet_footer_has_the_logo(client):
     )
     page = pymupdf.open("pdf", resp.content)[0]
     assert len(page.get_images()) == 2  # QR code + footer logo (no photo)
+
+
+async def _inventory(client):
+    eur = (
+        await client.post(
+            "/api/v1/currencies", json={"label": "Euro", "abbreviation": "€"}
+        )
+    ).json()["id"]
+    types = {}
+    for label, short in (("Tuba", "TU"), ("Horn", "HR")):
+        types[label] = (
+            await client.post(
+                "/api/v1/instrument-types", json={"label": label, "label_short": short}
+            )
+        ).json()["id"]
+    for label, type_label, cost in (
+        ("Tuba A", "Tuba", 1000),
+        ("Tuba B", "Tuba", 500.5),
+        ("Horn A", "Horn", None),
+    ):
+        await client.post(
+            "/api/v1/items",
+            json={
+                "category": "instrument",
+                "label": label,
+                "instrument_type_id": types[type_label],
+                "manufacturer": "Melton",
+                **({"acquisition_cost": cost, "currency_id": eur} if cost else {}),
+            },
+        )
+
+
+async def test_inventory_list_grouped_with_columns_and_totals(client):
+    await _inventory(client)
+    resp = await client.get(
+        "/api/v1/print/inventory-list",
+        params={
+            "category": "instrument",
+            "group_by": "type",
+            "columns": "label,manufacturer,acquisition_cost,status",
+            "totals": "true",
+        },
+    )
+    text = _text(resp)
+    assert "Inventarliste Instrumente" in text and "im Bestand" in text
+    assert "Horn (1)" in text and "Tuba (2)" in text
+    assert text.index("Horn (1)") < text.index("Tuba (2)")
+    assert "Hersteller" in text and "Melton" in text and "Verfügbar" in text
+    assert "Seriennummer" not in text  # not chosen
+    assert "3 Gegenstände · Anschaffungskosten: 1 500,50 €" in text
+    assert "Inventarliste%20Instrumente.pdf" in resp.headers["content-disposition"]
+    page = pymupdf.open("pdf", resp.content)[0]
+    assert page.rect.width > page.rect.height  # landscape
+
+
+async def test_inventory_list_says_which_filters_it_covers(client):
+    await _inventory(client)
+    text = _text(
+        await client.get(
+            "/api/v1/print/inventory-list",
+            params={"category": "instrument", "search": "tuba", "bestand": "alle"},
+        )
+    )
+    assert "Suche „tuba“ · Bestand und ausgeschiedene" in text
+    assert "2 Gegenstände" in text and "Horn A" not in text
+    columns = (
+        await client.get(
+            "/api/v1/print/inventory-list/columns", params={"category": "clothing"}
+        )
+    ).json()
+    assert {"key": "size", "label": "Größe"} in columns
+    assert {"key": "type", "label": "Typ"} in columns
+
+
+async def test_inventory_list_repeats_the_head_row_on_every_page(client, db_session):
+    tu = (
+        await client.post(
+            "/api/v1/instrument-types", json={"label": "Tuba", "label_short": "TU"}
+        )
+    ).json()["id"]
+    for n in range(60):
+        await client.post(
+            "/api/v1/items",
+            json={
+                "category": "instrument",
+                "label": f"Tuba {n}",
+                "instrument_type_id": tu,
+            },
+        )
+    resp = await client.get(
+        "/api/v1/print/inventory-list",
+        params={"category": "instrument", "columns": "label"},
+    )
+    doc = pymupdf.open("pdf", resp.content)
+    assert doc.page_count >= 2
+    assert all(page.get_text().count("Inv.-Nr.") == 1 for page in doc)
+    assert "60 Gegenstände" in doc[-1].get_text()

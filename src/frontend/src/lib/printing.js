@@ -34,10 +34,13 @@ export function saveSections(sections) {
   }
 }
 
-function listQuery(params, listParams) {
+// The list's filters, without its paging; grouping only where the PDF uses it.
+function listQuery(params, listParams, { keepGroup = false } = {}) {
   if (!listParams) return;
   for (const [key, value] of listParams) {
-    if (key !== "limit" && key !== "offset" && key !== "group_by") params.set(key, value);
+    if (key === "limit" || key === "offset") continue;
+    if (key === "group_by" && !keepGroup) continue;
+    params.set(key, value);
   }
 }
 
@@ -126,4 +129,49 @@ export function labelUrl({ category, itemId = null, listParams = null, settings 
     for (const { key } of CUSTOM_FIELDS) params.set(key, String(settings.custom[key]));
   }
   return `${API_PREFIX}/print/labels?${params}`;
+}
+
+// --- inventory list -------------------------------------------------------
+
+const COLUMNS_KEY = (category) => `print-inventory-columns-${category}`;
+export const DEFAULT_INVENTORY_COLUMNS = [
+  "label",
+  "type",
+  "manufacturer",
+  "size",
+  "composer",
+  "owner",
+  "storage_location",
+  "status",
+  "borrower",
+];
+
+/** Columns chosen last time for this category; `available` from the backend. */
+export function loadInventoryColumns(category, available) {
+  const keys = available.map((c) => c.key);
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMNS_KEY(category)) || "null");
+    if (Array.isArray(saved)) return saved.filter((k) => keys.includes(k));
+  } catch {
+    // storage blocked or broken: defaults
+  }
+  return DEFAULT_INVENTORY_COLUMNS.filter((k) => keys.includes(k));
+}
+
+export function saveInventoryColumns(category, columns) {
+  try {
+    localStorage.setItem(COLUMNS_KEY(category), JSON.stringify(columns));
+  } catch {
+    // not remembered, no harm
+  }
+}
+
+/** URL of an inventory list PDF: the list's filters, order and grouping. */
+export function inventoryListUrl({ category, listParams, columns, totals }) {
+  const params = new URLSearchParams();
+  listQuery(params, listParams, { keepGroup: true });
+  params.set("category", category);
+  params.set("columns", columns.join(","));
+  if (totals) params.set("totals", "true");
+  return `${API_PREFIX}/print/inventory-list?${params}`;
 }
