@@ -28,6 +28,7 @@ from mv_hofki.api.routes.items import router as items_router
 from mv_hofki.api.routes.loans import router as loans_router
 from mv_hofki.api.routes.me import router as me_router
 from mv_hofki.api.routes.musicians import router as musicians_router
+from mv_hofki.api.routes.printing import router as printing_router
 from mv_hofki.api.routes.registers import router as registers_router
 from mv_hofki.api.routes.scan_parts import router as scan_parts_router
 from mv_hofki.api.routes.scan_processing import router as scan_processing_router
@@ -112,6 +113,7 @@ app.add_middleware(AuditActorMiddleware)
 app.include_router(search_router)
 app.include_router(events_router)
 app.include_router(trash_router)
+app.include_router(printing_router)
 app.include_router(health_router)
 app.include_router(currencies_router)
 app.include_router(instrument_types_router)

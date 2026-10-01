@@ -329,6 +329,29 @@ async def _get_details(
     return {d.item_id: d for d in result.unique().scalars()}
 
 
+async def filtered_ids(
+    session: AsyncSession, *, category: str, flt: ItemFilter, limit: int
+) -> list[int]:
+    """Ids of all items the list shows for these filters, in its order (for
+    printing). 422 if more than ``limit``."""
+    if category not in CATEGORY_DETAIL_MAP:
+        raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {category}")
+    flt.bind(category)
+    query = flt.sort(flt.filter(_base_query(category))).with_only_columns(
+        InventoryItem.id
+    )
+    ids = list(dict.fromkeys((await session.execute(query)).scalars()))
+    if len(ids) > limit:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"{len(ids)} Gegenstände – höchstens {limit} auf einmal. "
+                "Bitte die Liste weiter filtern."
+            ),
+        )
+    return ids
+
+
 async def get_list(
     session: AsyncSession,
     *,

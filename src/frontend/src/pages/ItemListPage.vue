@@ -23,6 +23,7 @@ import SortSelect from "../components/SortSelect.vue";
 import LoadingSpinner from "../components/LoadingSpinner.vue";
 import CategoryChips from "../components/CategoryChips.vue";
 import ItemFormModal from "../components/ItemFormModal.vue";
+import PrintDialog from "../components/PrintDialog.vue";
 import BulkCategoryBar from "../components/BulkCategoryBar.vue";
 import CategoryPickDialog from "../components/CategoryPickDialog.vue";
 
@@ -34,6 +35,7 @@ const router = useRouter();
 const cat = computed(() => CATEGORIES[props.category]);
 const viewMode = ref(localStorage.getItem(props.category + "-view-mode") || "card");
 const showCreateModal = ref(false);
+const showPrint = ref(false);
 const currencies = ref([]);
 
 const selecting = ref(false);
@@ -458,6 +460,7 @@ function onModalSave() {
         >
           Auswählen
         </button>
+        <button type="button" class="btn btn-secondary" @click="showPrint = true">Drucken …</button>
         <button class="btn btn-primary" @click="showCreateModal = true">
           {{ cat.labelSingular }} anlegen
         </button>
@@ -615,6 +618,14 @@ function onModalSave() {
       @cancel="pickMode = null"
     />
 
+    <PrintDialog
+      :open="showPrint"
+      :category="category"
+      :list-params="appliedParams"
+      :count="itemTotal"
+      :title="`${cat.label} drucken`"
+      @close="showPrint = false"
+    />
     <ItemFormModal
       :open="showCreateModal"
       :category="category"

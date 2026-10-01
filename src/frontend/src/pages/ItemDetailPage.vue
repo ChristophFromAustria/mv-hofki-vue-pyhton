@@ -21,6 +21,7 @@ import MusicianPicker from "../components/MusicianPicker.vue";
 import RecordHistory from "../components/RecordHistory.vue";
 import RetireDialog from "../components/RetireDialog.vue";
 import CopyItemDialog from "../components/CopyItemDialog.vue";
+import PrintDialog from "../components/PrintDialog.vue";
 import { retireReasonLabel } from "../lib/retire.js";
 import { isOverdue, loanStatus } from "../lib/loans.js";
 import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
@@ -49,6 +50,7 @@ const showDelete = ref(false);
 const deleteError = ref("");
 const showRetire = ref(false);
 const showCopy = ref(false);
+const showPrint = ref(false);
 const reinstating = ref(false);
 const reinstateError = ref("");
 const showEditModal = ref(false);
@@ -427,6 +429,7 @@ async function onEditSave() {
       <h1>{{ item.display_nr }} — {{ item.label }}</h1>
       <div class="cluster">
         <button class="btn" @click="showEditModal = true">Bearbeiten</button>
+        <button class="btn" @click="showPrint = true">Drucken …</button>
         <button class="btn" @click="showCopy = true">Kopieren …</button>
         <button v-if="!item.retired_at" class="btn" @click="showRetire = true">
           Ausscheiden …
@@ -740,6 +743,13 @@ async function onEditSave() {
 
     <RecordHistory :scope="category" :item-id="item.id" :refresh-key="historyKey" />
 
+    <PrintDialog
+      :open="showPrint"
+      :category="category"
+      :item-id="item.id"
+      :title="`${item.display_nr} drucken`"
+      @close="showPrint = false"
+    />
     <CopyItemDialog
       :open="showCopy"
       :item="item"

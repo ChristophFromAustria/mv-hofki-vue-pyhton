@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     SQL_ECHO: bool = False
     API_V1_PREFIX: str = "/api/v1"
     BASE_PATH: str = "/"
+    # Public address of the app, put into QR codes on labels and data sheets
+    # (PUBLIC_URL + "/inventar/<id>"). Change before printing labels in bulk.
+    PUBLIC_URL: str = "https://inventar.mvhofki.xyz"
 
     PROJECT_ROOT: Path = _find_project_root()
 
