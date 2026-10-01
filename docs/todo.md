@@ -36,7 +36,7 @@ allgemeine Suchfeld (16, größter Wunsch).
 7. ~~**Inventar-Nr in der URL**~~ — ✅ erledigt (01.10.2026). *mittel.* `/instrumente/TR-0006` statt der
    Datenbank-ID. Nach 10 umsetzen; klären, was bei einer Umnummerierung mit
    alten Links passiert.
-8. **Inventar-Items kopieren** — *mittel.* Bestehenden Gegenstand als Vorlage
+8. ~~**Inventar-Items kopieren**~~ — ✅ erledigt (01.10.2026). *mittel.* Bestehenden Gegenstand als Vorlage
    nehmen; per Checkbox-Menü wählen, welche Werte übernommen werden. Die
    Nummer ist immer neu.
 9. ~~**Freigewordene Nummern nie wieder vergeben**~~ — ✅ erledigt (30.09.2026). *klein.* Heute ist die

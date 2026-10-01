@@ -20,6 +20,7 @@ import ItemFormModal from "../components/ItemFormModal.vue";
 import MusicianPicker from "../components/MusicianPicker.vue";
 import RecordHistory from "../components/RecordHistory.vue";
 import RetireDialog from "../components/RetireDialog.vue";
+import CopyItemDialog from "../components/CopyItemDialog.vue";
 import { retireReasonLabel } from "../lib/retire.js";
 import { isOverdue, loanStatus } from "../lib/loans.js";
 import { TRASH_CONFIRM, TRASH_NOTE } from "../lib/trash.js";
@@ -47,6 +48,7 @@ const categories = ref([]);
 const showDelete = ref(false);
 const deleteError = ref("");
 const showRetire = ref(false);
+const showCopy = ref(false);
 const reinstating = ref(false);
 const reinstateError = ref("");
 const showEditModal = ref(false);
@@ -271,6 +273,13 @@ watch(
 );
 watch(() => item.value?.display_nr, syncUrl);
 
+// One copy: open it. Several: the list, newest numbers first.
+function onCopied(created) {
+  showCopy.value = false;
+  if (created.length === 1) router.push(itemPath(created[0]));
+  else router.push(`${cat.value.routeBase}?order_by=-number`);
+}
+
 async function onRetired() {
   showRetire.value = false;
   await reload();
@@ -418,6 +427,7 @@ async function onEditSave() {
       <h1>{{ item.display_nr }} — {{ item.label }}</h1>
       <div class="cluster">
         <button class="btn" @click="showEditModal = true">Bearbeiten</button>
+        <button class="btn" @click="showCopy = true">Kopieren …</button>
         <button v-if="!item.retired_at" class="btn" @click="showRetire = true">
           Ausscheiden …
         </button>
@@ -730,6 +740,13 @@ async function onEditSave() {
 
     <RecordHistory :scope="category" :item-id="item.id" :refresh-key="historyKey" />
 
+    <CopyItemDialog
+      :open="showCopy"
+      :item="item"
+      :category="category"
+      @copied="onCopied"
+      @cancel="showCopy = false"
+    />
     <RetireDialog
       :open="showRetire"
       :item="item"
