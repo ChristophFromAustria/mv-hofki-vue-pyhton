@@ -444,6 +444,14 @@ def _collect(session: Session) -> None:
         if trash is not None:
             add(obj, spec, trash, None)
             continue
+        if (
+            isinstance(obj, ItemImage)
+            and inspect(obj).attrs["filename"].history.has_changes()
+        ):
+            # Edited in the image editor, or back to the original.
+            edited = obj.original_filename is not None
+            add(obj, spec, "image_edited" if edited else "image_original", None)
+            continue
         changes = _column_changes(session, obj, spec)
         if not changes:
             continue

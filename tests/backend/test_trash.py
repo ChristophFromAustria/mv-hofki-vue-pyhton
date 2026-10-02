@@ -200,3 +200,77 @@ async def test_purge_expired_after_90_days(client, db_session):
     assert await purge_expired(db_session, now=utcnow() + timedelta(days=89)) == 0
     assert await purge_expired(db_session, now=utcnow() + timedelta(days=91)) == 1
     assert (await client.get(TRASH)).json() == []
+
+
+async def _png(color):
+    import pymupdf
+
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 20, 10), False)
+    pix.set_rect(pix.irect, color)
+    return pix.tobytes("png")
+
+
+async def test_edit_image_keeps_the_original_until_restored(client):
+    _, item = await _tuba(client)
+    base = f"/api/v1/items/{item['id']}/images"
+    image = (
+        await client.post(
+            base, files={"file": ("a.png", await _png((250, 250, 250)), "image/png")}
+        )
+    ).json()
+    folder = item_image.UPLOAD_DIR / str(item["id"])
+    original = folder / image["filename"]
+
+    edited = await client.put(
+        f"{base}/{image['id']}/file",
+        files={"file": ("e.jpg", await _png((120, 100, 90)), "image/jpeg")},
+    )
+    assert edited.status_code == 200, edited.text
+    first = edited.json()
+    assert first["has_original"] is True and first["url"] != image["url"]
+    assert first["is_profile"] is True  # still the same image
+    assert original.exists()
+
+    # Editing again replaces the edited file, never the original.
+    second = (
+        await client.put(
+            f"{base}/{image['id']}/file",
+            files={"file": ("e.jpg", await _png((90, 90, 90)), "image/jpeg")},
+        )
+    ).json()
+    assert not (folder / first["filename"]).exists()
+    assert original.exists()
+
+    restored = (await client.post(f"{base}/{image['id']}/restore-original")).json()
+    assert (
+        restored["filename"] == image["filename"] and restored["has_original"] is False
+    )
+    assert not (folder / second["filename"]).exists()
+    again = await client.post(f"{base}/{image['id']}/restore-original")
+    assert again.status_code == 409
+
+    events = (await client.get(f"/api/v1/events?item_id={item['id']}")).json()["items"]
+    assert [e["action"] for e in events][:3] == [
+        "image_original",
+        "image_edited",
+        "image_edited",
+    ]
+
+
+async def test_purging_an_edited_image_removes_the_original_too(client):
+    _, item = await _tuba(client)
+    base = f"/api/v1/items/{item['id']}/images"
+    image = (
+        await client.post(
+            base, files={"file": ("a.png", await _png((250, 250, 250)), "image/png")}
+        )
+    ).json()
+    await client.put(
+        f"{base}/{image['id']}/file",
+        files={"file": ("e.jpg", await _png((1, 2, 3)), "image/jpeg")},
+    )
+    folder = item_image.UPLOAD_DIR / str(item["id"])
+    assert len(list(folder.iterdir())) == 2
+    await client.delete(f"{base}/{image['id']}")
+    await client.delete(f"{TRASH}/image/{image['id']}")
+    assert list(folder.iterdir()) == []

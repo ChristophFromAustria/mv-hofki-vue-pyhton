@@ -64,6 +64,56 @@ async def upload(session: AsyncSession, item_id: int, file: UploadFile) -> ItemI
     return image
 
 
+async def _own_image(session: AsyncSession, item_id: int, image_id: int) -> ItemImage:
+    image = await session.get(ItemImage, image_id)
+    if not image or image.item_id != item_id:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden")
+    return image
+
+
+async def replace_file(
+    session: AsyncSession, item_id: int, image_id: int, file: UploadFile
+) -> ItemImage:
+    """Store an edited version of an image under a new name (so browsers
+    don't show a cached old one). The first edit keeps the original file;
+    later edits replace only the previous edited file."""
+    image = await _own_image(session, item_id, image_id)
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="Ungültiger Dateityp")
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Datei zu groß (max 10 MB)")
+    ext = {"image/png": ".png", "image/webp": ".webp"}.get(file.content_type, ".jpg")
+    new_name = f"{uuid.uuid4().hex}{ext}"
+    (_item_dir(item_id) / new_name).write_bytes(content)
+    previous: str | None = image.filename
+    if image.original_filename is None:
+        image.original_filename = previous
+        previous = None  # the original stays
+    image.filename = new_name
+    await session.commit()
+    if previous:
+        (UPLOAD_DIR / str(item_id) / previous).unlink(missing_ok=True)
+    await session.refresh(image)
+    return image
+
+
+async def restore_original(
+    session: AsyncSession, item_id: int, image_id: int
+) -> ItemImage:
+    """Back to the untouched upload; the edited file is removed."""
+    image = await _own_image(session, item_id, image_id)
+    if image.original_filename is None:
+        raise HTTPException(status_code=409, detail="Bild ist nicht bearbeitet")
+    edited = image.filename
+    image.filename = image.original_filename
+    image.original_filename = None
+    await session.commit()
+    (UPLOAD_DIR / str(item_id) / edited).unlink(missing_ok=True)
+    await session.refresh(image)
+    return image
+
+
 async def set_profile(session: AsyncSession, item_id: int, image_id: int) -> ItemImage:
     # Unset all profile flags for this item
     await session.execute(
@@ -99,3 +149,11 @@ async def delete(session: AsyncSession, item_id: int, image_id: int) -> None:
 
 def image_file(image: ItemImage) -> Path:
     return UPLOAD_DIR / str(image.item_id) / image.filename
+
+
+def image_files(image: ItemImage) -> list[Path]:
+    """The shown file and, for an edited image, the kept original."""
+    files = [image_file(image)]
+    if image.original_filename:
+        files.append(UPLOAD_DIR / str(image.item_id) / image.original_filename)
+    return files

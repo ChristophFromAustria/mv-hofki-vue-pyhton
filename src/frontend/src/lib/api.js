@@ -97,4 +97,14 @@ export async function postForm(path, formData) {
   return response.json();
 }
 
+/** PUT multipart/form-data (replacing an uploaded file). */
+export async function putForm(path, formData) {
+  const response = await fetch(`${API_PREFIX}${path}`, { method: "PUT", body: formData });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(detailToMessage(text));
+  }
+  return response.json();
+}
+
 export { API_PREFIX, BASE };

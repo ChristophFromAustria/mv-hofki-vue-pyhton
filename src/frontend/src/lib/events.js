@@ -9,6 +9,8 @@ export const ACTION_LABELS = {
   image_added: "Bild hinzugefügt",
   image_deleted: "Bild gelöscht",
   image_profile: "Profilbild gesetzt",
+  image_edited: "Bild bearbeitet",
+  image_original: "Bild-Original wiederhergestellt",
   imported: "importiert",
   wiped: "Bestand geleert",
   trashed: "in den Papierkorb",

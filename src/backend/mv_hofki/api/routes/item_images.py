@@ -25,6 +25,7 @@ def _image_to_read(image) -> ItemImageRead:
         caption=image.caption,
         created_at=image.created_at,
         url=f"/uploads/images/{image.item_id}/{image.filename}",
+        has_original=image.original_filename is not None,
     )
 
 
@@ -41,6 +42,26 @@ async def upload_image(
     db: AsyncSession = Depends(get_db),
 ):
     image = await image_service.upload(db, item_id, file)
+    return _image_to_read(image)
+
+
+@router.put("/{image_id}/file", response_model=ItemImageRead)
+async def replace_image_file(
+    item_id: int,
+    image_id: int,
+    file: UploadFile,
+    db: AsyncSession = Depends(get_db),
+):
+    """Save an edited version; the original is kept (see restore-original)."""
+    image = await image_service.replace_file(db, item_id, image_id, file)
+    return _image_to_read(image)
+
+
+@router.post("/{image_id}/restore-original", response_model=ItemImageRead)
+async def restore_original_image(
+    item_id: int, image_id: int, db: AsyncSession = Depends(get_db)
+):
+    image = await image_service.restore_original(db, item_id, image_id)
     return _image_to_read(image)
 
 

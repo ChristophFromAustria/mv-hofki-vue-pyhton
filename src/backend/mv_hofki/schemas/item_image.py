@@ -16,5 +16,7 @@ class ItemImageRead(BaseModel):
     caption: str | None
     created_at: datetime
     url: str
+    # Edited: the original can be restored.
+    has_original: bool = False
 
     model_config = {"from_attributes": True}

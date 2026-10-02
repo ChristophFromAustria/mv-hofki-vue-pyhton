@@ -78,11 +78,11 @@ async def _purge_invoice(session: AsyncSession, obj: Any) -> list[Path]:
 
 
 async def _purge_image(session: AsyncSession, obj: Any) -> list[Path]:
-    from mv_hofki.services.item_image import image_file
+    from mv_hofki.services.item_image import image_files
 
-    path = image_file(obj)
+    paths = image_files(obj)
     await session.delete(obj)
-    return [path]
+    return paths
 
 
 async def _purge_category(session: AsyncSession, obj: Any) -> list[Path]:

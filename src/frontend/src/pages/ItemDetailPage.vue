@@ -1,11 +1,12 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { useRouter } from "vue-router";
-import { get, getAll, post, put, del } from "../lib/api.js";
+import { get, getAll, post, put, del, putForm } from "../lib/api.js";
 import { CATEGORIES, itemPath } from "../lib/categories.js";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import CategoryChips from "../components/CategoryChips.vue";
 import ImageGallery from "../components/ImageGallery.vue";
+import ImageEditor from "../components/ImageEditor.vue";
 import ScanDocuments from "../components/ScanDocuments.vue";
 import CollapsibleSection from "../components/CollapsibleSection.vue";
 import InlineField from "../components/InlineField.vue";
@@ -232,6 +233,46 @@ async function setProfile(imageId) {
     await reload();
   } catch (e) {
     imageError.value = "Profilbild konnte nicht gesetzt werden: " + e.message;
+  }
+}
+
+// Image editor (photos and scans).
+const editingImage = ref(null);
+const editorSaving = ref(false);
+const editorError = ref("");
+
+function editImage(image) {
+  editorError.value = "";
+  editingImage.value = image;
+}
+
+async function saveEditedImage(blob) {
+  editorSaving.value = true;
+  editorError.value = "";
+  try {
+    const form = new FormData();
+    form.append("file", blob, "bearbeitet.jpg");
+    await putForm(`/items/${itemId.value}/images/${editingImage.value.id}/file`, form);
+    editingImage.value = null;
+    await reload();
+  } catch (e) {
+    editorError.value = "Speichern fehlgeschlagen: " + e.message;
+  } finally {
+    editorSaving.value = false;
+  }
+}
+
+async function restoreOriginalImage() {
+  editorSaving.value = true;
+  editorError.value = "";
+  try {
+    await post(`/items/${itemId.value}/images/${editingImage.value.id}/restore-original`, {});
+    editingImage.value = null;
+    await reload();
+  } catch (e) {
+    editorError.value = "Wiederherstellen fehlgeschlagen: " + e.message;
+  } finally {
+    editorSaving.value = false;
   }
 }
 
@@ -466,6 +507,7 @@ async function onEditSave() {
         @upload="uploadImage"
         @set-profile="setProfile"
         @delete="deleteImage"
+        @edit="editImage"
       />
     </CollapsibleSection>
 
@@ -476,7 +518,12 @@ async function onEditSave() {
       title="Unterlagen (Scans)"
       :summary="scanSummary"
     >
-      <ScanDocuments :scans="imageGroups.scans" :can-manage="true" @delete="deleteImage" />
+      <ScanDocuments
+        :scans="imageGroups.scans"
+        :can-manage="true"
+        @delete="deleteImage"
+        @edit="editImage"
+      />
     </CollapsibleSection>
 
     <CollapsibleSection
@@ -743,6 +790,17 @@ async function onEditSave() {
 
     <RecordHistory :scope="category" :item-id="item.id" :refresh-key="historyKey" />
 
+    <ImageEditor
+      :open="editingImage !== null"
+      :src="editingImage?.url || ''"
+      :title="editingImage?.kind === 'scan' ? 'Scan bearbeiten' : 'Foto bearbeiten'"
+      :can-restore="!!editingImage?.has_original"
+      :saving="editorSaving"
+      :error="editorError"
+      @save="saveEditedImage"
+      @restore="restoreOriginalImage"
+      @cancel="editingImage = null"
+    />
     <PrintDialog
       :open="showPrint"
       :category="category"

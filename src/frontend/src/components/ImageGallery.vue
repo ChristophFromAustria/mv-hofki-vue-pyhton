@@ -7,7 +7,7 @@ const props = defineProps({
   canManage: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["upload", "set-profile", "delete"]);
+const emit = defineEmits(["upload", "set-profile", "delete", "edit"]);
 
 const currentIndex = ref(0);
 const showModal = ref(false);
@@ -106,6 +106,9 @@ function onFileSelected(e) {
           Als Profilbild
         </button>
         <span v-if="canManage && current?.is_profile" class="badge badge-green">Profilbild</span>
+        <button v-if="canManage && current" class="btn-sm" @click="$emit('edit', current)">
+          Bearbeiten
+        </button>
         <button
           v-if="canManage && current"
           class="btn-sm btn-danger"

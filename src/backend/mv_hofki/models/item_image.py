@@ -25,4 +25,6 @@ class ItemImage(SoftDeleteMixin, Base):
         String(20), nullable=False, default="foto", server_default="foto"
     )
     caption: Mapped[str | None] = mapped_column(String(300))
+    # Set once the image is edited: the untouched upload, kept for restoring.
+    original_filename: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

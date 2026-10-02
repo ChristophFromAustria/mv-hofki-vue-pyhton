@@ -7,7 +7,7 @@ const props = defineProps({
   canManage: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["delete"]);
+const emit = defineEmits(["delete", "edit"]);
 
 const dialogEl = ref(null);
 const currentIndex = ref(0);
@@ -70,6 +70,14 @@ function onKeydown(e) {
 function onDialogClick(e) {
   // Click on the backdrop (outside the dialog box) closes it.
   if (e.target === dialogEl.value) close();
+}
+
+// The editor is a dialog of its own: close the viewer first.
+function editCurrent() {
+  if (!current.value) return;
+  const scan = current.value;
+  close();
+  emit("edit", scan);
 }
 
 function confirmDelete() {
@@ -164,14 +172,16 @@ function confirmDelete() {
                 Abbrechen
               </button>
             </template>
-            <button
-              v-else
-              type="button"
-              class="btn-danger scan-nav-btn"
-              @click="confirmingDelete = true"
-            >
-              Löschen
-            </button>
+            <template v-else>
+              <button type="button" class="scan-nav-btn" @click="editCurrent">Bearbeiten</button>
+              <button
+                type="button"
+                class="btn-danger scan-nav-btn"
+                @click="confirmingDelete = true"
+              >
+                Löschen
+              </button>
+            </template>
           </div>
         </footer>
       </div>
