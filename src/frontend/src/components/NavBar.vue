@@ -170,6 +170,11 @@ onMounted(() => {
 }
 
 .links > a,
+.links > .dropdown {
+  padding: 0.75rem 1.25rem;
+  font-size: 1rem;
+}
+
 .links > .account {
   margin-top: auto;
   padding: 0.75rem 1.25rem;
@@ -192,11 +197,6 @@ onMounted(() => {
   align-items: center;
   min-height: 44px;
   font-weight: 500;
-}
-
-.dropdown {
-  padding: 0.75rem 1.25rem;
-  font-size: 1rem;
 }
 
 .links > a {
