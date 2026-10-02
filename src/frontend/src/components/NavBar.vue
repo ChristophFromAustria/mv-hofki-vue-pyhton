@@ -1,12 +1,20 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { RouterLink } from "vue-router";
+import { get } from "../lib/api.js";
 import GlobalSearch from "./GlobalSearch.vue";
 
 const settingsOpen = ref(false);
 const isDark = ref(false);
 
 const menuOpen = ref(false);
+// Signed in through Cloudflare Access (no tunnel locally: no e-mail, no logout).
+const email = ref(null);
+// Cloudflare ends the Access session at this path of the protected host —
+// always at the domain root, independent of BASE_PATH.
+const LOGOUT_URL = "/cdn-cgi/access/logout";
+// public/logo-64.png, also when the app runs under a sub-path (VITE_BASE_PATH).
+const LOGO_SRC = `${import.meta.env.BASE_URL}logo-64.png`;
 
 function closeMenu() {
   menuOpen.value = false;
@@ -24,6 +32,9 @@ function toggleTheme() {
 }
 
 onMounted(() => {
+  get("/me")
+    .then((me) => (email.value = me?.email || null))
+    .catch(() => (email.value = null));
   const saved = localStorage.getItem("theme");
   if (saved) {
     isDark.value = saved === "dark";
@@ -42,7 +53,7 @@ onMounted(() => {
       </button>
 
       <RouterLink to="/" class="brand" @click="closeMenu">
-        <img src="/logo-64.png" alt="MVH" class="brand-logo" />
+        <img :src="LOGO_SRC" alt="MVH" class="brand-logo" />
         MV Hofkirchen
       </RouterLink>
 
@@ -89,6 +100,10 @@ onMounted(() => {
             </RouterLink>
             <a href="//localhost:7681" target="_blank" class="terminal-link">Terminal</a>
           </div>
+        </div>
+        <div v-if="email" class="account">
+          <span class="account-email" :title="email">{{ email }}</span>
+          <a :href="LOGOUT_URL" class="account-logout">Abmelden</a>
         </div>
       </div>
 
@@ -155,7 +170,31 @@ onMounted(() => {
 }
 
 .links > a,
-.links > .dropdown {
+.links > .account {
+  margin-top: auto;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.account-email {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-logout {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 500;
+}
+
+.dropdown {
   padding: 0.75rem 1.25rem;
   font-size: 1rem;
 }
